@@ -673,7 +673,6 @@ export function registerWorkflowTool(pi: ExtensionAPI, controller: WorkflowContr
 		],
 		parameters: WorkflowParams,
 		executionMode: "sequential",
-		renderShell: "self",
 		async execute(_toolCallId, rawParams, signal, _onUpdate, ctx): Promise<AgentToolResult<WorkflowControllerDetails>> {
 			// Workflow transitions are represented by the persistent cockpit below the
 			// editor. Their raw controller text should remain collapsed even when a
