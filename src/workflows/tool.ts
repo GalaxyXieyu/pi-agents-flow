@@ -589,11 +589,13 @@ export function registerWorkflowAssetsTool(pi: ExtensionAPI): void {
 	pi.registerTool(tool);
 }
 
-function renderWorkflowInlineCardFromRun(run: WorkflowRun, theme: Theme, frame?: number): import("@earendil-works/pi-tui").Component {
+function renderWorkflowInlineCardFromRun(run: WorkflowRun, theme: Theme, frame?: number, expanded = false): import("@earendil-works/pi-tui").Component {
 	const c = new Container();
 	const lines = renderWorkflowInlineCard(
 		{ runId: run.id, goal: run.goal, language: run.language, status: run.status, tasks: aggregateTasksFromRun(run), frame } as WorkflowInlineCardInput,
-		theme, (process.stdout.columns || 120),
+		theme,
+		process.stdout.columns || 120,
+		expanded,
 	);
 	for (const line of lines) c.addChild(new Text(line, 0, 0));
 	return c;
@@ -619,13 +621,25 @@ function aggregateTasksFromRun(run: WorkflowRun): TaskActivity[] {
 			return "pending";
 		};
 		const completed = units.filter((u) => u.status === "completed" || u.status === "accepted").length;
+		const workUnits = units.map((node) => ({
+			id: node.id,
+			taskId: node.taskId,
+			label: node.label,
+			order: node.order,
+			state: node.status as never,
+			dependsOn: node.dependsOn ?? [],
+			attempts: node.attempts?.length ?? 0,
+			artifacts: [],
+			executions: [],
+			node: node as never,
+		}));
 		return {
 			id: task.id,
 			label: task.label,
 			parentId: task.parentId,
 			order: task.order,
 			state: agg(),
-			workUnits: [],
+			workUnits,
 			children: [],
 			completed,
 			total: units.length,
@@ -681,9 +695,8 @@ export function registerWorkflowTool(pi: ExtensionAPI, controller: WorkflowContr
 		},
 		renderResult(result, options, theme) {
 			const text = result.content.find((entry) => entry.type === "text")?.text ?? "";
-			if (options.expanded) return new Text(text, 0, 0);
 			if (result.isError || !result.details?.run) return new Text(`${noticePrefix("error")} ${compactText(text, 96)}`, 0, 0);
-			return renderWorkflowInlineCardFromRun(result.details.run, theme);
+			return renderWorkflowInlineCardFromRun(result.details.run, theme, undefined, options.expanded);
 		},
 	};
 	pi.registerTool(tool);

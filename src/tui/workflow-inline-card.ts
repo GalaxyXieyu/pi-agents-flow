@@ -60,7 +60,7 @@ function localize(zh: string, en: string, language: "zh" | "en"): string {
 	return language === "zh" ? zh : en;
 }
 
-export function renderWorkflowInlineCard(input: WorkflowInlineCardInput, theme: Theme, width: number): string[] {
+export function renderWorkflowInlineCard(input: WorkflowInlineCardInput, theme: Theme, width: number, expanded = false): string[] {
 	const { runId, language, status, tasks, frame } = input;
 	const counts = aggregateTasks(tasks);
 	const lead = leadState(counts);
@@ -89,6 +89,17 @@ export function renderWorkflowInlineCard(input: WorkflowInlineCardInput, theme: 
 		const badge = statusBadge(task.state, theme, 1, task.state === "running" ? frame : undefined);
 		const progress = task.total > 0 ? ` ${task.completed}/${task.total}` : "";
 		lines.push(`  ${badge} ${theme.bold(task.label)}${progress}`);
+	}
+	if (expanded) {
+		for (const task of visibleTasks) {
+			for (const wu of task.workUnits) {
+				const wb = statusBadge(wu.state, theme, 1, wu.state === "running" ? frame : undefined);
+				const attempts = wu.attempts > 1 ? ` ×${wu.attempts}` : "";
+				const suffix = wu.executions[0]?.activity ? ` · ${wu.executions[0].activity}` : "";
+				const err = wu.state === "failed" && wu.executions[0]?.error ? ` · ${wu.executions[0].error}` : "";
+				lines.push(theme.fg("dim", `    ${wb} ${wu.label}${attempts}${suffix}${err}`));
+			}
+		}
 	}
 	const overflow = tasks.length - visibleTasks.length;
 	if (overflow > 0) lines.push(theme.fg("dim", `  … +${overflow}`));

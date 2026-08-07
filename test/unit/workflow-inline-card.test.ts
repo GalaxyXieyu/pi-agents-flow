@@ -101,3 +101,61 @@ test("shows overflow when tasks exceed visible limit", () => {
 	const hasOverflow = lines.some((line) => line.includes("\u2026 +"));
 	assert.ok(hasOverflow, "should show overflow indicator for many tasks");
 });
+
+test("renders work units in expanded mode", () => {
+	const input: WorkflowInlineCardInput = {
+		runId: "expanded-run-001",
+		language: "en",
+		status: "active",
+		tasks: [
+			makeTask({ 
+				id: "t1", 
+				label: "Research", 
+				state: "running", 
+				workUnits: [
+					{ id: "wu1", taskId: "t1", label: "Search docs", order: 0, state: "completed", dependsOn: [], attempts: 1, artifacts: [], executions: [] },
+					{ id: "wu2", taskId: "t1", label: "Analyze results", order: 1, state: "running", dependsOn: ["wu1"], attempts: 1, artifacts: [], executions: [] },
+				],
+			}),
+		],
+	};
+	const lines = renderWorkflowInlineCard(input, theme as never, 120, true);
+	// Should have header, status, task row, and 2 work unit rows
+	assert.ok(lines.length >= 4, `expected at least 4 lines, got ${lines.length}`);
+	// Work units should be indented and show labels
+	const wuLines = lines.filter((l) => l.includes("Search docs") || l.includes("Analyze results"));
+	assert.equal(wuLines.length, 2, "should render both work units");
+});
+
+test("shows failure details in expanded mode", () => {
+	const input: WorkflowInlineCardInput = {
+		runId: "failed-run-002",
+		language: "en",
+		status: "failed",
+		tasks: [
+			makeTask({ 
+				id: "t1", 
+				label: "Implement", 
+				state: "failed", 
+				workUnits: [
+					{ 
+						id: "wu1", 
+						taskId: "t1", 
+						label: "Build feature", 
+						order: 0, 
+						state: "failed", 
+						dependsOn: [], 
+						attempts: 2,
+						artifacts: [], 
+						executions: [{ key: "e1", text: "", state: "failed", error: "timeout" } as never],
+					},
+				],
+			}),
+		],
+	};
+	const lines = renderWorkflowInlineCard(input, theme as never, 120, true);
+	const failedLine = lines.find((l) => l.includes("Build feature"));
+	assert.ok(failedLine, "should show failed work unit");
+	assert.match(failedLine, /×2/, "should show attempt count");
+	assert.match(failedLine, /timeout/, "should show error message");
+});
