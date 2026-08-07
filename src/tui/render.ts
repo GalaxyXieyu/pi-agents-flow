@@ -766,8 +766,24 @@ export function renderSubagentResult(
 		const t = result.content[0];
 		const text = t?.type === "text" ? t.text : "(no output)";
 		const contextPrefix = contextModePrefix(theme, d?.context);
+		// An async launch ships a verbose guidance block in `content` meant for the
+		// model (do not wait, do not poll, ...). Keep the full text for the model but
+		// show only the headline to the user so the transcript card stays compact.
+		const isAsyncLaunch = Boolean(d && (d.detached || typeof (d as { mode?: string }).mode === "string"));
 		const width = getTermWidth() - 4;
 		if (!text.includes("\n")) return new Text(truncLine(`${contextPrefix}${text}`, width), 0, 0);
+		if (isAsyncLaunch) {
+			// First non-empty line is the headline (e.g. "Async parallel: [scout+...] [...]"); the rest is
+			// the interactive/headless guidance block. Surface the headline plus a compact detached hint.
+			const headline = text.split(/\r?\n/).find((line) => line.trim()) ?? text;
+			const detachedHint = d?.mode ? ` · async (${d.mode})` : " · async";
+			const mode = "detached" in d && (d as { detached?: boolean }).detached ? " · detached" : "";
+			const display = `${contextPrefix}${headline}${detachedHint}${mode}`;
+			const c = new Container();
+			c.addChild(new Text(truncLine(display, width), 0, 0));
+			c.addChild(new Text(truncLine(theme.fg("accent", `  Press ${liveDetailKeyText()} for full output`), width), 0, 0));
+			return c;
+		}
 		if (d && !options.expanded && !result.isError) {
 			const lines = text.split(/\r?\n/);
 			const firstNonEmptyLine = lines.find((line) => line.trim())?.trim() || "(no output)";

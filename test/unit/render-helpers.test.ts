@@ -219,3 +219,37 @@ test("static sequential and static parallel chain rendering keep existing labels
 	assert.match(parallel, /Agent 2\/2: auditor/);
 	assert.match(parallel, /Step 3: writer/);
 });
+
+test("async launch trims the guidance block to the headline in transcript", () => {
+	const component = renderSubagentResult({
+		content: [{ type: "text", text: "Async parallel: [scout+scout+scout] [abc123]\nThe async run is detached and running in the background.\nYou are in an interactive session. By default, return control to the user now.\nOverride that default and call subagent_wait() before ending the turn.\nOtherwise, continue any independent work or return control to the user." }],
+		details: {
+			mode: "parallel",
+			runId: "abc123",
+			results: [],
+			asyncId: "abc123",
+			detached: true,
+		},
+	} as never, { expanded: false } as never, theme as never);
+	const text = componentText(component);
+	assert.match(text, /^Async parallel: \[scout\+scout\+scout\]/, "headline must be the first visible content");
+	assert.doesNotMatch(text, /return control to the user now/, "guidance must not leak into the transcript");
+	assert.match(text, /async \(parallel\)/, "compact async hint must appear");
+	assert.match(text, /detached/, "detached badge must appear");
+});
+
+test("async single launch trims similarly without mode label duplication", () => {
+	const component = renderSubagentResult({
+		content: [{ type: "text", text: "Async: scout [xyz]\nThe async run is detached. Do not run sleep timers." }],
+		details: {
+			mode: "single",
+			runId: "xyz",
+			results: [],
+			asyncId: "xyz",
+		},
+	} as never, { expanded: false } as never, theme as never);
+	const text = componentText(component);
+	assert.match(text, /^Async: scout \[xyz\]/, "headline must appear");
+	assert.doesNotMatch(text, /sleep timers/, "guidance must not appear");
+	assert.match(text, /async \(single\)/);
+});
