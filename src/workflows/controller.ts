@@ -75,7 +75,7 @@ export interface WorkflowControllerResult {
 }
 
 export interface WorkflowController {
-	execute(params: WorkflowActionParams, ctx: ExtensionContext, signal?: AbortSignal): Promise<WorkflowControllerResult>;
+	execute(params: WorkflowActionParams, ctx: ExtensionContext, signal?: AbortSignal, onProgress?: (run: WorkflowRun) => void): Promise<WorkflowControllerResult>;
 	current(ctx: ExtensionContext): WorkflowRun | undefined;
 	recover(ctx: ExtensionContext): WorkflowRun | undefined;
 	handleForegroundCompletion(ctx: ExtensionContext, event: unknown): WorkflowRun | undefined;
@@ -570,7 +570,7 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 				].join("\n\n"),
 			};
 		},
-		async execute(params, ctx, signal) {
+		async execute(params, ctx, signal, onProgress?: (run: WorkflowRun) => void) {
 			if (params.action === "start") {
 				if (!params.goal.trim()) throw new Error("Workflow goal must not be blank.");
 				const store = storeFor(ctx.cwd);
@@ -780,6 +780,7 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 						onTransition: (transitioned) => {
 							persistBinding(transitioned);
 							projectRun(ctx, transitioned, evaluateWorkflow(transitioned));
+							onProgress?.(transitioned);
 						},
 					});
 					if (activeRuns.has(run.id)) throw new Error(`Workflow '${run.id}' is already scheduling nodes.`);

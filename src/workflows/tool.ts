@@ -665,7 +665,15 @@ export function registerWorkflowTool(pi: ExtensionAPI, controller: WorkflowContr
 			// editor. Their raw controller text should remain collapsed even when a
 			// prior tool inspection left the global host toggle expanded.
 			if (ctx.hasUI && typeof ctx.ui.setToolsExpanded === "function") ctx.ui.setToolsExpanded(false);
-			const response = await controller.execute(parseWorkflowActionParams(rawParams), ctx, signal);
+			const onProgress = _onUpdate
+				? (run: WorkflowRun) => {
+					_onUpdate({
+						content: [{ type: "text", text: "" }],
+						details: { run } as WorkflowControllerDetails,
+					});
+				}
+				: undefined;
+			const response = await controller.execute(parseWorkflowActionParams(rawParams), ctx, signal, onProgress);
 			return { content: [{ type: "text", text: response.text }], details: response.details };
 		},
 		renderCall() {
