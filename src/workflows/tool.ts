@@ -4,6 +4,10 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 
 import { noticePrefix } from "../tui/visual-language.ts";
+import { renderWorkflowInlineCard, type WorkflowInlineCardInput } from "../tui/workflow-inline-card.ts";
+import { Container } from "@earendil-works/pi-tui";
+import type { Theme } from "@earendil-works/pi-coding-agent";
+
 import { buildAssetCatalog, formatAssetCatalog, type AssetCatalog } from "./asset-catalog.ts";
 import type {
 	WorkflowActionParams,
@@ -585,6 +589,52 @@ export function registerWorkflowAssetsTool(pi: ExtensionAPI): void {
 	pi.registerTool(tool);
 }
 
+function renderWorkflowInlineCardFromRun(run: WorkflowRun, theme: Theme, frame?: number): import("@earendil-works/pi-tui").Component {
+	const c = new Container();
+	const lines = renderWorkflowInlineCard(
+		{ runId: run.id, goal: run.goal, language: run.language, status: run.status, tasks: aggregateTasksFromRun(run), frame } as WorkflowInlineCardInput,
+		theme, (process.stdout.columns || 120),
+	);
+	for (const line of lines) c.addChild(new Text(line, 0, 0));
+	return c;
+}
+
+function aggregateTasksFromRun(run: WorkflowRun): TaskActivity[] {
+	const taskMap = new Map<string, { task: typeof run.tasks[string]; units: typeof run.nodes[string][] }>();
+	for (const task of Object.values(run.tasks)) {
+		if (!taskMap.has(task.id)) taskMap.set(task.id, { task, units: [] });
+	}
+	for (const node of Object.values(run.nodes)) {
+		const entry = taskMap.get(node.taskId);
+		if (entry) entry.units.push(node);
+	}
+	return [...taskMap.values()].map(({ task, units }) => {
+		const states = units.map((u) => u.status).filter((s) => s !== "cancelled" && s !== "superseded");
+		const agg = (): "running" | "failed" | "waiting" | "completed" | "accepted" | "pending" => {
+			if (states.includes("running")) return "running";
+			if (states.includes("failed")) return "failed";
+			if (states.includes("waiting")) return "waiting";
+			if (states.length === 0 || states.every((s) => s === "pending")) return "pending";
+			if (states.every((s) => s === "completed" || s === "accepted")) return "completed";
+			return "pending";
+		};
+		const completed = units.filter((u) => u.status === "completed" || u.status === "accepted").length;
+		return {
+			id: task.id,
+			label: task.label,
+			parentId: task.parentId,
+			order: task.order,
+			state: agg(),
+			workUnits: [],
+			children: [],
+			completed,
+			total: units.length,
+			artifacts: [],
+			plan: task as never,
+		} as TaskActivity;
+	});
+}
+
 export function registerWorkflowTool(pi: ExtensionAPI, controller: WorkflowController): void {
 	const tool: ToolDefinition<typeof WorkflowParams, WorkflowControllerDetails> = {
 		name: "workflow",
@@ -625,7 +675,7 @@ export function registerWorkflowTool(pi: ExtensionAPI, controller: WorkflowContr
 			const text = result.content.find((entry) => entry.type === "text")?.text ?? "";
 			if (options.expanded) return new Text(text, 0, 0);
 			if (result.isError || !result.details?.run) return new Text(`${noticePrefix("error")} ${compactText(text, 96)}`, 0, 0);
-			return new Text("", 0, 0);
+			return renderWorkflowInlineCardFromRun(result.details.run, theme);
 		},
 	};
 	pi.registerTool(tool);
