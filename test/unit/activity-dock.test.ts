@@ -1,0 +1,303 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+
+import { buildActivitySnapshot } from "../../src/activity/projection.ts";
+import { activitySelections, createActivityDockController, renderActivityDock, ACTIVITY_DOCK_WIDGET_KEY } from "../../src/tui/activity-dock.ts";
+import type { SubagentState } from "../../src/shared/types.ts";
+import type { WorkflowNode, WorkflowRun } from "../../src/workflows/types.ts";
+
+const theme = {
+	fg: (_name: string, text: string) => text,
+	bg: (_name: string, text: string) => text,
+	bold: (text: string) => text,
+};
+
+function state(): SubagentState {
+	return {
+		baseCwd: "/repo",
+		currentSessionId: "session-1",
+		asyncJobs: new Map(),
+		fleetJobs: new Map(),
+		foregroundRuns: new Map(),
+		foregroundControls: new Map(),
+		lastForegroundControlId: null,
+		cleanupTimers: new Map(),
+		lastUiContext: null,
+		poller: null,
+		completionSeen: new Map(),
+		watcher: null,
+		watcherRestartTimer: null,
+		resultFileCoalescer: { schedule: () => false, clear: () => {} },
+	};
+}
+
+function workUnit(partial: Partial<WorkflowNode> & Pick<WorkflowNode, "id" | "taskId" | "kind" | "label" | "order" | "status">): WorkflowNode {
+	return {
+		dependsOn: [],
+		attempts: [],
+		agentSpec: {
+			id: `agent-${partial.id}`,
+			baseAgent: "researcher",
+			role: "researcher",
+			objective: partial.id,
+			instructions: partial.id,
+			context: "fresh",
+		},
+		...partial,
+	};
+}
+
+function run(): WorkflowRun {
+	return {
+		version: 1,
+		id: "workflow-1",
+		mode: "general",
+		goal: "Ship the redesign",
+		language: "zh",
+		cwd: "/repo",
+		sessionId: "session-1",
+		branch: "main",
+		status: "active",
+		revision: 3,
+		createdAt: 1,
+		updatedAt: 2,
+		tasks: {
+			"task-done": { id: "task-done", label: "收尾旧文档", order: 0 },
+			"task-recon": { id: "task-recon", label: "前期侦察", order: 1 },
+			"task-doc": { id: "task-doc", label: "设计文档", order: 2 },
+		},
+		nodes: {
+			"cleanup-a": workUnit({ id: "cleanup-a", taskId: "task-done", kind: "custom", label: "归档旧文", order: 0, status: "completed", attempts: [{ attemptId: "cleanup-a:1", requestId: "r-a", number: 1, startedAt: 1, completedAt: 2, status: "completed" }] }),
+			"cleanup-b": workUnit({ id: "cleanup-b", taskId: "task-done", kind: "custom", label: "更新索引", order: 1, status: "accepted", attempts: [{ attemptId: "cleanup-b:1", requestId: "r-b", number: 1, startedAt: 1, completedAt: 2, status: "completed" }] }),
+			"loop": workUnit({ id: "loop", taskId: "task-recon", kind: "research", label: "loop engineering", order: 0, status: "completed", attempts: [{ attemptId: "loop:1", requestId: "r-loop", number: 1, startedAt: 1, completedAt: 2, status: "completed", childRunId: "child-loop" }] }),
+			"vibe": workUnit({ id: "vibe", taskId: "task-recon", kind: "research", label: "vibecoding 演化", order: 1, status: "running", attempts: [{ attemptId: "vibe:1", requestId: "r-vibe", number: 1, startedAt: 3, status: "running", childRunId: "child-vibe" }] }),
+			"doc": workUnit({ id: "doc", taskId: "task-doc", kind: "writer", label: "设计详细大纲", order: 0, status: "pending", dependsOn: ["loop", "vibe"] }),
+		},
+		decisions: [],
+		appliedEventIds: [],
+	};
+}
+
+function liveState() {
+	const s = state();
+	s.foregroundControls.set("child-vibe", {
+		runId: "child-vibe",
+		mode: "single",
+		startedAt: 10,
+		updatedAt: 20,
+		currentAgent: "researcher",
+		currentTool: "web_search",
+		currentToolArgs: "vibecoding harness pain points",
+		recentTools: [{ tool: "read", args: "notes.md" }],
+	} as never);
+	s.foregroundControls.set("solo", {
+		runId: "solo",
+		mode: "single",
+		startedAt: 30,
+		updatedAt: 40,
+		currentAgent: "reviewer",
+		description: "Review the diff",
+		model: "deepseek-v4-flash",
+		thinking: "medium",
+	} as never);
+	return s;
+}
+
+describe("activity dock projection", () => {
+	it("groups work units under tasks and keeps independent agents separate", () => {
+		const snapshot = buildActivitySnapshot(liveState(), run());
+		assert.equal(snapshot.workflow?.tasks.length, 3);
+		const recon = snapshot.workflow?.tasks.find((task) => task.id === "task-recon");
+		assert.equal(recon?.workUnits.length, 2);
+		assert.equal(recon?.completed, 1);
+		assert.equal(snapshot.independent.length, 1, "workflow executions claimed by tasks must not double-list as independent");
+		assert.equal(snapshot.independent[0]?.agent, "reviewer");
+	});
+
+	it("folds terminal tasks to one row and expands active tasks", () => {
+		const snapshot = buildActivitySnapshot(liveState(), run());
+		const lines = renderActivityDock(snapshot, 120, theme as never, { perspective: "work" }).join("\n");
+		assert.match(lines, /\[任务\]/);
+		assert.match(lines, /● 收尾旧文档/);
+		assert.doesNotMatch(lines, /归档旧文/, "completed work units stay folded under their terminal task");
+		assert.doesNotMatch(lines, /更新索引/);
+		assert.match(lines, /◐ 前期侦察/);
+		assert.match(lines, /● loop engineering/);
+		assert.match(lines, /◐ vibecoding 演化 · web_search/);
+		assert.match(lines, /○ 设计文档/);
+	});
+
+	it("shows started executions in Agents without planned Work Units or model metadata", () => {
+		const snapshot = buildActivitySnapshot(liveState(), run());
+		const lines = renderActivityDock(snapshot, 120, theme as never, { perspective: "agents" }).join("\n");
+		assert.match(lines, /\[Agents\]/);
+		assert.match(lines, /● researcher/);
+		assert.match(lines, /◐ researcher/);
+		assert.match(lines, /reviewer/);
+		assert.doesNotMatch(lines, /设计详细大纲/);
+		assert.doesNotMatch(lines, /Not started/);
+		assert.doesNotMatch(lines, /Duration unavailable/);
+		assert.doesNotMatch(lines, /deepseek-v4-flash/);
+		assert.doesNotMatch(lines, /thinking/);
+	});
+
+	it("uses the agreed status symbols and no status words", () => {
+		const snapshot = buildActivitySnapshot(liveState(), run());
+		const lines = renderActivityDock(snapshot, 120, theme as never, { perspective: "work" }).join("\n");
+		assert.match(lines, /◐/);
+		assert.match(lines, /●/);
+		assert.match(lines, /○/);
+		assert.doesNotMatch(lines, /RUN\b|DONE\b|WAIT\b/);
+	});
+});
+
+describe("activity dock controller", () => {
+	function fakeUi() {
+		let inputHandler: ((data: string) => { consume?: boolean } | undefined) | undefined;
+		const widgets = new Map<string, unknown>();
+		const editor = {
+			render() { return []; },
+			invalidate() {},
+			handleInput() {},
+			getText() { return ""; },
+			setText() {},
+		};
+		const ctx = {
+			hasUI: true,
+			ui: {
+				setWidget(key: string, value: unknown) {
+					if (value === undefined) widgets.delete(key);
+					else widgets.set(key, value);
+				},
+				onTerminalInput(handler: typeof inputHandler) { inputHandler = handler; return () => { inputHandler = undefined; }; },
+				getEditorText() { return ""; },
+				requestRender() {},
+				notify() {},
+				theme,
+			},
+		} as unknown as ExtensionContext;
+		return { ctx, widgets, handler: () => inputHandler, tui: { focusedComponent: editor, requestRender() {} } };
+	}
+
+	function renderDock(ui: ReturnType<typeof fakeUi>, width = 100): string[] {
+		const component = (ui.widgets.get(ACTIVITY_DOCK_WIDGET_KEY) as (tui: unknown, theme: unknown) => { render(w: number): string[] })(ui.tui, theme as never);
+		return component.render(width);
+	}
+
+	it("registers one below-editor widget and switches perspective with v", () => {
+		const ui = fakeUi();
+		const controller = createActivityDockController({
+			getSnapshot: () => buildActivitySnapshot(liveState(), run()),
+			openSelection: () => {},
+		});
+		try {
+			controller.setContext(ui.ctx);
+			assert.equal(ui.widgets.has(ACTIVITY_DOCK_WIDGET_KEY), true);
+			assert.match(renderDock(ui).join("\n"), /\[任务\]/);
+
+			const handler = ui.handler();
+			assert.ok(handler);
+			assert.deepEqual(handler!("\x1b[B"), { consume: true }, "down activates the dock at an empty editor");
+			assert.deepEqual(handler!("v"), { consume: true });
+			assert.match(renderDock(ui).join("\n"), /\[Agents\]/);
+			assert.deepEqual(handler!("v"), { consume: true });
+			assert.match(renderDock(ui).join("\n"), /\[任务\]/);
+		} finally {
+			controller.dispose();
+		}
+	});
+
+	it("opens the selected row with its current Tasks or Agents perspective", async () => {
+		for (const expectedPerspective of ["work", "agents"] as const) {
+			const ui = fakeUi();
+			const opened: Array<{ key: string; perspective: "work" | "agents" }> = [];
+			const controller = createActivityDockController({
+				getSnapshot: () => buildActivitySnapshot(liveState(), run()),
+				openSelection: (selection, perspective) => { opened.push({ key: selection.key, perspective }); },
+			});
+			try {
+				controller.setContext(ui.ctx);
+				renderDock(ui);
+				const handler = ui.handler()!;
+				handler("\x1b[B");
+				if (expectedPerspective === "agents") handler("v");
+				handler("\r");
+				await new Promise((resolve) => setImmediate(resolve));
+				assert.equal(opened.length, 1);
+				assert.equal(opened[0]?.perspective, expectedPerspective);
+				assert.match(opened[0]?.key ?? "", expectedPerspective === "work" ? /^task:/ : /^execution:/);
+			} finally {
+				controller.dispose();
+			}
+		}
+	});
+
+	it("expands only active rows with x", () => {
+		const ui = fakeUi();
+		const controller = createActivityDockController({
+			getSnapshot: () => buildActivitySnapshot(liveState(), run()),
+			openSelection: () => {},
+		});
+		try {
+			controller.setContext(ui.ctx);
+			renderDock(ui, 120);
+			const handler = ui.handler()!;
+			handler("\x1b[B");
+			// Selection starts on the terminal task; x must not add rows.
+			const folded = renderDock(ui, 120).length;
+			handler("x");
+			assert.equal(renderDock(ui, 120).length, folded);
+			// Move to the running work unit and expand its live activity.
+			handler("\x1b[B");
+			handler("\x1b[B");
+			handler("\x1b[B");
+			handler("x");
+			const expanded = renderDock(ui, 120).join("\n");
+			assert.match(expanded, /web_search/);
+			assert.match(expanded, /read · notes\.md/);
+		} finally {
+			controller.dispose();
+		}
+	});
+
+	it("keeps the last snapshot mounted when the store read throws", () => {
+		const ui = fakeUi();
+		let fail = false;
+		const controller = createActivityDockController({
+			getSnapshot: () => {
+				if (fail) throw new Error("binding revision stale");
+				return buildActivitySnapshot(liveState(), run());
+			},
+			openSelection: () => {},
+		});
+		try {
+			controller.setContext(ui.ctx);
+			assert.equal(ui.widgets.has(ACTIVITY_DOCK_WIDGET_KEY), true);
+			fail = true;
+			controller.refresh();
+			assert.equal(ui.widgets.has(ACTIVITY_DOCK_WIDGET_KEY), true, "transient store failures must not swap the surface");
+		} finally {
+			controller.dispose();
+		}
+	});
+});
+
+describe("activity selections", () => {
+	it("lists only Work Units with attempts in the agents perspective", () => {
+		const snapshot = buildActivitySnapshot(liveState(), run());
+		const rows = activitySelections(snapshot, "agents");
+		assert.equal(rows.length, 5);
+		assert.ok(rows.every((row) => row.kind !== "execution" || row.execution.workUnitId !== "doc"));
+	});
+
+	it("folds terminal tasks in the work perspective", () => {
+		const snapshot = buildActivitySnapshot(liveState(), run());
+		const keys = activitySelections(snapshot, "work").map((row) => row.key);
+		assert.ok(keys.includes("task:task-done"));
+		assert.ok(!keys.includes("work-unit:cleanup-a"), "work units under a terminal task stay folded");
+		assert.ok(keys.includes("task:task-recon"));
+		assert.ok(keys.includes("work-unit:loop"), "work units under an active task remain visible as single rows");
+		assert.ok(keys.includes("work-unit:vibe"));
+	});
+});

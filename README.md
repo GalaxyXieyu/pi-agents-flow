@@ -1,0 +1,2138 @@
+# Pi Agents Flow
+
+`pi-agents-flow` is a supervisor-led multi-Agent Extension for Pi. The root Pi Agent
+creates a durable workflow graph, configures bounded temporary Agents, runs
+independent nodes in parallel, evaluates their structured results, requests
+targeted repair, and completes only after explicit quality gates pass.
+
+This project lives at
+[`GalaxyXieyu/pi-agents-flow`](https://github.com/GalaxyXieyu/pi-agents-flow). It is
+based on [`nicobailon/pi-subagents`](https://github.com/nicobailon/pi-subagents)
+and retains its MIT license and changelog history. See [TEACHING.md](./TEACHING.md)
+for the Chinese architecture and learning guide. For the project background,
+current architecture, product screenshots, usage examples, and open-source
+rollout plan, see
+[docs/open-source-overview.zh-CN.md](./docs/open-source-overview.zh-CN.md).
+
+Note: this project was formerly named `pi-swarm` and is based on
+[`nicobailon/pi-subagents`](https://github.com/nicobailon/pi-subagents). All
+runtime identifiers now use the `pi-agents-flow` name. The one exception is the
+optional rpiv-todo bridge, whose event and snapshot keys
+(`pi-swarm:workflow-todo-apply:v0`, `pi-swarm:workflow-todo-result:v0`,
+`pi-swarm-workflow-todo-snapshot`) stay unchanged so they keep matching the
+external `@juicesharp/rpiv-todo` package that binds to them.
+
+## Installation
+
+`pi-agents-flow` is a Pi extension. It attaches to your existing Pi install and
+does not bundle or replace Pi (the `@earendil-works/pi-*` packages are optional
+peer dependencies). It requires Node >= 22 and a working `pi` install.
+
+Install the published package into your existing Pi:
+
+```bash
+pi install npm:pi-agents-flow
+```
+
+Use `-l` to record it in project settings (`.pi/settings.json`) so a team shares
+it, instead of user settings.
+
+Install a pinned commit or tag straight from the repo without npm:
+
+```bash
+pi install git:github.com/GalaxyXieyu/pi-agents-flow@v0.1.0
+```
+
+For local development, clone the repo and install the checkout directly:
+
+```bash
+git clone https://github.com/GalaxyXieyu/pi-agents-flow.git
+pi install ./pi-agents-flow
+```
+
+## Try this first
+
+You do not need to create agents, write config, or learn slash commands. After installing, ask Pi for delegation in plain language:
+
+```text
+Use reviewer to review this diff.
+```
+
+```text
+Ask oracle for a second opinion on my current plan.
+```
+
+```text
+Use scout to understand this code based on our discussion then ask me clarification questions.
+```
+
+```text
+Run parallel reviewers: one for correctness, one for tests, and one for unnecessary complexity.
+```
+
+That is enough to start.
+
+## What happens
+
+Pi is the parent session. A subagent is a focused child Pi session with its own job.
+
+When you ask for a subagent, Pi starts the child, gives it the task, and brings the result back. Foreground runs stream in the conversation. Background runs keep working and can be checked later.
+
+## Dynamic Workflow and Deep Research (experimental V0)
+
+This package also contains an experimental, supervisor-owned workflow extension. The main Pi Agent remains the only Supervisor: it creates a typed dependency graph, chooses the next action, launches bounded child Agents through the existing delegation v2 transport, evaluates structured results, and decides what is accepted. Child Agents execute one node and return an envelope; they do not create or control the workflow.
+
+Use these entry points:
+
+| Entry point | Policy | Use it for |
+|-------------|--------|------------|
+| `/coding <plan\|build\|verify\|full> [--lang auto\|zh\|en] <goal>` | Deterministic Coding Workflow presets with hidden implementation Agents and explicit WorkflowDataContract V1 bindings. | Repeatable planning, approved implementation, verification, or the complete plan-to-verify lifecycle. |
+| `/workflow run [--lang auto\|zh\|en] <goal>` | General dynamic workflow. The Supervisor may mix research, local inspection, implementation, writing, and review nodes. | Flexible multi-step work where the final deliverable and gates depend on the question. |
+| `/deep-research [--lang auto\|zh\|en] <question>` | Deep Research policy. Equivalent to `/workflow run --mode deep-research <question>`, with a persisted Research Brief, approved detailed outline, source-grounded research lanes, parallel Section Writers, a Lead Editor, and an independent Reviewer. | Long-form research reports where depth, structure, citations, and unresolved conflicts are release gates. |
+
+`/coding` replaces the older `plan-flow`, `build-flow`, and `verify-flow` saved chains with one durable entry point:
+
+| Stage | Persisted DAG | Mutation |
+|-------|---------------|----------|
+| `plan` | assumptions-analyzer → planner → plan-checker | No |
+| `build` | executor → reviewer → verifier | Yes; the request is treated as already approved |
+| `verify` | reviewer + integration-checker → verifier | No |
+| `full` | assumptions-analyzer → planner → plan-checker → executor → (reviewer + integration-checker) → verifier | Yes, only after native user approval |
+
+All Coding stages persist their complete known DAG and completion source before execution. `full` marks `coding-plan-check` as an implementation approval gate. Accepting or superseding that node opens a native confirmation dialog; rejection, cancellation, or headless execution leaves implementation pending. Before approval, the runtime rejects implementation additions and permits only planning repairs that explicitly deny edit/write and grant no extra tools. Completion is accepted only from the stage's persisted final verifier or plan artifact, including an accepted same-kind replacement. Coding-specific roles are hidden and model-invocable by known name. General implementation (`worker`), code review (`reviewer`), planning (`planner`), and goal verification (`verifier`) roles are also hidden when the user profile routes those responsibilities through `/coding`; ordinary Agent discovery then contains only specialists that still need direct user selection.
+
+The commands submit a Supervisor request to the current root session. The Supervisor then drives state transitions through the `workflow` tool:
+
+```text
+/deep-research <question>
+  -> workflow.start
+  -> workflow.clarify (native Pi selection/input dialogs)
+  -> workflow.set_brief
+  -> optional reconnaissance -> research-architect
+  -> confirm detailed outline and section ownership
+  -> workflow.set_outline
+  -> workflow.apply_plan (research, Section Writers, Editor, Reviewer)
+  -> workflow.run_ready (independent ready nodes run in parallel)
+  -> accept evidence or add targeted verifier nodes
+  -> accepted claims, Brief, Outline, and drafts become writer-context.md
+  -> parallel Section Writers -> Lead Editor -> Reviewer
+  -> focused section/editor repair until quality gates pass
+  -> workflow.complete -> delivery/final.md
+```
+
+When material intent is ambiguous, `workflow.clarify` opens Pi's inline human-in-the-loop form; no separate plugin is required. Clarification is choice-first: every question provides 2-6 clear options with the recommended/default choice first, optional descriptions, and an automatic Other entry for user-written context. Questions may enable multiple selection when combining choices is meaningful. In multiple-choice questions, use Up/Down to move, Space to select or cancel a choice, Enter to submit the current question, Tab or Left/Right to switch questions, and Esc to cancel the form. Custom Other values are added as normal choices and can be cancelled with Space. The answers are persisted in the workflow event log, then the Supervisor must call `set_brief` before any plan can be applied. The Research Brief records audience, purpose, scope, depth, deliverable type, target length, required and excluded topics, constraints, assumptions, and whether the contract was user-confirmed or safely inferred. The Document Outline records the title, thesis, approval source, and at least two sections. Every section owns reader questions, evidence requirements, a word budget, and a `section-writer` node id. Brief and Outline changes are locked once document writing or review starts.
+
+The plan is deliberately incremental. When the request is ambiguous, the Supervisor asks 3-5 high-value questions before planning. It may also run a small reconnaissance wave and a `research-architect` node before proposing the final outline. A user-owned outline is submitted with `set_outline` and `approval=user`, which opens an inline section review form. Enter approves the default action; choosing Request changes opens a text editor and returns feedback without persisting the outline. A completed child is not automatically trusted: every completed node must be explicitly accepted or rejected with a rationale. Gaps, conflicts, stale sources, and failed preflight are represented as new decisions or bounded nodes, not silently smoothed over in prose.
+
+Workflow language defaults to `auto`: a goal containing Chinese resolves to Simplified Chinese, while other goals resolve to English. The resolved language is persisted in the workflow event log and reused by recovery, continuation, child AgentSpecs, Section Writers, Editor, Reviewer, the Activity Dock, and the final Markdown contract. Use `--lang zh` or `--lang en` to override detection. A global default can be set with `workflowLanguage: "auto" | "zh" | "en"` in the extension config.
+
+Useful controls are `/workflow status`, `/workflow quality`, `/workflow board`, `/workflow inspect`, `/workflow pause`, `/workflow resume`, and `/workflow stop`; each accepts an optional run id. Live workflow progress is surfaced in the persistent Activity Dock below the editor: Tasks group their work units and current Agent executions, while Agents lists every execution independently. `Enter` opens the Activity Board in the currently selected perspective and on the selected row. The Tasks board uses a plan tree on the left and contextual details on the right: Tasks, nested Tasks, and Work Units expose completion state and progress, while the detail pane shows objective, dependencies, attempts, duration, token usage, cost, and the Agent's current/recent activity. Completed and stopped workflows retain their task plan for review instead of collapsing into independent executions. Enter collapses or expands a Task and opens a started Work Unit execution in the full Fleet inspector. The Agents board keeps avatar-backed employee cards with duration and token usage; failed, cancelled, and superseded Agents are hidden by default and toggled with `f`. `Tab` opens the detail pane, and `v` switches between live activity and the Agent Definition with its system prompt, skills, tools, and MCP configuration. Closing Fleet returns to the same Activity Board selection. Task, Work Unit, and Agent details also show recorded `Evidence files` and `Run files` when available. Evidence paths are rendered as OSC 8 `file://` hyperlinks, so supported terminals (including iTerm2, Ghostty, Kitty, WezTerm, and VS Code) can open them by clicking. Paths ending in `:line[:column]` preserve that location in the label and add an `#Lline[:column]` file URL fragment for terminal/editor integrations; terminals without hyperlink support still show the full copyable path. For a running Work Unit or Agent, press `Enter` to open Fleet; `s` opens the native steering editor when that child has reported live-steering capability. Async children and foreground single Workflow children use the same correlated request/ack protocol, while terminal or unsupported children remain read-only. At the roster level, `v` switches between Tasks and Agents. Run `/coding`, `/swarm`, `/deep-research`, or `/workflow run` without a goal to open the matching native launch wizard for stage or mode, language, goal, and final confirmation. `/workflow stop` uses Pi's native confirmation dialog before it cancels a run. The model-facing `workflow` tool also supports `start`, `clarify`, `set_brief`, `set_outline`, `apply_plan`, `run_ready`, `evaluate`, `get_result`, `accept`, `reject`, `record_decision`, `cancel_node`, and `complete`.
+
+### One-shot static graphs
+
+A long flow whose structure only lives in the Supervisor's running context degrades: as the context grows, adherence to constraints set early in the run drops, and steps that were supposed to be sequential start getting skipped or reordered. The fix is to move the structure out of the Supervisor's memory as early as possible.
+
+When every required node and dependency is knowable before execution, the Supervisor must submit the complete static DAG in a single `apply_plan` call rather than appending one stage at a time. Execution order is then enforced by the Scheduler through `dependsOn`, so it no longer depends on the Supervisor remembering what comes next. `run_ready` is called only after the whole graph has passed planning and preflight. The graph may still be extended after execution starts, but only when a completed result determines nodes or dependencies that could not have been known at planning time; the new node instructions must name that runtime dependency.
+
+Script-driven workflows remain reserved for genuinely runtime-dynamic topology, such as a bounded gap-repair loop. Reducing Supervisor context usage is not by itself a reason to leave a static graph unsubmitted.
+
+### Asset catalog
+
+`workflow_assets` is a read-only, model-facing tool that lists every building block available for composition: base Agents with their declared skills and tools, discoverable skills, and MCP direct tools. The Supervisor calls it once before `apply_plan` so `baseAgent` and `skills` names are chosen from what actually exists instead of being guessed.
+
+Scanning is live rather than cached, so an edited agent or skill takes effect on the next call. The tool never touches workflow state, which is why it is a separate tool instead of a `workflow` action.
+
+### Reusable compositions
+
+A node graph that will be run more than once can be saved as a declarative template and replayed with new parameters, so the Supervisor does not re-derive the same graph every time.
+
+| Command | Description |
+|---------|-------------|
+| `/composition list` | List saved templates |
+| `/composition show <name>` | Show a template's parameters and node graph |
+| `/composition save <name> [description]` | Save the current run's node graph as a template |
+| `/composition run <name> [--param k=v ...]` | Render a template and apply it to the active run |
+
+`/composition run` performs `apply_plan`; it does not start a run, so a workflow must already be active. `/composition save` stores concrete values with an empty `params` list: which values should become parameters is not inferred, because guessing wrong silently produces a broken template. Edit the saved file to introduce `{{param}}` placeholders and declare them.
+
+Templates live at `<cwd>/.pi-agents-flow/compositions/<name>.json`. Saving over an existing name overwrites it; these files are meant to be committed, so versioning is left to Git rather than duplicated in a parallel history directory.
+
+```json
+{
+  "name": "plan-dev-verify",
+  "description": "Plan, implement, then verify",
+  "params": [
+    { "name": "goal", "required": true },
+    { "name": "targetModule", "required": true },
+    { "name": "hasDb", "required": false, "default": false }
+  ],
+  "nodes": [
+    { "id": "plan", "kind": "custom", "label": "Plan {{targetModule}}", "dependsOn": [],
+      "agentSpec": { "id": "s1", "baseAgent": "planner", "role": "Planner",
+        "objective": "Plan {{targetModule}}: {{goal}}", "instructions": "Emit executable steps",
+        "context": "fresh", "resultSchema": { "type": "object" } } },
+    { "id": "dev", "kind": "custom", "label": "Implement", "dependsOn": ["plan"],
+      "agentSpec": { "id": "s2", "baseAgent": "worker", "role": "Engineer",
+        "objective": "Implement the plan", "instructions": "Follow the plan; do not widen scope",
+        "context": "fresh", "resultSchema": { "type": "object" } } },
+    { "id": "db-verify", "kind": "verification", "label": "Verify database", "dependsOn": ["dev"],
+      "enableIf": "hasDb || targetModule.includes(\"db\")",
+      "agentSpec": { "id": "s3", "baseAgent": "reviewer", "role": "Verifier",
+        "objective": "Verify database changes", "instructions": "Database scope only",
+        "context": "fresh", "resultSchema": { "type": "object" } } }
+  ]
+}
+```
+
+`enableIf` decides whether a node is included. It is evaluated once at render time, before `apply_plan`, so the graph handed to the execution layer is already fully determined and the Controller never sees the condition. Dependencies on a pruned node are dropped from the nodes that remain, because a pruned node can never be accepted and would otherwise deadlock the graph.
+
+The expression grammar is deliberately narrow: declared parameters, string/number/boolean literals, `===` `!==` `>` `<` `>=` `<=`, `&&` `||` `!`, parentheses, and the string operations `includes`, `startsWith`, `endsWith`, and `length`. A bare boolean parameter (`"enableIf": "hasDb"`) is valid, but deriving the condition from a raw parameter is usually better: it keeps the decision deterministic instead of depending on a model to set a flag correctly. Referencing an undeclared parameter is an error rather than a silent false, so a typo cannot quietly skip a node. Expressions are parsed and evaluated by a hand-written evaluator; `eval`, `new Function`, and `vm` are not used.
+
+Rendered templates are validated by the same parser the `workflow` tool uses for a model-supplied `apply_plan`, so a hand-edited file is held to exactly the same AgentSpec contract.
+
+Each run is stored under the project checkout:
+
+```text
+<cwd>/.pi-agents-flow/workflows/<run-id>/
+  manifest.json       # atomic current-state projection
+  events.jsonl        # append-only recovery source of truth
+  nodes/               # node-scoped artifacts
+  artifacts/           # child outputs and registered evidence
+  bundles/
+    accepted-claims.json
+    writer-context.md
+  delivery/
+    final.md
+```
+
+Saved composition templates are stored per project, outside any single run, because they are meant to outlive it and be committed:
+
+```text
+<cwd>/.pi-agents-flow/compositions/<name>.json
+```
+
+The session also records a binding containing the run id, revision, session id, cwd, and Git branch. Reload or branch/cwd changes fail closed until the Supervisor starts a new run or the user makes an explicit decision. Retried nodes keep immutable attempt history and receive a new attempt number. A child that blocks on `contact_supervisor` moves its existing attempt to `waiting`; after the reply, completion is written back to that same attempt and child run. Reload recovery uses the persisted child metadata and structured output paths rather than launching a replacement.
+
+An ephemeral AgentSpec can select a persistent base Agent, role, objective, instructions, context (`fresh` or `fork`), required skills, result schema, model, thinking, and bounded budgets. The runtime strengthens every workflow result schema to the canonical `WorkflowResult` shape before preflight and launch, so a shallow Supervisor schema cannot omit nested finding, evidence, confidence, gap, or conflict contracts. A node can explicitly require the optional search trace by including `search` in its top-level `required` fields.
+
+A node can also adjust its tool set with `extraTools` and `denyTools`:
+
+```json
+"agentSpec": {
+  "baseAgent": "reviewer",
+  "skills": ["testing"],
+  "extraTools": ["write", "db/query"],
+  "denyTools": ["bash"]
+}
+```
+
+`extraTools` entries containing `/` are MCP direct-tool selectors (`server` or `server/tool`); the rest are builtin tool names. Entries that look like extension paths (`.ts`, `.js`) are rejected, because loading an arbitrary extension file is a far larger grant than naming a tool. Grants are merged in *before* capability-ceiling filtering and revocations are applied after, so a node can open a tool the base Agent does not enable by default but can never exceed the ceiling. Both fields require a base Agent that declares an explicit `tools` allowlist: without one the child is already unrestricted, and layering a list would narrow it instead of adjusting it, so the launch fails with that explanation rather than silently doing the opposite. `denyTools` is independent of `toolBudget.block`, which only degrades tool access after the hard budget is exhausted. Extensions are never expanded per node. The launch contract reports the resulting `grantedTools` and `revokedTools`.
+
+The Deep Research editorial team includes `research-architect`, `researcher`, `research-verifier`, `research-section-writer`, `research-editor`, and `research-reviewer`; `research-writer` remains only for legacy workflow compatibility. The Architect, Section Writers, and Editor cannot search. The Reviewer can fetch only registered citations, while a verifier can search narrowly for a named gap or conflict. Ordinary completion returns through delegation v2. Use `contact_supervisor` only when a child is blocked on a material decision or needs user input; routine results return directly.
+
+The workflow uses the existing Pi and pi-agents-flow facilities rather than a second executor: delegation v2 supplies child run identity, exact cancellation correlation, structured output, model/thinking, usage, and preflight; the append-only Workflow Store supplies graph state and recovery. Web research still depends on the selected base Agent's configured `web_search`/fetch capabilities and provider authentication. Kimi models can be used for the parent or children through their normal Pi model id; the workflow does not require a separate Kimi-specific subagent API.
+
+Settled-idle completion can request a deduplicated Supervisor follow-up. `/workflow stop` cancels the whole run, while `workflow({ action: "cancel_node", nodeId })` cancels only the selected running or waiting child through its exact delegation identity. Completed results and immutable attempt history remain available. On startup, reload, or resume, an active workflow recovers waiting attempts and actively schedules ready nodes that were persisted before process exit.
+
+The Activity Dock is the single persistent bottom surface for both workflows and standalone Agents. It models `Workflow > Task > Work Unit > Attempt > Agent Execution`: a Task is a human-level unit that may own several work units (and therefore several Agents), while `dependsOn` only orders work units and never implies hierarchy. The Tasks perspective retains planned Work Units before launch; the Agents perspective lists only executions that have an attempt or an independently assigned child, so unassigned Work Units do not produce placeholder Agent rows. Statuses render as symbols only (`◐` active, `●` done, `✕` failed, `○` pending, `◌` waiting, `⏸` paused, `⊘` cancelled/superseded). Terminal tasks collapse to one row; active rows show compact observable activity, duration, and reported token usage (current tool plus semantic args, never model, thinking, or raw JSON). With an empty editor, `↓` activates the dock, `v` switches between the Tasks and Agents perspectives (the choice persists for the session), `↑↓`/`j`/`k` select, `x` expands the recent activity of an active row, `Enter` opens the matching board perspective, and `Esc` returns to the editor. `/workflow board` and `/workflow inspect` open the Activity Board; `/subagents-fleet` remains the deep transcript inspector for steer/stop and full tool output.
+
+Workflow state is projected into the existing `rpiv-todo` list at phase and node granularity; it does not create a second Todo system. Projection is automatic only when the installed `rpiv-todo` exposes the versioned bridge events `pi-swarm:workflow-todo-apply:v0` and `pi-swarm:workflow-todo-result:v0`, and replays the `pi-swarm-workflow-todo-snapshot` custom entry. The current integration was validated with `@juicesharp/rpiv-todo@2.3.1`. Run `npm run check:rpiv-todo-bridge` after `pi update --extensions`: npm updates can replace a locally patched package. If the bridge is absent, workflow execution remains authoritative and non-fatal, but the controller returns explicit existing-todo operations instead of claiming automatic projection. The maintainable endpoint is to upstream this small event/snapshot protocol into `rpiv-todo`; do not import or duplicate its internal store in pi-agents-flow.
+
+Deep Research assigns independent first-wave nodes different source portfolios (mechanism, implementation, operations, and alternatives) so parallel workers do not issue the same generic queries. Section Writers own non-overlapping outline sections; the Lead Editor is the only node allowed to produce the accepted final document. Quality reports check research trace and fetch coverage, unsupported Writer claims, outline and Section Writer coverage, final citation density, unsupported final citations, readable document length, delegation provenance, gaps, and conflicts. Repeated references inside one lane remain legitimate multi-claim evidence, while duplicate-source rate is measured across lanes. V0 still does not execute model-generated workflow JavaScript.
+
+Installing the extension does not start an automatic reviewer in the background. It gives Pi a delegation tool. If you want every implementation reviewed, say that in your prompt or put it in your project instructions:
+
+```text
+When you finish implementing, run a reviewer subagent before summarizing.
+```
+
+## Good first prompts
+
+These cover most day-to-day use:
+
+```text
+Ask oracle for a second opinion on my current plan. Challenge assumptions and tell me what I might be missing.
+```
+
+```text
+Use oracle to help solve this hard bug. Have it inspect the code and propose the best next move before we edit anything.
+```
+
+```text
+Run parallel reviewers on this diff. I want one focused on correctness, one on tests, and one on unnecessary complexity.
+```
+
+```text
+Have worker implement this approved plan. Afterward, run parallel reviewers, summarize their feedback, and apply the fixes that make sense.
+```
+
+```text
+Run a review loop on this change until reviewers stop finding fixes worth doing, with a max of 3 rounds.
+```
+
+```text
+Use scout to understand the auth flow, then have planner turn that into an implementation plan.
+```
+
+Those are ordinary Pi requests. Pi decides whether to call `subagent`, which agent to use, and whether a chain or parallel run makes sense.
+
+## Common workflows
+
+| Want | Ask naturally |
+|------|---------------|
+| Get a second opinion | “Ask oracle to review this plan and challenge assumptions.” |
+| Solve a hard problem | “Use oracle to investigate this bug before we edit.” |
+| Review a diff | “Use reviewer to review this diff.” |
+| Run parallel reviewers | “Run reviewers for correctness, tests, and cleanup.” |
+| Implement then review | “Implement this, then review it.” |
+| Review until clean | “Run a review loop on this change with a max of 3 rounds.” |
+| Execute a plan carefully | “Have worker implement this approved plan, then run reviewers and apply the feedback.” |
+| Scout before planning | “Use scout to inspect the auth flow before planning.” |
+| Run in the background | “Run this in the background.” |
+| Browse agents | “Show me the available subagents.” |
+| Use a saved workflow | “Run the review chain on this branch.” |
+| See running work | “Show active async runs.” or “Show the subagent fleet.” |
+| Check setup | “Check whether subagents are configured correctly.” |
+
+The extension ships with builtin agents you can use immediately.
+
+## Builtin agents in plain English
+
+| Agent | Use it when you want... |
+|-------|--------------------------|
+| `scout` | Fast local codebase recon: relevant files, entry points, data flow, risks, and where another agent should start. |
+| `researcher` | Web/docs research with sources: official docs, specs, benchmarks, recent changes, and a concise research brief. |
+| `planner` | A concrete implementation plan from existing context. It should read and plan, not edit code. |
+| `worker` | Implementation work, including approved oracle handoffs. It edits files, validates, and escalates unapproved decisions instead of guessing. |
+| `reviewer` | Code review and small fixes. It checks the implementation against the task/plan, tests, edge cases, and simplicity. |
+| `context-builder` | A stronger setup pass before planning: gathers code context and writes handoff material such as `context.md` and `meta-prompt.md`. |
+| `oracle` | A second opinion before acting. It challenges assumptions, catches drift, and recommends the safest next move without editing. |
+| `delegate` | A lightweight general delegate when you want a child agent that behaves close to the parent session. |
+
+A simple rule of thumb: use `scout` before you understand the code, `researcher` before you trust external facts, `planner` before a bigger change, `worker` to implement, `reviewer` to check, and `oracle` when the decision itself feels risky.
+
+## Changing an agent's model
+
+Builtin agents inherit your current Pi default model by default. This keeps new installs from depending on a provider you may not have configured. If you want every subagent without its own model to use a different default, set `subagents.defaultModel`. If you want a role to use a specific model, set an override instead of copying the bundled agent file.
+
+```json
+{
+  "defaultModel": "deepseek-v4-pro",
+  "subagents": {
+    "defaultModel": "deepseek-v4-flash",
+    "agentOverrides": {
+      "oracle": {
+        "model": "deepseek-v4-pro"
+      }
+    }
+  }
+}
+```
+
+For one run, put the override in the command:
+
+```text
+/run reviewer[model=anthropic/claude-sonnet-4:high] "Review this diff"
+```
+
+For a persistent override, edit settings. This example pins the reviewer everywhere, adds a backup model for provider failures, and keeps the other builtins on your normal default model:
+
+```json
+{
+  "subagents": {
+    "agentOverrides": {
+      "reviewer": {
+        "model": "anthropic/claude-sonnet-4",
+        "thinking": "high",
+        "fallbackModels": ["openai/gpt-5-mini"]
+      }
+    }
+  }
+}
+```
+
+### Recommended model tiering (optional)
+
+A setup that works well in practice is routing agents by task shape instead of running everything on one model. Four tiers:
+
+1. **Fast workhorse** — the cheapest capable model at low thinking, for recon, lookups, and mechanical edits. Example: `openai-codex/gpt-5.6-luna:low` on `scout`.
+2. **Standard well-scoped** — a mid-tier model at medium thinking, for most delegations: routine multi-file edits, focused reviews, straightforward implementation. Example: `openai-codex/gpt-5.6-terra:medium` on `worker`, `reviewer`, and a lightweight `delegate` agent.
+3. **Deep but bounded** — a top reasoning model at high thinking, only for hard tasks that arrive with explicit goals and completion criteria. These models tend to loop on vague goals, so keep them off open-ended work. Example: `openai-codex/gpt-5.6-sol:high` on `planner` and oracle-style agents.
+4. **Taste and intent** — a model that reads human intent well and makes judgment calls without looping, for ambiguous work: UX and design decisions, product tradeoffs, planning from vague requirements, writing quality. Example: `anthropic/claude-fable-5` at `low` for lighter passes and `medium` for harder ones.
+
+The routing rule: use the capability tiers (1–3) when the task is well-scoped, and the intent tier (4) when scoping or judging is the task itself.
+
+Give tier-4 agents cross-provider `fallbackModels` so subscription usage limits degrade gracefully instead of failing the run — fallback triggers on rate-limit and overload errors automatically:
+
+```yaml
+---
+name: shaper
+description: Open-ended design/UX/product/planning agent for ambiguous tasks
+model: anthropic/claude-fable-5
+thinking: medium
+fallbackModels: openai-codex/gpt-5.5:high
+---
+```
+
+One more interaction worth knowing for tier 4: forked context over an Anthropic parent transcript with signed thinking blocks forces the child's thinking off, so intent-tier agents work best with fresh context.
+
+Use `~/.pi/agent/settings.json` for a user override or the project config settings file (`.pi/settings.json` in standard Pi) for a project override. `subagents.defaultModel` applies to builtin, package, user, and project agents that do not set `model` in frontmatter. Per-run model overrides and `agentOverrides.<name>.model` still win, and explicit agent frontmatter still wins over the global default. The same `agentOverrides` block can change `tools`, `skills`, inherited context, prompt text, or disable a builtin. Matching user and project agents also receive override fields that their frontmatter leaves unset, so a shared project config agent can keep the persona while local settings choose the model.
+
+By default, project settings resolve from the nearest parent directory that contains `.pi` or `.agents`, preserving existing nested-project behavior. In monorepos or git worktrees where an incidental nested `.pi` directory should not shadow the repository-level config, set this in the repository root `.pi/settings.json`:
+
+```json
+{
+  "subagents": {
+    "projectRootResolution": "git-root"
+  }
+}
+```
+
+`"git-root"` keeps package discovery, project agents, chains, and `agentOverrides` anchored to the git worktree root when that root also has Pi project config. A nested project can still opt back into nearest-root behavior by setting `"projectRootResolution": "nearest"` in its own `.pi/settings.json`.
+
+Set `subagents.defaultThinking` to give builtin, package, user, and project agents without a `thinking` value a shared thinking level, independent of the parent session's default. Project settings win over user settings. Explicit frontmatter, `agentOverrides.<name>.thinking`, and per-run thinking overrides still win; `thinking: false` remains an explicit opt-out:
+
+```json
+{
+  "subagents": {
+    "defaultThinking": "medium",
+    "agentOverrides": {
+      "reviewer": { "thinking": "high" }
+    }
+  }
+}
+```
+
+If your provider rejects model IDs with thinking suffixes, set `subagents.disableThinking: true` in user or project settings. That clears bundled builtin thinking defaults in one place; an explicit higher-precedence `agentOverrides.<name>.thinking` value can opt a role back in. Existing custom-agent frontmatter remains authoritative.
+
+Set `subagents.defaultExtensions` to give builtin, package, user, and project agents without an `extensions` field a shared extension allowlist. Absent preserves Pi's normal ambient extension discovery. Present as an empty array, the default sets `extensions: []` for agents that do not explicitly define it, disabling ambient extension loading. Present as a non-empty array, the default supplies that allowlist to agents that do not explicitly define one. Project settings win over user settings. Use `agentOverrides.<name>.extensions` for per-agent settings; explicit custom-agent frontmatter remains authoritative.
+
+```json
+{
+  "subagents": {
+    "defaultExtensions": [],
+    "agentOverrides": {
+      "researcher": {
+        "extensions": ["./tools/research.ts"]
+      }
+    }
+  }
+}
+```
+
+A non-array value, an array containing a non-string entry, or an empty/whitespace-only string raises a settings error naming `defaultExtensions` and the offending settings file, matching the validation pattern used by `defaultModel` and `defaultThinking`.
+
+To inspect what `pi-agents-flow` has actually loaded right now, use:
+
+```text
+/subagents-models
+/subagents-models reviewer
+```
+
+That reports the live runtime mapping, which can differ from settings on disk until you reload Pi.
+
+You do not have to spell a model exactly. Model ids are matched fuzzily against the registry, so provider separator variations (`anthropic/claude-sonnet-4`, `anthropic:claude-sonnet-4`, or `anthropic.claude-sonnet-4`), id separator variations (`claude-haiku-4.5` vs `claude-haiku-4-5`), case differences (`Claude-Sonnet-4` vs `claude-sonnet-4`), and optional trailing date stamps (`claude-haiku-4-5-20251001` or `claude-haiku-4-5-2025-10-01` vs `claude-haiku-4-5`) all resolve to the same model. Exact `provider/id` matches still win, and a qualified provider query never silently switches providers — it only matches within the named provider. Ambiguous bare ids that exist under multiple providers still require a provider prefix or the current session's provider to disambiguate.
+
+### Choosing a watchdog model
+
+The subagent watchdog is not the `reviewer` subagent. `subagents.defaultModel` and `subagents.agentOverrides.reviewer` do not configure it. The watchdog is an opt-in adversarial change reviewer, so it should usually use a strong complementary model rather than a cheap/light model.
+
+The watchdog reviews repo edits, not ordinary conversation. It runs at the safe `agent_end` boundary only when the current agent or child writer changed the final repo state since the start of that turn. Multiple edits in one turn are coalesced into one review of the final changed state, unchanged/reverted diffs are skipped, and generated `.pi-agents-flow/` or `tmp/` artifacts do not trigger review. In orchestrated runs, each writing child can review its own edited worktree, and the parent can still review the aggregate repo diff after child changes are applied.
+
+When enabled, the watchdog also keeps a bounded in-memory current-scope artifact from real user prompts and prepends it to review input by default (`subagents.watchdog.scope.enabled`). Newer prompts supersede and mutate older prompts, so the reviewer can flag work that no longer serves the current scope as `scope-drift`. Watchdog auto-follow prompts are not recorded as scope.
+
+You can opt into Scopey-style scope monitoring, inspired by [Scopey](https://github.com/ArchAstro/scopey), by setting `subagents.watchdog.cadence.everyNTools` to run additional non-blocking reviews every N tool results. Cadence warnings are transcript-visible and delivered with Pi's `steer` mode after the current tool boundary; they are never hidden. The same configured watchdog model is used for all checks, so choose a cheap model for frequent monitoring or a strong model for rarer adversarial review.
+
+When the watchdog displays a blocker at `agent_end`, the existing `subagents.watchdog.autoFollow` policy can queue a visible follow-up user message asking the agent to address it. Auto-follow only runs while the watchdog is enabled, respects `maxAttempts`, and stops on repeated identical blockers using `stalemateRepeats`.
+
+When the watchdog is enabled, it also checks changed TypeScript and JavaScript files for fresh language-server diagnostics before the model review. It auto-detects `typescript-language-server` from the project `node_modules/.bin` or `PATH`; it never installs tools or scans the whole workspace. LSP errors surface as watchdog blockers, warnings as concerns, and info/hints stay in status details. Slow or missing servers are reported in `/subagents-watchdog status` without blocking the turn or emitting late mid-turn warnings. Configure the bounds with `subagents.watchdog.lsp.enabled`, `timeoutMs`, `maxFiles`, and `maxDiagnostics`.
+
+Use `/subagents-watchdog recommend-model` to ask pi-agents-flow for the current strong pairing. The current recommendation policy is Opus 4.8 with thinking high or GPT 5.5 with thinking high. If your main session is using one, the watchdog should use the other when that model is authenticated.
+
+```text
+/subagents-watchdog recommend-model
+/subagents-watchdog session model recommended
+/subagents-watchdog model recommended
+```
+
+`session model recommended` changes only the current Pi session. `model recommended` saves the recommendation to `~/.pi/agent/settings.json`; it does not turn the watchdog on. Enable it separately with `/subagents-watchdog on` when you want the extra review pass.
+
+You can also set the model explicitly:
+
+```text
+/subagents-watchdog model anthropic/claude-opus-4-8:high
+/subagents-watchdog model openai-codex/gpt-5.5:high
+/subagents-watchdog model inherit
+/subagents-watchdog check
+```
+
+For settings files, use `subagents.watchdog.main.model` and `subagents.watchdog.main.thinking` for the main watchdog. If `main.model` is omitted, the main watchdog uses the current session model and thinking level. If `main.model` is set without a thinking suffix or `main.thinking`, it runs with thinking off, so prefer `:high` or `"thinking": "high"` for the strong-watchdog pairing.
+
+Default strong-reviewer profile:
+
+```json
+{
+  "subagents": {
+    "watchdog": {
+      "enabled": true,
+      "main": {
+        "model": "anthropic/claude-opus-4-8",
+        "thinking": "high"
+      }
+    }
+  }
+}
+```
+
+Scopey-style scope monitoring profile:
+
+```json
+{
+  "subagents": {
+    "watchdog": {
+      "enabled": true,
+      "main": {
+        "model": "anthropic/claude-haiku-4-5",
+        "thinking": "medium"
+      },
+      "scope": { "enabled": true },
+      "cadence": { "everyNTools": 10 },
+      "autoFollow": {
+        "blockers": true,
+        "maxAttempts": 3,
+        "stalemateRepeats": 3
+      }
+    }
+  }
+}
+```
+
+For child subagent watchdogs, use `subagents.watchdog.children.model` as the default child watchdog model, or `subagents.watchdog.children.overrides.<agent>.model` for a specific child role. Child watchdogs are still opt-in and follow the same edit-gated rule: read-only children do not trigger watchdog reviews, while writer children are reviewed at their own `agent_end` if their worktree changed.
+
+Agents can configure the same values through the tool when you ask them to set up the watchdog:
+
+```ts
+subagent({ action: "watchdog.recommend-model" })
+subagent({ action: "watchdog.configure", model: "recommended", scope: "session" })
+subagent({ action: "watchdog.configure", model: "recommended", scope: "project" })
+```
+
+Persistent scopes (`user` or `project`) should only be used when you ask for a lasting default. Otherwise the agent should use `scope: "session"`.
+
+To keep subagents inside a budget or compliance profile, enforce a model scope. Put `subagents.modelScope` in user or project settings (project overrides user):
+
+```json
+{
+  "subagents": {
+    "modelScope": {
+      "enforce": true,
+      "allow": ["anthropic/*", "openai/gpt-5-*"]
+    }
+  }
+}
+```
+
+`allow` is a list of glob patterns matched against the resolved `provider/id` (only `*` is special, case-insensitive). A resolved model that matches none of the patterns is rejected. Models you pass explicitly — the tool-call `model`, `--model`, or a clarify pick — error and abort the run. Models that come from agent frontmatter, `subagents.defaultModel`, or the inherited parent session model only warn, so existing configurations keep working while you tighten the scope. `enforce: true` requires a non-empty `allow` list; otherwise the config is rejected at load time.
+
+## Where running subagents show up
+
+Foreground runs stream progress in the conversation while they run. They default to a generous 30-minute wall-clock timeout when neither the call nor the selected agent provides a timeout; explicit `timeoutMs`/`maxRuntimeMs` and agent defaults win.
+
+Background runs keep working after control returns to you. Inspect active runs with `subagent({ action: "status" })`, or a specific run with `subagent({ action: "status", id: "..." })`. In the TUI, the persistent Activity Dock below the editor shows every assigned Agent execution (workflow attempts and independent runs) with compact live activity and elapsed time. Entering the dock opens the avatar-backed Activity Board; planned Work Units that have not launched remain in Tasks and do not appear as placeholder Agents. When the focused editor is empty, press `↓` to activate the dock, then use `↑↓`/`j`/`k` to select a row, `v` to switch perspectives, `x` to expand live activity, and `Enter` to inspect; printable navigation keys are never intercepted before activation.
+
+`/subagents-fleet` opens the live fleet inspector with current-session foreground work, recent async children, structured Markdown/tool transcripts, and completed output/session paths. Every child gets a stable display name and monochrome pixel avatar derived from its run identity; the real Agent type remains visible beside it. Wide terminals use a roster beside the Inspector; terminals below 88 columns stack the selected child above its transcript. Use `↑`/`↓` to select an employee, `j`/`k` to scroll one line, `PgUp`/`PgDn` to scroll one page, `g`/`G` to jump to the top/bottom, `f` to pause or resume live follow, and `Tab` to switch between the live transcript and the resolved Agent definition/system prompt. Use `x`/`Ctrl+O` to toggle tool details, `r` to refresh, and `Esc` to close. For a selected live async child, `s` opens Pi's native editor and sends the resulting acknowledged steer message; `D` leaves the Inspector, opens Pi's native confirmation dialog, and returns to the same child if the action is cancelled or completed. `Ctrl+Alt+F` opens the same inspector even while a foreground turn is active and slash input is queued. The main transcript keeps running rows compact and points to `/subagents-fleet` for live details instead of duplicating nested Agent and recent-output blocks. Without a TUI, `/subagents-fleet` retains the textual `subagent({ action: "status", view: "fleet" })` fallback, and mutations use explicit commands: run `/subagents-stop` and pick from the selector, or use `/subagents-stop <run-id>` / `subagent({ action: "stop", id: "..." })` when you already know the id. `/subagents-stop` uses Pi's native confirmation dialog for both selected and explicit run ids. Use `/subagents-detach [run-id]` only for an active foreground single-subagent run you want to leave running without terminating; the eventual result remains available through status/wait. To inspect one background child in text, use `subagent({ action: "status", id: "...", view: "transcript" })`; add `index` for a specific child in a parallel or chain run.
+
+The Activity Dock is the only persistent status surface; the legacy above-editor async widget and the old Fleet roster were removed, while completion notifications remain enabled. Parallel runs show every active child independently in the Agents perspective, and the Tasks perspective keeps them grouped under their tasks. When a child is explicitly allowed to fan out with `tools: subagent`, its nested runs remain inspectable through `/subagents-fleet`.
+
+You can also ask naturally:
+
+```text
+Show me the current async runs.
+```
+
+Lifecycle artifact v3 adds `process-terminal-candidate.json` (private runner evidence) and `process-terminal.json` (the public proof projection). A proof is `observed` only after the live parent observes the exact detached runner's `close` event, every recorded child writer has a close record, and any tracked canonical-session lease is free. If the observer is unavailable, the proof is `unknown`; do not infer process exit from `endedAt`, result-file existence, PID disappearance, or lease-directory absence. The `subagent:process-terminal` event and RPC `ping.capabilities.processTerminalProof` expose this status. Process proof is point-in-time evidence and remains separate from execution success or stopped/non-resumable state.
+
+Async runs also write machine-readable lifecycle artifacts for observability and workflow gates. For a top-level async run, `details.asyncDir` points at a directory containing `status.json`, `events.jsonl`, `output-<index>.log`, and `subagent-log-<runId>.md`; the final summary is written to Pi's subagent results directory as `<runId>.json`. Nested async runs use the same shape under the nested async root and are discoverable through status projections that read the nested-run registry. These files are append/update artifacts only; interactive foreground behavior is unchanged.
+
+Foreground and async runners share bounded child-protocol handling. A child JSONL line above 4 MiB fails with structured `protocolError` code `protocol_output_limit`, stderr retains only its latest 128 KiB, split UTF-8 and final unterminated JSON events remain valid, and `agent_end.willRetry` defers completion until the child settles. Current Pi builds use `agent_settled` as the terminal watermark; older builds retain the bounded terminal-message fallback.
+
+The stable v1 status/result fields are `lifecycleArtifactVersion`, `runId`/`id`, `sessionId`, `mode`, `state`, `startedAt`, `lastUpdate`, `endedAt`, `durationMs`, `cwd`, `asyncDir`, `sessionFile`, `outputFile`, `workflowGraph`, `steps`, `results`, `totalTokens`, `totalCost`, `model`/`attemptedModels`/`modelAttempts`, `toolCount`, `turnCount`, optional `launchResolvedExtensions`, optional `runtimeAcknowledgedExtensions`, and nested `children` when a child is allowed to launch subagents. `launchResolvedExtensions` is parent-resolved launch intent only: it reports opaque extension identifiers and whether ambient extensions were disabled, without exposing raw extension paths or claiming the child runtime acknowledged that those extensions loaded. Cooperating child extensions can acknowledge child-runtime registration by emitting `subagent:acknowledge-extension` on the child process `pi.events` bus with payload `{ id: string }`. Acknowledgement ids are self-declared opaque strings, must be non-empty, at most 128 characters, contain only `A-Z`, `a-z`, `0-9`, `.`, `_`, `:`, `@`, `+`, or `-`, and must not contain `/`, `\\`, or `..`. The reported `runtimeAcknowledgedExtensions` projection is `{ version: 1, source: "child-runtime", ids, omitted }`, deduplicates ids, keeps at most 32 ids, and counts additional valid unique ids in `omitted`. It is best-effort observability only: absence means no cooperating extension acknowledged, and presence means only that the extension registered in the child runtime, not that its tools, health checks, or features succeeded. Late acknowledgements after terminal serialization are ignored. `events.jsonl` records lifecycle transitions such as `subagent.run.started`, `subagent.step.started`, `subagent.step.completed`/`failed`/`paused`/`stopped`, control attention events, nested interrupt failures, and `subagent.run.completed`/`stopped`; run boundary events include the lifecycle artifact version. Consumers should read these JSON files instead of scraping terminal output; unknown fields and event types should be ignored for forward compatibility.
+
+Other Pi extensions can use the versioned in-process event-bus RPC instead of scraping slash output or calling internal modules. Listen for `subagents:rpc:v1:ready`, send requests on `subagents:rpc:v1:request`, and read replies from `subagents:rpc:v1:reply:<requestId>`. The `ping` capability metadata also advertises `events.asyncComplete` for exact process-local completion correlation after RPC `spawn`. Delegation v1/v2 progress updates carry `runId` as soon as foreground execution allocates it, so a caller can retain the package-owned revival target even if its own tool turn is interrupted before the terminal response. Foreground `details.results[]` rows also include a numeric `index` that is unique within the run and stable across partial progress snapshots and the final result; use `(runId, index)` instead of row position to correlate single, counted parallel, and chain children.
+
+```typescript
+const requestId = crypto.randomUUID();
+pi.events.on(`subagents:rpc:v1:reply:${requestId}`, (reply) => {
+  // { version: 1, requestId, success: true, data } or
+  // { version: 1, requestId, success: false, error: { code, message } }
+});
+pi.events.emit("subagents:rpc:v1:request", {
+  version: 1,
+  requestId,
+  method: "spawn",
+  params: { agent: "reviewer", task: "Review the current diff", context: "fresh" }
+});
+```
+
+The v1 methods are `ping`, `status`, `spawn`, `steer`, `interrupt`, `stop`, and `resume`. `status`, `steer`, `interrupt`, and `resume` reuse the normal package-owned actions. `ping.capabilities.launchResolvedExtensions` advertises the optional launch-resolved extension projection in status details. `ping.capabilities.runtimeAcknowledgedExtensions` advertises the optional child-runtime acknowledgement projection and event name. When `ping.capabilities.fleetStatus` is `{ version: 1 }`, successful `status` replies additionally include `data.fleet`: `{ version: 1, entries, totalActive, omitted }`. Entries are bounded, current-session public display records with an opaque reconciliation `key`, resolved `agent`, optional `role`, `model`, `effort`, caller-facing `goal`, safe `startedAt`, and `{ input, output, total }` tokens. `totalActive` and `omitted` preserve overflow information beyond the bounded entry window. The DTO intentionally never exposes run, async, or tool IDs; clients must ignore unknown fields and fall back to status text when the capability is absent. `steer` requires an async run `id` (plus optional child `index`) and a non-empty `message`; its reply preserves the normal acknowledged-delivery result. RPC steering disables the direct tool's pause-and-revive recovery so an extension keeps authority over the exact child it spawned; `ping.capabilities.nonRecoveringSteer` advertises this guarantee. `resume` requires a run target and non-empty `message`; it delegates to the existing revival path, which validates current-session ownership, persisted session/recovery metadata, stopped/live state, capability ceilings, and the exclusive session lease before returning the new async run details. Callers may request a `file-only` output path for the revived result without overriding its model, tools, or budgets. `ping.capabilities.resume` advertises this seam. `spawn` is async-only: omit `async` or set `async: true`, omit `clarify` or set `clarify: false`, and do not pass management `action` values. It goes through the same executor as the `subagent` tool, so agent discovery, validation, session attribution, configured spawn caps, child-safety depth, artifacts, and async status all behave the same. `stop` targets current-session top-level async runs through the stop control channel and records a `stopped` lifecycle instead of reporting a timeout.
+
+`pi.events` is in-process only. It does not reach separate Pi processes or child subagents; use the file lifecycle artifacts or `pi-intercom` for cross-process coordination.
+
+If something feels misconfigured, run:
+
+```text
+/subagents-doctor
+```
+
+or ask:
+
+```text
+Check whether subagents and intercom are set up correctly.
+```
+
+## Recommended orchestration pattern (scaffolding)
+
+Use orchestration as parent-agent guidance, not as a runtime workflow mode. For implementation work, the recommended loop is:
+
+```text
+clarify → planner → worker → fresh reviewers → worker
+```
+
+Use the optional prompt shortcuts below when you want the pattern to be repeatable.
+
+Packaged `planner`, `worker`, `oracle`, and `advisor` default to forked context when a launch omits `context`; pass `context: "fresh"` when you intentionally want a fresh child run.
+
+Child-safety boundaries are enforced at runtime. Spawned child sessions do not receive the bundled `pi-agents-flow` skill, and forked child context filtering removes parent-only subagent artifacts (including old hidden orchestration-instruction messages, slash/status/control messages, and prior parent `subagent` tool-call/tool-result history) while preserving ordinary prose and unrelated tool calls/results. By default, children do not register the `subagent` tool and receive boundary instructions that they are not the parent orchestrator and must not propose or run subagents. The explicit exception is an agent whose resolved builtin `tools` includes `subagent`; that child gets a child-safe `subagent` tool for the fanout work the parent assigned, still bounded by `maxSubagentDepth`.
+
+## Optional shortcuts
+
+The package includes reusable prompt templates for common workflows. You do not need them, but they are handy when you want the same shape every time:
+
+| Prompt | Use it for |
+|--------|------------|
+| `/parallel-review` | Launch fresh-context reviewers with distinct angles, then synthesize what to fix. |
+| `/review-loop` | Run parent-controlled worker, reviewer, and fix-worker cycles until clean or capped. |
+| `/parallel-research` | Combine `researcher` and `scout` for external evidence, local code context, and practical tradeoffs. |
+| `/parallel-context-build` | Run `context-builder` agents in parallel to produce planning handoff context and meta-prompts. |
+| `/parallel-handoff-plan` | Combine external research and `context-builder` passes into an implementation handoff plan and meta-prompt. |
+| `/gather-context-and-clarify` | Scout/research first, then ask the user the clarification questions that matter. |
+| `/parallel-cleanup` | Run review-only cleanup passes after implementation. |
+
+Add `autofix` to `/parallel-review` or `/parallel-cleanup` to apply only the synthesized fixes worth doing now after reviewers return.
+
+## Native supervisor coordination
+
+Child agents can talk back to the parent Pi session without installing `pi-intercom`. `pi-agents-flow` now provides the child-facing `contact_supervisor` tool and the parent-facing `subagent_supervisor({ action: "reply" })` path natively. If no external `pi-intercom` tool owns the `intercom` name, the native channel also exposes `intercom` as a compatibility fallback.
+
+Use it for work where the child might need a decision instead of guessing:
+
+```text
+Run this implementation in the background. If the worker gets blocked or needs a product decision, have it ask me through intercom.
+```
+
+```text
+Ask oracle to review this plan. If it sees a decision I need to make, have it ask me instead of assuming.
+```
+
+The child can use one dedicated coordination tool:
+
+- `contact_supervisor`: the child contacts the parent/supervisor session that delegated the task. Use `reason: "need_decision"` for blocking decisions or clarification, `reason: "interview_request"` for structured input, and `reason: "progress_update"` for short non-blocking updates when a discovery changes the plan. Do not ask for clarification when the only conflict is review-only/no-edit versus progress-writing or artifact-writing instructions; no-edit wins.
+
+The parent replies with `subagent_supervisor({ action: "reply", replyTo, message })` or checks pending requests with `subagent_supervisor({ action: "pending" })`. Supervisor messages are scoped to the exact Pi session id that spawned the child. A second Pi session in the same repository does not receive those requests.
+
+Child-side routine completion handoffs are still not expected. If a child appears stalled, needs-attention notices can show up in the parent session with useful next actions, such as checking `subagent({ action: "status" })`, interrupting the run, or nudging the child.
+
+If messages do not show up, run:
+
+```text
+/subagents-doctor
+```
+
+For normal use, you do not need to configure anything. Advanced users can tune the bridge with `intercomBridge` in the configuration section below.
+
+At this point, you know enough to use the plugin. The rest of this README is reference material for exact command syntax, custom agents, saved chains, worktrees, and configuration.
+
+## Optional pi-permission-system integration
+
+[`@gotgenes/pi-permission-system`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-permission-system)
+adds a second policy layer — `allow` / `ask` / `deny` — on top of
+pi-agents-flow' visibility-based tool restrictions.
+
+The two compose independently:
+
+| Layer | What it controls | Who provides it |
+|-------|-----------------|-----------------|
+| Visibility | Which tools are registered before the session starts | pi-agents-flow (`tools:` frontmatter key) |
+| Policy  | Runtime allow/ask/deny decisions on every tool call, bash command, MCP operation | pi-permission-system (`permission:` frontmatter key) |
+
+### Installing
+
+```bash
+pi install npm:@gotgenes/pi-permission-system
+```
+
+No configuration is required for the integration — it is automatic when both
+extensions are installed. pi-agents-flow passes the parent session identity
+to child processes via the `PI_SUBAGENT_PARENT_SESSION` environment variable,
+which the permission system uses to forward `ask` prompts from headless
+subagent processes back to the parent session's UI.
+
+### Per-agent permission frontmatter
+
+Agent files can include a `permission:` block alongside the standard `tools:`
+key. The permission system reads it independently:
+
+```yaml
+---
+name: worker
+tools: bash,read,write,edit
+permission:
+  "*": ask
+  read: allow
+  bash:
+    "*": ask
+    "git *": allow
+    "npm test": allow
+---
+```
+
+In this example the subagent extension restricts visibility to four tools,
+and the permission system then applies `ask`/`allow` policy within that
+visible set. Both keys coexist without collision.
+
+### Checking the integration
+
+Run `/subagents-doctor` to check the permission system status.
+If `ask` prompts from children are not reaching the parent UI, verify both
+extensions are installed:
+
+```bash
+pi list
+```
+
+### How it works
+
+At session start, the interactive (root) session records its own identity in
+`PI_SUBAGENT_PARENT_SESSION`. When pi-agents-flow launches a child, it passes the
+launching session's identity to that child explicitly, falling back to the
+inherited environment variable. When the permission system inside a child
+encounters an `ask` permission, it reads this variable to locate the parent
+session and forwards the confirmation request there.
+
+This resolves an interactive prompt only when the parent it points at is the
+interactive session — i.e. for the direct children of the root session. A
+nested child's parent is itself a headless subagent process with no UI to
+surface the prompt, so `ask` policies are best placed on agents that run as
+direct children of the interactive session.
+
+## Direct commands
+
+Skip this section until you want exact syntax.
+
+| Command | Description |
+|---------|-------------|
+| `/run <agent> [task]` | Run one agent; omit the task for self-contained agents |
+| `/chain agent1 "task1" -> agent2 "task2"` | Run agents in sequence |
+| `/chain scout "scan" -> (reviewer "A" \| reviewer "B") -> writer "fix"` | Run a chain with a static parallel group inline |
+| `/parallel agent1 "task1" -> agent2 "task2"` | Run agents in parallel |
+| `/run-chain <chainName> -- <task>` | Launch a saved `.chain.md` or `.chain.json` workflow |
+| `/composition [list\|show\|save\|run] ...` | List, inspect, save, or replay a saved workflow node graph |
+| `/subagent-cost` | Show parent plus child subagent token usage and cost for this session |
+| `/subagents [agent] [model\|thinking\|prompt\|details]` | Interactively inspect or edit an agent's model, thinking level, or system prompt |
+| `/subagents-doctor` | Show read-only setup diagnostics |
+| `/subagents-detach [run-id]` | Detach an active foreground single-subagent run without terminating its child |
+| `/subagents-models [agent]` | Show the runtime-loaded builtin model mapping, optionally filtered to one builtin |
+| `/subagents-watchdog [status|on|off|recommend-model|model ...|session model ...|check]` | Show or configure the opt-in watchdog; use a strong complementary model such as Opus 4.8 high or GPT 5.5 high |
+| `/subagents-profiles` | List saved subagent profiles from `~/.pi/agent/profiles/pi-agents-flow/` |
+| `/subagents-load-profile <name>` | Replace only `settings.subagents` with a saved profile and optionally switch this session to the profile worker model |
+| `/subagents-refresh-provider-models <provider> [--force]` | Create or refresh the cached provider model catalog |
+| `/subagents-generate-profiles <provider>` | Generate `<provider>.quota.json` and `<provider>.quality.json` profiles |
+| `/subagents-check-profile <name>` | Check a saved profile against the current registry and live model probes |
+
+Commands validate agent names locally, support tab completion, and send results back into the conversation.
+
+`/subagents` opens a compact administration flow for builtin, package, user, and project agents. Model choices refresh Pi's model registry first, thinking choices are filtered to levels declared by the selected model, and prompt editing uses Pi's native multiline editor; press Ctrl+G to open the configured external editor. Full metadata is opt-in through `details`. Edits are persisted to the field-owning layer: explicit custom-agent frontmatter remains in the agent file, while settings/profile-managed fields remain in `settings.subagents.agentOverrides`. Package-owned fields and definitions loaded through `PI_SUBAGENT_EXTRA_AGENT_DIRS` stay read-only; settings can still supply model or thinking fields omitted by a package definition.
+
+### Profiles and provider model catalogs
+
+Profiles are stored under:
+
+```text
+~/.pi/agent/profiles/pi-agents-flow/
+```
+
+Provider model catalogs are cached under:
+
+```text
+~/.pi/agent/profiles/pi-agents-flow/providers/
+```
+
+Use the profile workflow like this:
+
+```text
+/subagents-refresh-provider-models openai-codex
+/subagents-generate-profiles openai-codex
+/subagents-load-profile openai-codex.quota
+```
+
+`/subagents-refresh-provider-models` writes a serialized provider model catalog with observed registry data, simple role-oriented classification, and live probe results from tiny one-shot `pi -p --model ... --no-tools` checks. The cache refreshes when missing or stale; use `--force` to ignore freshness and probe again immediately.
+
+`/subagents-generate-profiles` uses the provider catalog to produce quota and quality profiles. `/subagents-check-profile` re-checks each assigned model in a saved profile against the current registry and a live probe so you can detect model removals, auth problems, or stale assignments.
+
+### Per-step tasks
+
+Use `->` to separate steps and give each step its own task:
+
+```text
+/chain scout "scan the codebase" -> planner "create an implementation plan"
+/parallel scanner "find security issues" -> reviewer "check code style"
+```
+
+Both double and single quotes work. You can also use `--` as a delimiter:
+
+```text
+/chain scout -- scan code -> planner -- analyze auth
+```
+
+Steps without a task inherit behavior from the execution mode. Chain steps get `{previous}`, the prior step’s output. Parallel steps use the first available task as a fallback.
+
+### Inline parallel groups in `/chain`
+
+Wrap a group of agents in parentheses and separate them with `|` to fan them out within a single chain step. The group runs all of its tasks concurrently, then the next `->` step continues once they finish:
+
+```text
+/chain scout "scan" -> (reviewer "review A" | reviewer "review B") -> writer "fix"
+```
+
+Notes:
+
+- Groups must contain at least two tasks separated by ` | `, each with its own task.
+- Group syntax is only valid between ` -> ` separators, and the group must appear as a complete step.
+- Only a step that *opens* with `(` is a group. Parentheses inside a shared `--` task (e.g. `/chain scout -- inspect auth (backend)`) stay literal text and keep the legacy single-agent behavior.
+- A group is treated as the prior step’s output for the next sequential step.
+- Tab completion suggests agents inside groups — after `(`, after `|`, and on each new `->` step.
+
+Add a `[...]` suffix right after the closing `)` to set step-level options on the group:
+
+```text
+/chain scout "scan" -> (reviewer "A" | reviewer "B")[concurrency=2,failFast,worktree] -> writer "fix"
+```
+
+| Group option | Description |
+|--------------|-------------|
+| `concurrency=N` | Max tasks running at once within the group. |
+| `failFast` | Stop the group as soon as one task fails. |
+| `worktree` | Run each group task in its own git worktree. |
+
+Dynamic fanout (`expand` / `collect`) is intentionally not available inline — use the
+`subagent({ chain: [...] })` tool API or a saved `.chain.json` for data-driven fan-out.
+
+```text
+/chain scout "analyze auth" -> planner -> worker
+# scout gets "analyze auth"; planner gets scout output; worker gets planner output
+```
+
+For a shared task, list agents and place one `--` before the task:
+
+```text
+/chain scout planner -- analyze the auth system
+/parallel scout reviewer -- check for security issues
+```
+
+### Inline per-step config
+
+Append `[key=value,...]` to an agent name to override defaults. `/chain` applies every key below; `/run` and `/parallel` use the execution-behavior keys (`output`, `outputMode`, `reads`, `model`, `skills`, `progress`) and ignore chain-only metadata such as `as`, `label`, `phase`, `count`, `outputSchema`, and `acceptance`.
+
+```text
+/chain scout[output=context.md] "scan code" -> planner[reads=context.md] "analyze auth"
+/run scout[model=anthropic/claude-sonnet-4] summarize this codebase
+/parallel reviewer[skills=code-review+security] "review backend" -> reviewer[model=openai/gpt-5-mini] "review frontend"
+```
+
+| Key | Example | Description |
+|-----|---------|-------------|
+| `output` | `output=context.md` | Write results to a file. Absolute paths are used as-is. Relative paths in `/run` resolve under `singleRunOutputBaseDir` when configured, otherwise under the run's output artifact directory. Relative paths in `/chain` and `/parallel` live under the chain or parallel run directory. |
+| `outputMode` | `outputMode=file-only` | Return only a concise file reference for saved output instead of the full saved content. Requires `output`; default is `inline`. |
+| `reads` | `reads=a.md+b.md` | Read files before executing. `+` separates multiple paths. |
+| `model` | `model=anthropic/claude-sonnet-4` | Override model for this step. |
+| `skills` | `skills=planning+review` | Override available skills. `+` separates multiple skills. |
+| `progress` | `progress` | Enable progress tracking. |
+| `as` | `as=context` | Name this step’s output so later steps can reference it. |
+| `label` | `label=Recon` | Human-readable label for the step. |
+| `phase` | `phase=analysis` | Group steps into a named phase. |
+| `cwd` | `cwd=packages/api` | Run the step in a subdirectory. |
+| `count` | `count=3` | Fan a group task into N copies (only inside a `( ... )` group). |
+| `outputSchema` | `outputSchema=schema.json` | Validate structured output against a JSON Schema file (path resolved against the session cwd, not an inline step `cwd`). |
+| `acceptance` | `acceptance=checked` | Inline evidence level: `auto`, `attested`, or `checked`. Use the tool API or saved `.chain.json` for object contracts such as `none`, `verified`, or an orthogonal review requirement. `reviewed` is an achieved status, not an input level. |
+
+Set `output=false`, `reads=false`, or `skills=false` to disable that behavior explicitly. Do not use `output=false` for file-only returns; use `outputMode=file-only` with an `output` path.
+
+Inline `[...]` values must not contain spaces or commas — keep `label`/`phase` to single tokens.
+
+### Background and forked runs
+
+Add `--bg` to run in the background:
+
+```text
+/run scout "audit the codebase" --bg
+/chain scout "analyze auth" -> planner "design refactor" -> worker --bg
+/parallel scout "scan frontend" -> scout "scan backend" --bg
+```
+
+Add `--fork` to start each child from a real branched session created from the parent’s current leaf:
+
+```text
+/run reviewer "review this diff" --fork
+/chain scout "analyze this branch" -> planner "plan next steps" --fork
+/parallel scout "audit frontend" -> reviewer "audit backend" --fork
+```
+
+You can combine them in either order:
+
+```text
+/run reviewer "review this diff" --fork --bg
+/run reviewer "review this diff" --bg --fork
+```
+
+Background runs are detached. If the parent agent has other independent work, it should keep working. In an interactive chat, it should normally return control when ready to yield and let Pi deliver the completion notification instead of blocking merely to wait. Override that default and use `subagent_wait` when the current request is run-to-completion — for example, the user asked you to report results back before continuing or a skill cannot return before its work finishes. In a non-interactive run, Pi auto-drains current-session work at `agent_end`; use `subagent_wait` when this turn must receive results before it ends. It returns when the next initially active run or registered provider item finishes or a subagent needs attention; use `subagent_wait({ all: true })` for all work active at call time, `subagent_wait({ id })` for one async or remembered detached foreground run, and `subagent_wait({ timeoutMs })` to cap the block.
+
+A foreground child can detach while it waits for a supervisor reply. Reply first, then call `subagent_wait({ id: runId })`. While that wait blocks, it streams the detached child's current tool and recent transcript activity into the pending tool row when transcript artifacts are available. The remembered run stays pending until the child exits, then emits a session-scoped completion notification with recovered output and remains inspectable through `subagent({ action: "status", id: runId })`. Do not call `resume` or launch a replacement while the child remains detached.
+
+Headless sessions also auto-drain current-session subagent and registered provider work at `agent_end`, using one absolute timeout and continuing through attention states. This is a final lifecycle safeguard rather than a replacement for explicit orchestration: `subagent_wait` still lets a model react to each result during the turn. Provider, reconciliation, timeout, and malformed-state failures remain visible errors instead of being treated as successful drains.
+
+The `oracle`/`advisor` and `worker` builtins are designed for an explicit decision loop. A typical pattern is to ask `oracle` or its `advisor` alias for diagnosis and a recommended execution prompt, then only run `worker` after the main agent approves that direction.
+
+## Clarify and launch UI
+
+Tool calls launch directly by default. Set `clarify: true` on single, parallel, or chain runs when you want to preview and edit the workflow before it runs; slash commands launch directly.
+
+Common clarify keys:
+
+- `Enter` runs in the foreground, or in the background if background is toggled on
+- `Esc` cancels or backs out
+- `↑↓` or `j`/`k` moves between steps or tasks
+- `e` edits the task/template
+- `m` selects a model
+- `t` selects thinking level
+- `s` selects skills
+- `b` toggles background execution
+- `w` edits output/write behavior where supported
+- `r` edits reads where supported
+- `p` toggles progress tracking where supported
+Picker screens use `↑↓`, `Enter`, `Esc`, and type-to-filter. The full-screen editor supports word wrapping, paste, `Esc` to save, and `Ctrl+C` to discard.
+
+## Agents and chains
+
+Agents are markdown files with YAML frontmatter and a system prompt body. They define the specialist that will run in the child Pi process.
+
+Agent locations, lowest to highest priority:
+
+| Scope | Path |
+|-------|------|
+| Builtin | `~/.pi/agent/extensions/subagent/agents/` |
+| Installed package | `package.json` `pi-agents-flow.agents` or `pi.subagents.agents` |
+| User | `~/.pi/agent/agents/**/*.md` |
+| Project | Project config `agents/**/*.md` (`.pi/agents/**/*.md` in standard Pi) |
+
+Project discovery also reads legacy `.agents/**/*.md` files. Nested subdirectories are discovered recursively. `.chain.md` files do not define agents. Installed Pi packages can expose agent directories from either `{"pi-agents-flow":{"agents":["./agents"]}}` or `{"pi":{"subagents":{"agents":["./agents"]}}}` in their package manifest. Package agents load above builtins and below user/project agents. If both `.agents/` and the project config agents directory define the same parsed runtime agent name, the project config directory wins. Use `agentScope: "user" | "project" | "both"` to control discovery; `both` is the default and project definitions win runtime-name collisions.
+
+Builtin agents load at the lowest priority, so a user or project agent with the same name overrides them. They do not pin a provider model; they inherit your current Pi default model unless you set `subagents.defaultModel` or `subagents.agentOverrides.<name>.model`. `oracle` is an advisory reviewer that critiques direction and proposes an execution prompt without editing files; `advisor` is the same bundled role under the Claude Code-compatible name. `worker` is the implementation agent for normal tasks and approved oracle handoffs.
+
+The `researcher` builtin uses `web_search`, `fetch_content`, and `get_search_content`; those require [pi-web-access](https://github.com/nicobailon/pi-web-access):
+
+```bash
+pi install npm:pi-web-access
+```
+
+### Builtin overrides
+
+You can override selected builtin fields without copying the whole agent. Overrides live in settings:
+
+- User: `~/.pi/agent/settings.json`
+- Project: project config settings file (`.pi/settings.json` in standard Pi)
+
+Example:
+
+```json
+{
+  "subagents": {
+    "agentOverrides": {
+      "reviewer": {
+        "description": "Independent review tier",
+        "inheritProjectContext": false
+      }
+    }
+  }
+}
+```
+
+Supported override fields are `description`, `model`, `fallbackModels`, `thinking`, `systemPromptMode`, `inheritProjectContext`, `inheritSkills`, `defaultContext`, `acceptanceRole`, `visibility`, `invocation`, `disabled`, `skills`, `tools`, and `systemPrompt`. `description` replaces the discovered description for builtin and custom agents in list output. `visibility` accepts `default` or `hidden`; `invocation` accepts `both`, `model`, `user`, or `disabled`. Use `false` to clear an inherited optional override. Project overrides beat user overrides.
+
+Set `subagents.defaultModel` to give all subagents without an explicit model their own default model, separate from the parent session model. Per-agent model overrides and agent frontmatter still win.
+
+Set `disabled: true` to hide a builtin from runtime discovery and agent-facing `subagent({ action: "list" })` output. For bulk control, set `subagents.disableBuiltins: true` in settings. You can also toggle a single agent without editing settings by hand: `subagent({ action: "disable", agent: "reviewer" })` writes that override, and `subagent({ action: "enable", agent: "reviewer" })` removes it.
+
+Set `subagents.disableThinking: true` to clear bundled builtin thinking defaults globally for providers that do not support `:low`, `:medium`, `:high`, or similar model suffixes. A higher-precedence per-agent `thinking` override can opt one builtin back in.
+
+### Prompt assembly
+
+Subagents are designed to be narrow by default. Custom agents start with a clean system prompt and only the context you intentionally give them. They do not automatically inherit Pi’s whole base prompt, project instruction files, or discovered skills catalog.
+
+Use these fields when an agent should see more:
+
+| Field | Effect |
+|-------|--------|
+| `systemPromptMode: append` | Append the agent prompt to Pi’s normal base prompt. |
+| `inheritProjectContext: true` | Keep inherited project instructions from files like `AGENTS.md` and `CLAUDE.md`. |
+| `inheritSkills: true` | Let the child see Pi’s discovered skills catalog. |
+| `defaultContext: fork` | Use forked session context when a launch omits `context`; explicit `context: "fresh"` still wins. |
+
+Builtin agents opt into project instruction inheritance by default so they follow repo-specific rules out of the box. `delegate` also uses append mode because its job is orchestration inside the parent workflow.
+
+### Agent frontmatter
+
+A typical agent looks like this:
+
+```yaml
+---
+name: scout
+# Optional: registers this as code-analysis.scout while preserving name: scout
+package: code-analysis
+description: Fast codebase recon
+aliases: explorer, code-scout
+tools: read, grep, find, ls, bash, mcp:chrome-devtools
+extensions:
+subagentOnlyExtensions: ./tools/child-only-search.ts
+model: claude-haiku-4-5
+fallbackModels: openai/gpt-5-mini, anthropic/claude-sonnet-4
+thinking: high
+systemPromptMode: replace
+inheritProjectContext: false
+inheritSkills: false
+skills: safe-bash, review-checklist
+skillPath: ./skills, ../shared-skills
+output: context.md
+defaultReads: context.md
+defaultProgress: true
+async: true
+timeoutMs: 900000
+turnBudget: {"maxTurns":20,"graceTurns":2}
+acceptance: {"level":"none","reason":"lightweight lookup"}
+acceptanceRole: read-only
+visibility: default
+invocation: both
+completionGuard: false
+interactive: true
+maxSubagentDepth: 1
+---
+
+Your system prompt goes here.
+```
+
+Simple-scalar list fields accept either the existing comma-separated form or a newline block list with one `- item` per line. This applies to `tools`, `defaultReads`, `skill`/`skills`, `skillPath`, `fallbackModels`, `extensions`, and `subagentOnlyExtensions`; for example:
+
+```yaml
+tools:
+  - read
+  - mcp:github/search_repositories
+fallbackModels:
+  - openai/gpt-5-mini
+  - anthropic/claude-sonnet-4
+```
+
+Important fields:
+
+| Field | Notes |
+|-------|-------|
+| `package` | Optional package identifier. A file with `name: scout` and `package: code-analysis` registers as `code-analysis.scout`; serialization keeps `name` and `package` separate. |
+| `aliases` | Optional comma-separated or block-list names that resolve to this agent for selection and explicit `agent`/chain/task inputs. Runtime status, persistence, and config still use the canonical `name`; exact canonical names take precedence over aliases, and alias collisions between distinct canonical agents fail as ambiguous. |
+| `tools` | Strict child tool allowlist. Named extension tools must also have their provider loaded. `mcp:` entries select direct MCP tools when `pi-mcp-adapter` is installed. |
+| `extensions` | Omitted means normal extensions; empty means no extensions; list values allowlist specific extensions. |
+| `subagentOnlyExtensions` | Extension paths loaded only in spawned child sessions for this agent. Tools registered there are unavailable to the main agent unless also installed through normal Pi extension configuration. |
+| `model` | Default model. Bare ids prefer the current provider when possible, then unique registry matches. |
+| `fallbackModels` | Ordered backup models for provider/model failures such as quota, auth, timeout, or unavailable model. Ordinary task failures do not trigger fallback. |
+| `thinking` | Appended as a `:level` suffix at runtime unless a suffix is already present. |
+| `systemPromptMode` | `replace` by default; `append` keeps Pi’s base prompt. |
+| `inheritProjectContext` | Keeps or strips inherited project instruction blocks. |
+| `inheritSkills` | Keeps or strips Pi’s discovered skills catalog. |
+| `defaultContext` | Optional `fresh` or `fork` launch context default for this agent. |
+| `skills` | Selects specific skills for the child, regardless of `inheritSkills`. |
+| `skillPath` | Invocation-private skill files or discovery directories. Relative paths resolve from the agent definition file. Local matches take precedence, while unresolved or unreadable matches fall back to normal skill discovery. This field discovers candidates only; `skills` still selects what the child receives. |
+| `output` | Default single-agent output file. |
+| `defaultReads` | Files to read before running in chain/parallel behavior. |
+| `defaultProgress` | Maintain `progress.md`. |
+| `async` | Default a single-agent launch to background (`true`) or foreground (`false`) when the call omits `async`. Explicit call values and `forceTopLevelAsync` win. |
+| `timeoutMs` | Positive integer default runtime deadline in milliseconds for single-agent launches. Foreground launches use 30 minutes when neither the call nor agent provides a timeout; explicit `timeoutMs`/`maxRuntimeMs` and agent defaults win. |
+| `turnBudget` | JSON object default such as `{"maxTurns":20,"graceTurns":2}` for single-agent launches. An explicit call value wins, followed by this agent default, then global `turnBudget` config. |
+| `acceptance` | Acceptance default for single-agent launches. Use a scalar level such as `checked` or an inline/block YAML map such as `{ level: "none", reason: "lightweight lookup" }`. Explicit call values win; chain and parallel acceptance remains task/step configuration. |
+| `acceptanceRole` | Optional `read-only` or `writer` role for automatic acceptance inference. Explicit task mutation or no-edit intent wins; otherwise the declared role replaces agent-name guessing. This does not grant or revoke tools. |
+| `visibility` | `default` (the default) advertises the Agent in model-facing `list` and workflow asset catalogs. `hidden` removes it from those default catalogs while preserving explicit management and trusted user invocation. |
+| `invocation` | `both` (the default), `model`, `user`, or `disabled`. The runtime checks the trusted invocation origin after alias resolution and before launch side effects. User invocation means slash commands and user prompt-template entry points; model tools, RPC/workflow delegation, nested fanout, and scheduled execution are model-originated. Model-requested persistent management changes require native user confirmation and are rejected when no UI is available. |
+| `completionGuard` | Set `false` only for non-implementation agents that may mention implementation words while using mutation-capable tools such as `bash`. |
+| `interactive` | Parsed for compatibility but not enforced in v1. |
+| `maxSubagentDepth` | Tightens nested delegation for this agent's children. |
+| `memory` | Opt-in role-specific persistent memory. `memory: { scope: "project" \| "user", path: "<name>" }` injects the first lines of a `MEMORY.md` from a dedicated `agent-memory/` directory into the child system prompt. Agents with write tools (`edit`/`write`/`bash`) get a read-write block; read-only agents get a read-only fallback. Project scope resolves under `<project>/.pi/agent-memory/`, user scope under `~/.pi/agent/agent-memory/`. Paths are validated against traversal and symlink escape. |
+
+Agent-local `skillPath` candidates never enter Pi's parent/global skills catalog. Pair `inheritSkills: false` with explicit `skills` and `skillPath` when a child should receive only its selected private skills.
+
+For a low-frequency Agent that should remain manually available without entering the model's default routing catalog, use `visibility: hidden` with `invocation: user`. This Agent remains available to `/run`, `/chain`, `/parallel`, saved user-run chains, `/subagents`, and explicit management `get`, but model-originated execution is rejected. A saved chain may intentionally provide progressive disclosure for `visibility: hidden` Agents whose invocation policy still allows `model`; the chain remains listed while its implementation Agents stay out of the Agent catalog. `invocation: disabled` is a reversible execution policy that can remain visible for diagnostics; legacy `disabled: true` remains the hard switch that removes the Agent from runtime discovery and list output.
+
+### Per-agent persistent memory
+
+A recurring custom agent can opt into a durable, role-specific memory scope with the `memory` frontmatter field. This is independent of Pi's own parent/session/project memory system and writes nothing to it; memory lives under a dedicated `agent-memory/` namespace so the two never collide.
+
+```yaml
+memory:
+  scope: project
+  path: security-reviewer
+```
+
+On each run, the first 200 lines of `MEMORY.md` in the resolved memory directory are injected into the child system prompt so the agent can recall accumulated role notes such as threat-model entries, release gotchas, or verified commands. Agents that have write tools (`edit`, `write`, or `bash`, or no `tools` allowlist at all) are told they may append concise dated entries to the file. Agents without write tools receive a read-only memory block and are not instructed to edit it, so a read-only reviewer can still recall prior notes without being granted write capability. The memory directory is never created eagerly; the agent's own `write` tool creates it (and `MEMORY.md`) on the first persist. Memory paths are validated against `.`/`..` traversal and symlink escape, and an unsafe or unresolvable scope is silently skipped rather than breaking the run.
+
+Project-scoped memory resolves under `<project>/.pi/agent-memory/<path>` and travels with the repo. User-scoped memory resolves under `~/.pi/agent/agent-memory/<path>` and is shared across projects for that agent.
+
+### Tool and extension selection
+
+If `tools` is omitted, `pi-agents-flow` does not pass `--tools`, so the child gets Pi’s normal builtin tools. If `tools` is present, regular tool names become an explicit allowlist; an empty `tools:` field emits `--no-tools`. An allowlisted name does not load the extension that registers it: load that provider through normal Pi extension discovery, `extensions`, `subagentOnlyExtensions`, or a path-like `tools` entry. `mcp:` entries are split out and forwarded as direct MCP selections without granting normal builtins unless those builtins are also listed. Path-like `tools` entries, such as extension paths or `.ts`/`.js` files, are treated as tool-extension paths rather than tool names. Internal runtime tools such as `structured_output` are added to an explicit allowlist only when their contract is active. Agents that declare only known read-only builtin tools skip the implementation completion guard, but `bash`, unknown tools, and MCP tools stay mutation-capable. Use `completionGuard: false` for bash-enabled validators or advisors that should never be judged as implementation agents.
+
+Examples:
+
+- `tools` omitted and `extensions` omitted: normal builtins and normal extensions.
+- `tools: mcp:chrome-devtools`: only the resolved direct Chrome DevTools MCP tools.
+- `tools: read, bash, mcp:chrome-devtools`: only `read` and `bash` as builtins, plus direct Chrome DevTools MCP tools.
+- `tools: subagent, read`: a child-safe `subagent` tool is available inside that child so it can run explicitly assigned nested fanout.
+- `tools: read, fixture_search` plus `subagentOnlyExtensions: ./tools/fixture-search.ts`: the provider loads only in this agent's child process, and the registered `fixture_search` name survives the strict allowlist.
+
+Direct MCP tools require [pi-mcp-adapter](https://github.com/nicobailon/pi-mcp-adapter). Subagents only receive direct MCP tools when `mcp:` entries are listed in their frontmatter; global `directTools: true` in `mcp.json` is not enough by itself. The generic `mcp` proxy tool can still be used for discovery when available. The adapter caches tool metadata at startup, so after connecting a new MCP server for the first time, restart Pi before relying on direct tools. An `mcp:` entry named `subagent` does not authorize nested fanout; only the builtin `subagent` tool name does. If a resolved direct MCP name is missing from the child registry, pi-agents-flow keeps the launch failed under the strict allowlist and identifies the condition as a host/pi-mcp-adapter registration problem; verify that the adapter registers the selected tools before child startup.
+
+`extensions` controls child extension loading:
+
+```yaml
+# Omitted: all normal extensions load
+
+# Empty: no extensions
+extensions:
+
+# Allowlist
+extensions: /abs/path/to/ext-a.ts, /abs/path/to/ext-b.ts
+```
+
+When `extensions` is present, normal discovered extensions are disabled; the listed extensions, path-like `tools` entries, required pi-agents-flow runtime extensions, and `subagentOnlyExtensions` still load.
+
+Use `subagentOnlyExtensions` when a custom extension tool should exist only inside child sessions. It is scoped by agent config: every run of that agent receives those extension paths, while other agents do not unless they declare the same field. The current model does not have a separate named-subagent audience inside one agent definition.
+
+To apply the same `extensions` allowlist to every agent that does not declare its own, set `subagents.defaultExtensions` in user or project settings. Omit it to preserve ambient extension discovery or set it to `[]` to disable ambient extensions by default; project settings win over user settings. Agents that explicitly define `extensions` keep their own value, including an empty `extensions:` field.
+
+Before the first model turn, the child runtime compares every explicit tool name with Pi's final filtered registry. A missing provider now fails the run with the unavailable names and concrete `subagentOnlyExtensions`/`extensions` guidance instead of letting a direct or chained child silently continue without its requested tools.
+
+## Chain files
+
+Chains are reusable workflows stored separately from agent files. Use `.chain.md` for simple sequential saved chains. Use `.chain.json` when a chain needs dynamic fanout.
+
+| Scope | Path |
+|-------|------|
+| Installed package | `package.json` `pi-agents-flow.chains` or `pi.subagents.chains` |
+| User | `~/.pi/agent/chains/**/*.chain.md`, `~/.pi/agent/chains/**/*.chain.json` |
+| Project | Project config `chains/**/*.chain.md`, `chains/**/*.chain.json` (`.pi/chains/...` in standard Pi) |
+
+Nested subdirectories are discovered recursively. Installed Pi packages can expose chain directories from either `{"pi-agents-flow":{"chains":["./chains"]}}` or `{"pi":{"subagents":{"chains":["./chains"]}}}` in their package manifest. Package chains load below user/project chains. If both `.chain.md` and `.chain.json` define the same parsed runtime chain name in the same scope, `.chain.json` wins. If user and project scopes define the same parsed runtime chain name, the project chain wins. Chains support the same optional `package` frontmatter as agents; `name: review-flow` plus `package: code-analysis` runs as `code-analysis.review-flow`.
+
+Example:
+
+```md
+---
+name: scout-planner
+description: Gather context then plan implementation
+---
+
+## scout
+phase: Context
+label: Map auth flow
+as: context
+output: context.md
+
+Analyze the codebase for {task}
+
+## planner
+phase: Planning
+label: Implementation plan
+reads: context.md
+model: anthropic/claude-sonnet-4-5:high
+progress: true
+
+Create an implementation plan based on {outputs.context}
+```
+
+Each `.chain.md` `## agent-name` section is a step. Config lines such as `phase`, `label`, `as`, `outputSchema`, `output`, `outputMode`, `reads`, `model`, `skills`, and `progress` go immediately after the header. A blank line separates config from task text. In saved `.chain.md` files, `outputSchema` is a path to a JSON Schema file; direct tool calls and `.chain.json` files can pass the schema object inline.
+
+For `output`, `reads`, `skills`, and `progress`, chain behavior is three-state: omitted inherits from the agent, a value overrides, and `false` disables.
+
+Use `phase` to group related work in status output, `label` for a readable step name, and `as` to store a successful step or parallel task result for later `{outputs.name}` references. Duplicate `as` names, invalid identifiers, and unknown output references fail before child execution.
+
+Dynamic fanout is available only through direct `subagent({ chain: [...] })` JSON or saved `.chain.json` files. It expands an array from a prior structured named output, runs one child template per item, and stores the ordered collection under `collect.as`. The source must be structured output; prose is never parsed. `expand.maxItems` is required, over-limit arrays fail, nested fanout and arbitrary expressions are not supported, and `.chain.md` has no dynamic syntax in this release.
+
+```json
+{
+  "name": "dynamic-review",
+  "description": "Find review targets, fan out reviewers, then synthesize.",
+  "chain": [
+    {
+      "agent": "scout",
+      "task": "Return {\"items\":[{\"path\":\"...\",\"reason\":\"...\"}]} via structured_output.",
+      "as": "targets",
+      "outputSchema": { "type": "object" }
+    },
+    {
+      "expand": {
+        "from": { "output": "targets", "path": "/items" },
+        "item": "target",
+        "key": "/path",
+        "maxItems": 12
+      },
+      "parallel": {
+        "agent": "reviewer",
+        "label": "Review {target.path}",
+        "task": "Review {target.path}. Reason: {target.reason}",
+        "outputSchema": { "type": "object" }
+      },
+      "collect": { "as": "reviews" },
+      "concurrency": 4
+    },
+    {
+      "agent": "worker",
+      "task": "Synthesize fixes from {outputs.reviews}"
+    }
+  ]
+}
+```
+
+Create simple `.chain.md` chains by writing files directly or with the `subagent({ action: "create", config: ... })` management action. Create dynamic `.chain.json` chains by writing the JSON file directly. Run saved chains with natural language or:
+
+```text
+/run-chain scout-planner -- refactor authentication
+```
+
+## Chain variables
+
+Task templates support:
+
+| Variable | Description |
+|----------|-------------|
+| `{task}` | Original task from the first step. |
+| `{previous}` | Output from the prior step, or aggregated output from a parallel step. |
+| `{chain_dir}` | Path to the chain artifact directory. |
+| `{outputs.name}` | Text value from a prior step or completed parallel task with `as: "name"`. |
+
+Parallel outputs are aggregated with clear separators before being passed to the next step:
+
+```text
+=== Parallel Task 1 (worker) ===
+...
+
+=== Parallel Task 2 (worker) ===
+...
+```
+
+## Skills
+
+Skills are `SKILL.md` files made available to an agent. The prompt includes skill metadata and the file location; the agent reads the full skill file only when the task matches.
+
+Discovery uses project-first precedence:
+
+1. Project config `skills/{name}/SKILL.md` (`.pi/skills/{name}/SKILL.md` in standard Pi)
+2. Project packages and project settings packages via `package.json -> pi.skills`
+3. Current task cwd package via `package.json -> pi.skills`
+4. Project config `settings.json -> skills`
+5. `~/.pi/agent/skills/{name}/SKILL.md`
+6. User packages and user settings packages via `package.json -> pi.skills`
+7. `~/.pi/agent/settings.json -> skills`
+
+Use agent defaults, override them at runtime, or disable them:
+
+```ts
+{ agent: "scout", task: "..." }
+{ agent: "scout", task: "...", skill: "tmux, safe-bash" }
+{ agent: "scout", task: "...", skill: false }
+```
+
+For chains, `skill` at the top level is additive. A step-level `skill` overrides that step; `false` disables skills for that step.
+
+Available skills use this shape:
+
+```xml
+The following configured skills are available to this subagent.
+Use the read tool to load a skill's file when the task matches its description.
+When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.
+
+<available_skills>
+  <skill>
+    <name>safe-bash</name>
+    <description>Run shell commands safely.</description>
+    <location>/absolute/path/to/safe-bash/SKILL.md</location>
+  </skill>
+</available_skills>
+```
+
+If an agent has an explicit `tools` allowlist and resolved skills, `read` is added for that child run so the listed skill files can be loaded on demand.
+
+Missing skills do not fail execution. The result summary shows a warning.
+
+### Bundled skill
+
+The package bundles a `pi-agents-flow` skill that is automatically available to the parent agent when the extension is installed. It is for the orchestrating parent only: child subagents never receive it, and their context is explicitly filtered to strip parent-only orchestration instructions.
+
+What the bundled skill covers:
+
+- **Delegation patterns**: when to launch which agent, whether to use single, parallel, chain, or async mode, and whether to use fresh or forked context
+- **Prompt workflow recipes**: how to apply the packaged techniques directly with `subagent(...)` when the user describes the workflow in natural language instead of invoking a slash command. This includes parallel review, review-loop, parallel research, parallel context-build, parallel handoff-plan, gather-context-and-clarify, and parallel cleanup
+- **Role-agent prompting guidance**: compact contract prompts instead of long scripts, what to include in role-specific meta prompts, and retrieval budgets for researchers
+- **Safety boundaries**: child agents must not run subagents unless their resolved builtin tools explicitly include `subagent`, must not invent intercom targets, and must escalate unapproved decisions
+- **Intercom conventions**: when to ask vs send, and how parent-side supervisor/result delivery works through the native channel
+- **Control and diagnostics**: attention signals, soft interrupts, status, and the `doctor` action
+
+If you are writing an agent that orchestrates subagents, the bundled skill helps it behave correctly without guessing the patterns. If you are a human user, you do not need to read it directly; the README and prompt shortcuts encode the same workflows in user-facing form.
+
+## Extension delegation API
+
+Pi extensions can request configured foreground agents through the public event
+contract exported by `pi-agents-flow/delegation`.
+
+### Launch contract preflight
+
+Use `pi-agents-flow/preflight` when an extension needs to inspect the resolved child launch contract before deciding whether to run anything:
+
+```ts
+import { resolveSubagentLaunchContract } from "pi-agents-flow/preflight";
+
+const result = await resolveSubagentLaunchContract({
+  agent: "reviewer",
+  task: "Review the current diff.",
+  context: "fresh",
+  cwd: ctx.cwd,
+  sessionRoot: "/tmp/my-extension-preflight-session-root",
+  availableModels: ctx.modelRegistry.getAvailable(),
+});
+
+if (!result.ok) {
+  // missing_agent, ambiguous_agent, missing_skill, denied_required_tool,
+  // invalid_artifact_dir, invalid_cwd, or unsupported_mode
+  throw new Error(result.message);
+}
+
+console.log(result.contract.digest, result.contract.tools.effectiveAllowlist);
+```
+
+Preflight covers ordinary single-agent launch resolution under public contract version 2: selected agent identity and shadowed candidates, a versioned parsed-definition digest (including system prompt and launch-affecting model, tool, skill, extension, output, and memory fields), fresh/fork context, effective model and thinking, skill and tool resolution, direct MCP selections, runtime/configured extensions, artifact/session paths, async lifecycle/status/result/event/process-terminal paths, package/lifecycle versions, capability-ceiling audit data, and stable digests. `launchContractDigest` is the canonical digest of the caller task, effective system prompt (including the resolved `turnBudget` prompt augmentation when supplied), model candidates, effective tools/extensions/MCP (including inherited capability ceilings), output binding, and structured-output schema that ordinary foreground and async execution report in results/status/events and metadata. Runtime acceptance prose and output-task annotations are intentionally excluded because side-effect-free preflight does not resolve those host/runtime augmentations; the contract version and task digest make that boundary explicit. Raw prompts are not exposed in public contract output. It is side-effect-free for launch state: it does not create child sessions, temp prompt files, structured-output runtimes, tool-diagnostic files, or run artifacts. Some host-owned facts, such as exact fork snapshots, nested async roots, and live model registries, can only be proven by the Pi host; those appear as `host_required` diagnostics instead of silently pretending to be exact.
+
+### Delegation v1
+
+The compatibility v1 contract runs one configured foreground agent per request:
+
+```ts
+import {
+  SUBAGENT_DELEGATION_REQUEST_EVENT,
+  SUBAGENT_DELEGATION_RESPONSE_EVENT,
+  type SubagentDelegationRequest,
+  type SubagentDelegationResponse,
+} from "pi-agents-flow/delegation";
+
+const request: SubagentDelegationRequest = {
+  version: 1,
+  requestId: crypto.randomUUID(),
+  agent: "reviewer",
+  task: "Review the supplied evidence.",
+  context: "fresh",
+  cwd: ctx.cwd,
+  timeoutMs: 120_000,
+  toolBudget: { soft: 10, hard: 16, block: "*" },
+};
+
+const unsubscribe = pi.events.on(SUBAGENT_DELEGATION_RESPONSE_EVENT, (payload) => {
+  const response = payload as SubagentDelegationResponse;
+  if (response.requestId !== request.requestId) return;
+  unsubscribe();
+  // Inspect response.status and the metadata present for this run.
+});
+pi.events.emit(SUBAGENT_DELEGATION_REQUEST_EVENT, request);
+```
+
+The contract uses the established `prompt-template:subagent:*` event transport and the same executor as the `subagent` tool; it does not add another launcher. New integrations must send `version: 1`. Requests are strict and single-agent only. They can set fresh or fork context, model, cwd, timeout, turn and tool-call budgets, skills, output behavior, acceptance, and artifact capture. Unknown or malformed fields return `invalid_request` before execution.
+
+Responses distinguish completion, failure, timeout, cancellation, interruption,
+turn or tool-budget exhaustion, explicit acceptance failure, invalid requests,
+and unavailable active context. Optional metadata is omitted when unavailable.
+Request IDs must be unique while active; duplicate active IDs are ignored so the
+original request keeps ownership of its terminal response. Emit
+`SUBAGENT_DELEGATION_CANCEL_EVENT` with the same version and request ID to cancel
+queued or active work.
+
+### Delegation v2
+
+V2 is the owned-leaf contract for workflow supervisors. Independent requests
+can overlap through the delegated executor without weakening the ordinary
+model-facing tool's one-foreground-call-per-turn guard.
+
+```ts
+import {
+  SUBAGENT_DELEGATION_REQUEST_EVENT,
+  SUBAGENT_DELEGATION_RESPONSE_EVENT,
+  type SubagentDelegationRequest,
+  type SubagentDelegationResponse,
+} from "pi-agents-flow/delegation";
+
+const request: SubagentDelegationRequest = {
+  version: 2,
+  requestId: crypto.randomUUID(),
+  ownerRunId: workflowRunId,
+  nodeId: "review-accuracy",
+  agent: "reviewer",
+  task: "Review the supplied evidence.",
+  context: "fresh",
+  cwd: ctx.cwd,
+  thinking: "high",
+  result: {
+    kind: "structured",
+    schema: {
+      type: "object",
+      properties: { verdict: { type: "string" } },
+      required: ["verdict"],
+      additionalProperties: false,
+    },
+  },
+};
+
+const unsubscribe = pi.events.on(SUBAGENT_DELEGATION_RESPONSE_EVENT, (payload) => {
+  const response = payload as SubagentDelegationResponse;
+  if (response.version !== 2 || response.requestId !== request.requestId) return;
+  if (response.ownerRunId !== request.ownerRunId || response.nodeId !== request.nodeId) return;
+  unsubscribe();
+  // Inspect response.status, response.result, response.usage, model, and thinking.
+});
+pi.events.emit(SUBAGENT_DELEGATION_REQUEST_EVENT, request);
+```
+
+`ownerRunId` plus `nodeId` is the active logical identity; `requestId` identifies
+one attempt. A second active attempt for the same logical node receives
+`duplicate_node` without disturbing the original. Started, update, response,
+and cancellation payloads carry the full tuple. Cancellation affects only an
+exact tuple, including cancel-before-start races. Each attempt emits at most one
+terminal response.
+
+Result mode is explicit. Text remains literal even when it looks like JSON.
+Structured mode returns the separately captured, schema-validated JSON value.
+Terminal usage reports input, output, cache-read, cache-write, cost, turns, tool
+calls, and duration alongside the effective model and thinking level when
+known. Schemas are capped at 64 KiB; tasks and returned text/structured values
+are capped at 1 MiB, with smaller bounds on identity/configuration strings and
+a maximum v2 `timeoutMs` of 2,147,483,647. V2 alone accepts
+`toolBudget: { hard: 0, block: "*" }` to block the first tool call and run a
+zero-tool leaf; delegation v1 and ordinary model-facing/configured budgets keep
+their existing minimum of one. The foreground bridge retains up to 8,192 exact
+pending-cancellation and settled-attempt identities per extension
+context. If either history fills, it fails closed with `unavailable_context`
+for later v2 starts rather than evicting identity facts; lifecycle reset clears
+the bounded history.
+
+Delegation requires an active extension context. Emit requests from a supported event callback or queued application step, not by recursively invoking the `subagent` tool inside another tool's `tool_call` hook. The caller selects a configured agent, but agent discovery and effective tools remain package-owned. A request cannot grant tools beyond the active capability ceiling, and tool restrictions are not an operating-system sandbox. The detached RPC remains async-only; this API is foreground-only.
+
+V2 accepts optional `extraTools` and `denyTools` arrays that adjust the selected agent's tool set for one launch. Entries containing `/` are MCP direct-tool selectors; the rest are builtin tool names. Extension paths are rejected. Both are capped at 64 entries, 1 KiB per entry, and 16 KiB in aggregate. The receiver clamps grants to the capability ceiling and applies revocations afterwards, so a request can open a tool the agent does not enable by default but cannot widen the ceiling. Both fields require an agent with an explicit tools allowlist.
+
+Existing prompt-template payloads and delegation v1 continue over the same event
+family. V2 remains foreground-only and inherits the configured agent's current
+skills, context, model policy, and workspace authority, plus its tools except for
+the bounded per-launch adjustments above; it is not a sandbox or a durable task
+broker. `pi-agents-flow/delegation` is the canonical contract for extension
+integrations.
+
+## Capability ceilings
+
+Parent extensions can enforce an out-of-band, session-scoped capability ceiling without adding a model-visible field to `subagent`:
+
+```ts
+import { registerSubagentCapabilityCeiling } from "pi-agents-flow/capability-ceiling";
+
+const restriction = registerSubagentCapabilityCeiling({
+  sessionId: ctx.sessionManager.getSessionId(),
+  source: "plan-mode",
+  ceiling: {
+    allowedAgents: ["plan-scout", "plan-researcher", "plan-reviewer"],
+    allowedTools: ["read", "grep", "find", "ls"],
+    denyExtensions: true,
+  },
+});
+// restriction.update(...) replaces this provider's policy atomically.
+// restriction.dispose() removes only this provider's registration.
+```
+
+Active registrations intersect their `allowedTools` and `allowedAgents` sets and OR `denyExtensions`; an explicit empty list means no caller-facing tools or launchable agents for that field, while an omitted list does not restrict names. `allowedAgents` entries are canonical agent names and are case-sensitive. Launching a non-allowlisted agent fails before spawn, and `{ action: "list" }` keeps restricted agents visible in a separate non-executable section instead of silently hiding them. The resolved snapshot is propagated monotonically to nested and async children and is retained for recovery. `structured_output` may remain as a package-owned internal protocol tool when an output schema requires it; it is not a caller capability. A denied lazy-skill `read` requirement fails before spawn rather than widening the ceiling.
+
+`denyExtensions` suppresses ambient, configured, and MCP provider extensions while retaining the package runtime needed for child protocol enforcement. This is a same-process policy boundary, not a sandbox against malicious code already running in the parent process. Schedules created while a ceiling is active are rejected until durable schedule persistence is available; unrestricted schedules remain subject to any policy active when they fire. Public status exposes bounded audit counts and sources, never full extension paths.
+
+Per-launch tool grants (`extraTools` on a workflow AgentSpec or a delegation v2 request) do not interact with this monotonicity. Grants are merged into the requested set before ceiling filtering, so the ceiling still removes anything it does not allow; the audit records those as `removedTools`. A ceiling is only ever narrowed by intersection and is never widened by a launch.
+
+## Background-work provider API
+
+Other Pi extensions can make their current-session jobs visible to `subagent_wait` through the versioned process-local provider contract:
+
+```ts
+import { registerBackgroundWorkProvider } from "pi-agents-flow/background-work";
+
+const dispose = registerBackgroundWorkProvider({
+  name: "my-background-extension",
+  wakeChannels: ["my-extension:job-finished"],
+  listActiveWork: () => jobs
+    .filter((job) => job.status === "running")
+    .map((job) => ({ id: job.id, sessionId: job.ownerSessionId })),
+  reconcile: ({ sessionId, nowMs }) => reconcileJobs(sessionId, nowMs),
+});
+```
+
+Each item needs a stable provider-local ID and the exact Pi session ID that owns it. `subagent_wait` captures those identities rather than a count, so one job finishing while another starts still satisfies first-completion waits without losing the replacement. It filters snapshots to the active session, fails closed if a provider disappears while its work is tracked, and surfaces malformed snapshots or provider errors with provider context. Wake channels only shorten polling; validated snapshots remain authoritative.
+
+Providers share a registry through `Symbol.for("pi-agents-flow.background-work.v1")`, allowing independently loaded extension modules to meet in one Pi process. Registration is reload-safe: a new provider with the same name replaces the old callback, and the old disposer cannot remove the replacement. Call the disposer during extension shutdown when possible.
+
+Child processes do not gain provider tools or extensions automatically. Add `subagent_wait` to the child agent's `tools` allowlist and load each provider through `extensions` or `subagentOnlyExtensions`. The parent's effective `waitTool` setting is serialized through foreground, async, resume, chain, parallel, and fanout launch paths; `PI_SUBAGENT_WAIT_TOOL_ENABLED` keeps precedence.
+
+## Programmatic tool usage
+
+These are the parameters the LLM passes when it calls the `subagent` tool. Most users ask naturally or use slash commands instead.
+
+### Execution examples
+
+```ts
+// Single agent
+{ agent: "worker", task: "refactor auth" }
+{ agent: "scout", task: "find todos", maxOutput: { lines: 1000 } }
+{ agent: "scout", task: "investigate", output: false }
+{ agent: "scout", task: "write a large report", output: "reports/scout.md", outputMode: "file-only" }
+
+// Forked context
+{ agent: "worker", task: "continue this thread", context: "fork" }
+
+// Parallel
+{ tasks: [{ agent: "scout", task: "a" }, { agent: "reviewer", task: "b" }] }
+{ tasks: [{ agent: "scout", task: "audit auth", count: 3 }] }
+{ tasks: [{ agent: "scout", task: "audit frontend" }, { agent: "reviewer", task: "audit backend" }], context: "fork" }
+
+// Chain
+{ chain: [
+  { agent: "scout", task: "Gather context for auth refactor" },
+  { agent: "planner" },
+  { checkpoint: "implementation", message: "Approve implementation before review?" },
+  { agent: "worker" },
+  { agent: "reviewer" }
+]}
+
+// Chain in the background, suitable for unblocking the main chat
+{ chain: [...], async: true }
+
+// Chain with fan-out/fan-in
+{ chain: [
+  { agent: "scout", task: "Gather context", phase: "Context", label: "Map code", as: "context" },
+  { parallel: [
+    { agent: "worker", task: "Implement feature A from {outputs.context}", label: "Feature A", as: "featureA" },
+    { agent: "worker", task: "Implement feature B from {outputs.context}", label: "Feature B", as: "featureB" }
+  ], concurrency: 2, failFast: true },
+  { agent: "reviewer", task: "Review {outputs.featureA} and {outputs.featureB}" }
+]}
+
+// Dynamic fanout from structured output
+{ chain: [
+  {
+    agent: "scout",
+    task: "Return review targets as structured_output: { items: [{ path, reason }] }",
+    as: "targets",
+    outputSchema: { type: "object" }
+  },
+  {
+    expand: { from: { output: "targets", path: "/items" }, item: "target", key: "/path", maxItems: 12 },
+    parallel: { agent: "reviewer", task: "Review {target.path}. Reason: {target.reason}", outputSchema: { type: "object" } },
+    collect: { as: "reviews" },
+    concurrency: 4
+  },
+  { agent: "worker", task: "Synthesize fixes from {outputs.reviews}" }
+] }
+
+// Strict structured output for reliable handoff data
+{ chain: [
+  {
+    agent: "scout",
+    task: "Return the key files and risks for {task}",
+    as: "scan",
+    outputSchema: {
+      type: "object",
+      required: ["files", "risks"],
+      properties: {
+        files: { type: "array", items: { type: "string" } },
+        risks: { type: "array", items: { type: "string" } }
+      }
+    }
+  },
+  { agent: "planner", task: "Plan from this scan: {outputs.scan}" }
+] }
+
+// Worktree isolation
+{ tasks: [
+  { agent: "worker", task: "Implement auth" },
+  { agent: "worker", task: "Implement API" }
+], worktree: true }
+```
+
+### Management actions
+
+Agent definitions are not loaded into context by default. Management actions let the LLM discover, inspect, create, update, and delete agents and chains at runtime.
+
+```ts
+{ action: "list" }
+{ action: "list", agentScope: "project" }
+{ action: "get", agent: "scout" }
+{ action: "models" }
+{ action: "models", agent: "reviewer" }
+{ action: "get", agent: "code-analysis.scout" }
+{ action: "get", chainName: "review-pipeline" }
+
+{ action: "create", config: {
+  name: "Code Scout",
+  package: "code-analysis",
+  description: "Scans codebases for patterns and issues",
+  scope: "user",
+  systemPrompt: "You are a code scout...",
+  systemPromptMode: "replace",
+  inheritProjectContext: false,
+  inheritSkills: false,
+  model: "anthropic/claude-sonnet-4",
+  fallbackModels: ["openai/gpt-5-mini", "anthropic/claude-haiku-4-5"],
+  tools: "read, bash, mcp:github/search_repositories",
+  extensions: "",
+  skills: "parallel-scout",
+  thinking: "high",
+  acceptance: { level: "none", reason: "lightweight lookup" },
+  acceptanceRole: "read-only",
+  output: "context.md",
+  reads: "shared-context.md",
+  progress: true
+}}
+
+{ action: "create", config: {
+  name: "review-pipeline",
+  description: "Scout then review",
+  scope: "project",
+  steps: [
+    { agent: "scout", task: "Scan {task}", output: "context.md" },
+    { agent: "reviewer", task: "Review {previous}", reads: ["context.md"] }
+  ]
+}}
+
+{ action: "update", agent: "code-analysis.scout", config: { model: "openai/gpt-4o" } }
+{ action: "update", agent: "code-analysis.scout", config: { acceptance: "" } } // clear the frontmatter default
+{ action: "update", agent: "code-analysis.scout", config: { acceptanceRole: false } } // restore inferred name fallback
+{ action: "update", chainName: "review-pipeline", config: { steps: [...] } }
+{ action: "delete", agent: "scout" }
+{ action: "delete", chainName: "review-pipeline" }
+
+{ action: "eject", agent: "reviewer" }
+{ action: "eject", agent: "reviewer", agentScope: "project" }
+{ action: "disable", agent: "reviewer" }
+{ action: "enable", agent: "reviewer", agentScope: "project" }
+{ action: "reset", agent: "reviewer" }
+```
+
+`create` uses `config.scope`, not `agentScope`. `config.name` is the local frontmatter name; optional `config.package` registers the runtime name as `{package}.{name}` and is saved as separate `name` and `package` frontmatter. `config.aliases` accepts a comma-separated string, string array, or `false` to clear aliases; aliases resolve to the canonical agent name for execution and are shown by `list`/`get`. `update` and `delete` use the runtime name and `agentScope` only when the same runtime name exists in multiple scopes. To clear optional string fields, including `package`, set them to `false` or `""`.
+
+`eject` copies a bundled builtin or package agent verbatim into the user or project agent dir (default `user`) as an editable custom file that shadows the original, so you can customize a builtin without hunting package files. `disable` writes a reversible `agentOverrides.<name>.disabled: true` entry to the user or project settings file (default `user`); the agent stays on disk but is hidden from runtime discovery and `list`. `enable` removes that `disabled` field while preserving any other override fields on the same entry. `reset` deletes the scope's custom agent file and/or settings override entry, restoring the bundled default; it refuses if no bundled default exists (use `delete` for purely custom agents). All four accept `agentScope: "user" | "project"` and operate in one scope at a time; project overrides still win over user ones, so a project-scope disable survives a user-scope `enable` until you target the project scope.
+
+### Parameter reference
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `agent` | string | - | Agent name or alias for single mode, or target for management actions. Execution records use the canonical agent name. |
+| `task` | string | - | Task string for single mode. |
+| `action` | string | - | `list`, `get`, `create`, `update`, `delete`, `status`, `interrupt`, `stop`, `resume`, `steer`, `append-step`, `approve-checkpoint`, `reject-checkpoint`, or `doctor`. |
+| `chainName` | string | - | Chain name for management actions. |
+| `config` | object/string | - | Agent or chain config for create/update. |
+| `output` | `string \| false` | agent default | Override single-agent output file. |
+| `outputMode` | `"inline" \| "file-only"` | `inline` | Return saved output inline or as a concise saved-file reference. `file-only` requires an `output` path. |
+| `skill` | `string \| string[] \| false` | agent default | Override skills or disable all. |
+| `model` | string | agent default | Override model. |
+| `outputSchema` | object | - | Require schema-valid structured output for a direct single-agent run. Use inline `value` for small results or a bounded JSON-file `path` plus optional `sha256` for large results. |
+| `agentContract` | `{ version: 1 }` | - | Opt into generic agent contract v1. Omit to keep the current/default contract. |
+| `tasks` | array | - | Top-level parallel tasks. Supports `agent`, `task`, `cwd`, `count`, `output`, `outputMode`, `outputSchema`, `reads`, `progress`, `skill`, `model`, `toolBudget`, `acceptance`, and `agentContract`. |
+| `concurrency` | number | config or `4` | Top-level parallel concurrency. |
+| `worktree` | boolean | false | Create isolated git worktrees for parallel tasks. |
+| `chain` | array | - | Sequential, checkpoint, static parallel, and dynamic fanout chain steps. Steps and chain parallel tasks support `phase`, `label`, `as`, `outputSchema`, `acceptance`, `agentContract`, and v1-only `gateOn` in addition to the usual execution fields. Dynamic fanout uses `expand`, one child `parallel` template, and `collect`. With `action: "append-step"`, pass exactly one step to append to a running async chain. |
+| `context` | `fresh \| fork` | per-agent default or `fresh` | Explicit `fresh` or `fork` overrides every child. When omitted, each agent uses its own `defaultContext`; `fork` creates real branched sessions from the parent leaf. Packaged `planner`, `worker`, `oracle`, and `advisor` default to `fork`. |
+| `chainDir` | string | temp chain dir | Persistent directory for chain artifacts. Relative chain `output`, `reads`, and `progress` paths live under this directory. |
+| `view` | `fleet \| transcript` | - | Optional `status` view for the active fleet surface or transcript tail inspection. |
+| `lines` | number | `80` | Maximum transcript lines for `action: "status", view: "transcript"`; capped at 500. |
+| `clarify` | boolean | false | Show TUI preview/edit flow. Explicit `clarify: true` keeps the run foreground for the clarify UI. |
+| `agentScope` | `user \| project \| both` | `both` | Agent discovery scope. Project wins on collisions. |
+| `async` | boolean | false | Background execution. For chains, `clarify: true` explicitly keeps the run foreground for the clarify UI. |
+| `timeoutMs` / `maxRuntimeMs` | number | 30 min foreground; none async | Optional run-level max runtime in milliseconds. Foreground uses 30 minutes only when neither the call nor selected agent provides a timeout. |
+| `turnBudget` | object | none | Optional assistant-turn budget `{ maxTurns, graceTurns }`. At `maxTurns` the child is warned to wrap up. After the grace window (default 1), termination occurs at the next assistant boundary; a response that starts tool work records `termination-deferred` until a later boundary. Partial output is returned on abort. |
+| `toolBudget` | object | none | Optional child tool-call budget `{ soft?, hard, block? }`. At `soft` the child is nudged to finalize. After `hard`, configured tools are blocked; `block` defaults to `read`, `grep`, `find`, and `ls`, while `"*"` blocks every tool call. Final assistant text is never blocked. |
+| `usageBudget` | object | none | Optional root-only reported-usage budget `{ tokens?: { soft?, hard }, costUsd?: { soft?, hard } }`. Soft limits are status-only. Hard limits prevent later child launches after reported usage is reconciled; already-running children are not stopped and no reservations are made. |
+| `cwd` | string | runtime cwd | Override working directory. |
+| `maxOutput` | object | 200KB, 5000 lines | Final output truncation limits. |
+| `artifacts` | boolean | true | Write debug artifacts. |
+| `includeProgress` | boolean | false | Include full progress in result. |
+| `share` | boolean | false | Upload session export to GitHub Gist. |
+| `sessionDir` | string | derived | Override session log directory. |
+| `acceptance` | string/object/false | inferred | Configure evidence gates with `"auto"`, `"attested"`, `"checked"`, `"verified"`, or `{ level: "none", reason: "..." }`. Independent review is orthogonal: use `review: { required: true, agent?: "reviewer", focus?: "..." }`. `review-required` means evidence passed but review is pending; `reviewed` is achieved only after a real independent result. Explicit `"reviewed"` remains schema-recognized solely for actionable preflight recovery. For reviewer/read-only calls, omit acceptance. `false` disables gates. With `agentContract: { version: 1 }`, omitted, `"auto"`, and `false` mean no acceptance request for that run; explicit acceptance is reported separately from execution. |
+
+`agentContract: { version: 1 }` keeps existing fields and artifacts but adds derived `execution`, `acceptance`, `review`, and `effects` projections. In v1, acceptance failures do not rewrite execution success, and an explicit completion guard reports `effects.fileMutation` instead of failing the run by itself. Chain steps default to advancing on execution under v1; set `gateOn: "acceptance"` on a v1 step or parallel task when rejected acceptance should stop the chain.
+
+Checkpoint steps use `{ checkpoint: "stable-name", message?: "..." }`. A checkpoint does not launch a child, consume spawn budget, or produce an output reference. Foreground chains return a paused result at the checkpoint so the current parent can explicitly choose the next action. Async chains persist `checkpoint` in status/details and pause before the next step; approve with `subagent({ action: "approve-checkpoint", id: "<run-id>" })` or reject with `subagent({ action: "reject-checkpoint", id: "<run-id>" })`. Approval resumes from that boundary without rerunning completed steps. Rejection is terminal with `state: "rejected"`.
+
+As a conservative orchestration policy, do not set `turnBudget`, a hard `toolBudget`, or a tight `usageBudget` on implementation workers, fix workers, reviewers with edit authority, or other mutation-capable children. A default tool budget blocks read/search tools rather than mutation tools, and reported usage has no reservation model, so neither assistant turns, tool-call counts, nor token/cost totals measure whether a delivery slice is buildable or safe to hand off. Hard caps remain appropriate for explicitly read-only scouts, reviewers, and validators.
+
+Bound writer work with a narrow task and an outer `timeoutMs` or `maxRuntimeMs` that leaves enough margin for the slice. An elapsed timeout is not a mutation-safe boundary and may still signal a child during tool work. Before the deadline, use `steer` or an attention notice to request a checkpoint after the current tool returns, including changed files, build/test state, remaining work, and commit or PR state.
+
+`context: "fork"` fails fast when the parent session is not persisted, the current leaf is missing, or the branched child session cannot be created. When the inherited transcript contains signed Anthropic `thinking` / `redacted_thinking` blocks, `pi-agents-flow` strips those provider-private blocks from the forked child session. It forces thinking `off` only when the child’s effective primary or fallback model resolves through the model registry to the Anthropic provider or `anthropic-messages` API; unresolved models are treated conservatively. The result reports every affected child, including on failed runs. Use `context: "fresh"` when an Anthropic child needs thinking. Forking never silently downgrades to `fresh`. In multi-agent runs that omit `context`, each agent/task/step follows its own `defaultContext`, so a fresh-default scout can run fresh beside a fork-default worker. Pass explicit `context: "fork"` or `context: "fresh"` when you intentionally want one context for every child.
+
+Use `outputMode: "file-only"` when a saved output may be large and the parent only needs a pointer. The returned text is a compact reference like `Output saved to: /abs/report.md (48.2 KB, 2847 lines). Read this file if needed.` Failed runs and save errors still return normal inline output for debugging. In chains, relative `output` paths are resolved inside the chain artifact directory, not the caller's CWD; later `{previous}` steps receive the same compact reference when the prior step used file-only mode. To persist chain outputs outside the temp artifact area, pass a persistent `chainDir` or use an absolute `output` path. A child with only read-only tools does not need direct filesystem access for `output`: it returns the complete artifact in its final response and the runtime persists it. Children with mutation-capable tools retain the direct-write instruction.
+
+Sequential and parallel chain tasks accept `agent`, `task`, `phase`, `label`, `as`, `outputSchema`, `cwd`, `output`, `outputMode`, `reads`, `progress`, `skill`, `model`, `toolBudget`, `acceptance`, `agentContract`, and v1-only `gateOn`. Parallel tasks also accept `count`. Parallel step groups accept `parallel`, `concurrency`, `failFast`, and `worktree`. If `outputSchema` is present, the child must call `structured_output` with schema-valid JSON; prose-only completion or invalid JSON fails the step. Small values can be submitted inline with `value`; large values can be written as one JSON artifact and submitted with `path` plus an optional SHA-256 `sha256`, keeping the provider tool-call payload small. The runtime reads and validates the referenced file before atomically capturing the canonical result. Validated structured values are preserved on the step result, and `as` also exposes a compact text representation through `{outputs.name}`.
+
+Status and control actions:
+
+```ts
+subagent({ action: "status" })
+subagent({ action: "status", view: "fleet" })
+subagent({ action: "status", id: "<run-id>" })
+subagent({ action: "status", id: "<run-id>", view: "transcript", index: 0, lines: 80 })
+subagent({ action: "status", id: "<nested-run-id>" })
+subagent({ action: "interrupt", id: "<run-id>" })
+subagent({ action: "interrupt", id: "<nested-run-id>" })
+subagent({ action: "stop", id: "<run-id>" })
+subagent({ action: "resume", id: "<run-id>", message: "follow-up question after it pauses or finishes" })
+subagent({ action: "resume", id: "<run-id>", index: 1, message: "follow-up for child 2" })
+subagent({ action: "resume", id: "<nested-run-id>", message: "follow-up for a nested child" })
+subagent({ action: "steer", id: "<run-id>", message: "guidance for the running child" })
+subagent({ action: "steer", id: "<run-id>", index: 1, message: "guidance for child 2" })
+subagent({ action: "append-step", id: "<run-id>", chain: [{ agent: "worker", task: "Continue from {previous}" }] })
+subagent({ action: "approve-checkpoint", id: "<run-id>" })
+subagent({ action: "reject-checkpoint", id: "<run-id>" })
+subagent({ action: "doctor" })
+```
+
+`status` resolves exact foreground ids, top-level async ids, and nested run ids before falling back to prefix matching. `view: "fleet"` is an optional read-only active-run surface with transcript commands; it does not add steering or stop controls. `view: "transcript"` tails the selected run's live `output-<index>.log` or persisted session transcript, with `lines` capped at 500. Nested status shows the root/parent path, nested children, session/artifact paths when known, and nested control commands. Inside child-safe fanout mode, bare `status` requires an id when no local foreground run is active, so children cannot enumerate unrelated top-level async runs. Bare `interrupt` still targets only the visible top-level run; interrupting a nested run requires its explicit nested id.
+
+`resume` revives a paused, completed, or failed async/foreground child by starting a new child from its stored session file; stopped runs remain non-resumable, and it does not interrupt a live top-level async child. Use `steer` for acknowledged live async guidance. Multi-child async runs and remembered foreground single, parallel, or chain runs can be revived by passing `index` to choose the child. Nested runs can be resumed by nested id when their live route or persisted nested session metadata is available. Revive starts a new child process from the old session context; it does not restart the same OS process, and it requires the chosen child to have a persisted `.jsonl` session file. Direct revival takes an exclusive cross-process lease on the canonical session file until the new child finishes. A concurrent attempt fails before Pi is spawned and identifies the owning revived run; dead-owner leases are reclaimed only when staleness can be proved.
+
+`stop` ends a current-session top-level async run. It is deliberately stronger than `interrupt`: it is not a resumable pause, stopped runs should be restarted as new runs, foreground and nested targets are rejected, direct id calls execute immediately, and `/subagents-stop` without an id opens a selector with confirmation when a TUI is available. Use `↑`/`↓` or `j`/`k` to move through that selector. In non-TUI contexts the slash command prints exact `subagent({ action: "stop", id })` and `/subagents-stop <id>` commands. Scheduled jobs can appear in the selector, but they are labeled as scheduled cancellations and route through `schedule-cancel`, not `stop`.
+
+`steer` waits up to three seconds for a correlated child-Pi input acceptance and returns a request id with `delivered`, `scheduled`, `pending`, `partial`, `recovered`, or `failed` plus per-child states. Delivery means Pi accepted the user message, not model compliance. A pending indexed child returns `scheduled`. Only a top-level single run may interrupt after the acknowledgment deadline and recover after a further 15-second pause/revival bound; chain, parallel, and nested runs never auto-interrupt. Recovery launches a replacement only after the source is confirmed paused, a valid persisted session exists, and deadline, turn, and tool budgets remain. It preserves the original child contract and remaining limits; otherwise the source stays paused with an explicit failure. Late acceptance is recorded but cannot cancel committed recovery. The persisted `steering` ledger retains 20 requests and replaces the old `steerCount`/`lastSteerAt` fields.
+
+`append-step` accepts exactly one sequential, checkpoint, static parallel, or dynamic fanout chain step for a top-level async chain whose status is still `running`. The step is persisted in the run directory and becomes eligible only after the chain's already-queued steps finish; completed, failed, rejected, paused, foreground, single, and top-level parallel runs reject appends.
+
+## Worktree isolation
+
+Parallel agents can clobber each other if they edit the same checkout. `worktree: true` gives each parallel child its own git worktree branched from `HEAD`.
+
+```ts
+{ tasks: [
+  { agent: "worker", task: "Implement auth", count: 2 },
+  { agent: "worker", task: "Implement API" }
+], worktree: true }
+
+{ chain: [
+  { agent: "scout", task: "Gather context" },
+  { parallel: [
+    { agent: "worker", task: "Implement feature A from {previous}" },
+    { agent: "worker", task: "Implement feature B from {previous}" }
+  ], worktree: true },
+  { agent: "reviewer", task: "Review all changes from {previous}" }
+]}
+```
+
+Requirements:
+
+- run inside a git repo
+- working tree must be clean
+- `node_modules/` is symlinked into each worktree when present
+- task-level `cwd` overrides must be omitted or match the shared cwd
+- configured `worktreeSetupHook` must return valid JSON before timeout
+
+Git worktrees start from tracked files, so ignored dependency state may be absent. `pi-agents-flow` attempts the `node_modules` symlink above, but if module resolution fails in a fresh worktree, first confirm dependencies were linked, installed, or provisioned by `worktreeSetupHook` before treating it as a code failure.
+
+By default, worktrees are created under the system temp directory. Set `worktreeBaseDir` in config, or `PI_SUBAGENTS_WORKTREE_DIR` when config is unset, to put them under a stable trusted directory. Missing base directories are created automatically.
+
+After a worktree parallel step completes, per-agent diff stats are appended to the output and full patch files are written to artifacts. The runtime also writes a versioned aggregate handoff manifest: foreground runs use the artifact directory's `handoffs/<run-id>.json`, while async runs use `<async-dir>/handoff.json`. The manifest records each child's terminal status, summary, output/session/structured-output references, patch stats and path, and whether its worktree and temporary branch were actually removed. Foreground `details`, async `status.json` and result files, status output, intercom delivery, and completion notifications expose the manifest path. Worktrees and temp branches still receive best-effort fallback cleanup if handoff finalization cannot run.
+
+## Configuration
+
+`pi-agents-flow` reads optional JSON config from `~/.pi/agent/extensions/subagent/config.json`.
+
+### `toolDescriptionMode`
+
+```json
+{ "toolDescriptionMode": "compact" }
+```
+
+Controls the parent-facing `subagent` tool description registered at startup. `full` is the default. `compact` keeps the execution modes, async/`subagent_wait` guidance, child-safety boundary, management/action split, one-writer review guidance, and artifact/status essentials with less prompt bloat.
+
+`custom` reads `subagent-tool-description.md` from the project config directory, then from `~/.pi/agent/subagent-tool-description.md`. Missing, empty, unreadable, or oversized custom files fall back to the full description. Custom templates may use `{{fullDescription}}`, `{{compactDescription}}`, `{{safetyGuidance}}`, `{{agentDir}}`, and `{{projectConfigDir}}`; the safety guidance is always present so custom prose cannot remove the runtime guardrails. Restart Pi after changing the mode or custom file.
+
+### `workflowMaxNodeAttempts`
+
+```json
+{ "workflowMaxNodeAttempts": 3 }
+```
+
+Caps total attempts for one durable Workflow node, including its first execution. The default is `3`; valid values are `1` through `20`. The resolved value is persisted in the workflow's `workflow.started` event, so reloads and later config changes cannot silently alter an active run's retry contract. Once a failed or cancelled node reaches the ceiling, `run_ready` will not schedule it again. The root Supervisor must inspect retained structured output and artifacts first, then accept salvaged work, reject or supersede with one bounded replacement, or stop the workflow.
+
+### `asyncByDefault`
+
+```json
+{ "asyncByDefault": true }
+```
+
+Makes top-level calls use background execution when the request does not explicitly set `async`. Callers can still force foreground with `async: false` unless `forceTopLevelAsync` is enabled.
+
+
+### `waitTool`
+
+```json
+{ "waitTool": { "enabled": false } }
+```
+
+Keeps the `subagent_wait` tool registered but makes direct calls return immediately instead of blocking on active subagent or provider work. The default is enabled. You can also set `"waitTool": false`; set `PI_SUBAGENT_WAIT_TOOL_ENABLED=false` (or `0`, `off`, `disabled`) to override config for one process. The effective value is passed explicitly to child runtimes. Headless `agent_end` auto-drain remains a lifecycle safeguard even when direct wait calls are disabled. Invalid config or environment values fail instead of being coerced.
+
+### `forceTopLevelAsync`
+
+```json
+{ "forceTopLevelAsync": true }
+```
+
+Forces depth-0 single, parallel, and chain runs into background mode and bypasses clarify UI by forcing `clarify: false`. Nested calls keep their own inherited settings.
+
+### `globalConcurrencyLimit`
+
+```json
+{ "globalConcurrencyLimit": 20 }
+```
+
+Caps simultaneously running subagent tasks within a single run across top-level parallel tasks, inline chain parallel groups, and dynamic fanout groups. The default is `20`; invalid values are clamped to `1`. Per-step `concurrency` and `parallel.concurrency` still apply, so effective concurrency is the lower of the local cap and the available global slots.
+
+### `maxSubagentSpawnsPerSession`
+
+```json
+{ "maxSubagentSpawnsPerSession": 100 }
+```
+
+Optionally caps the total number of child subagent launches during one parent session, including completed and failed children, parallel task counts, static chain steps, and bounded dynamic fanout children. Sessions are unlimited by default. Set this value to `0` to disable a configured cap. `PI_SUBAGENT_MAX_SPAWNS_PER_SESSION` overrides the config for a process and follows the same positive-cap/zero-unlimited semantics.
+
+`subagent({ action: "status" })`, fleet status, and `subagent({ action: "doctor" })` expose used, effective limit, remaining capacity, grants, and the remaining grant allowance. Static chains and parallel calls fail before creating run artifacts or starting partial work when their declared capacity cannot fit. Later retries or unbounded dynamic work are not guaranteed by that preflight.
+
+A user may explicitly call `subagent({ action: "grant-spawn-budget", additional: 10 })` from the root interactive parent after all children settle and confirm the native prompt. Grants are additive: they never erase cumulative usage, are rejected for unlimited sessions and child/headless callers, and total granted capacity cannot exceed the original configured cap. Compaction remains part of the same logical parent session and does not reset usage or grants; starting a new parent session does.
+
+### `scheduledRuns`
+
+```json
+{ "scheduledRuns": { "enabled": true, "maxPending": 20, "maxLatenessMs": 300000 } }
+```
+
+Enables optional one-shot scheduled subagent runs. When enabled, `subagent({ action: "schedule", agent, task?, schedule: "+10m" | "2030-01-01T09:00:00Z", scheduleName? })` defers a subagent launch until a future time. Absolute ISO timestamps must include a timezone (`Z` or an offset such as `+05:30`). The scheduled run launches as a normal tracked async run with fresh context once it fires, and joins the existing async widget, status, `subagent_wait`, and completion-notification paths. `schedule-list`, `schedule-status`, and `schedule-cancel` manage pending jobs. Schedules are persisted per session and restored after a Pi restart; a job missed by more than `maxLatenessMs` while Pi is unavailable is marked `missed` instead of firing late. `maxPending` caps the number of pending or running scheduled jobs per session (default `20`). The feature is opt-in: leave `enabled` unset to keep scheduling out of the tool surface and prompt. Only schedule explicit delayed runs the user asked for.
+
+### `parallel`
+
+```json
+{
+  "parallel": {
+    "maxTasks": 12,
+    "concurrency": 6
+  }
+}
+```
+
+`maxTasks` defaults to `8`; `concurrency` defaults to `4`. Per-call `concurrency` takes precedence.
+
+### `defaultSessionDir`
+
+```json
+{ "defaultSessionDir": "~/.pi/agent/sessions/subagent/" }
+```
+
+Session directory precedence is: `params.sessionDir`, then `config.defaultSessionDir`, then a directory derived from the parent session. Sessions are always enabled.
+
+### `singleRunOutputBaseDir`
+
+```json
+{ "singleRunOutputBaseDir": "~/.pi/subagent-outputs" }
+```
+
+Routes relative `output` paths for single-agent `/run` calls under this directory. Absolute per-call or agent output paths are still used as-is. When unset, relative single-run outputs go under the run's output artifact directory instead of the project root.
+
+### `maxSubagentDepth`
+
+```json
+{ "maxSubagentDepth": 1 }
+```
+
+Controls nested delegation when no inherited `PI_SUBAGENT_MAX_DEPTH` is already in effect. Per-agent `maxSubagentDepth` can tighten the limit for that agent’s child runs, but cannot relax an inherited stricter limit. This applies even to children that explicitly declare `tools: subagent`; at the cap, execution fanout is blocked instead of silently hiding nested work.
+
+### `PI_SUBAGENT_PI_BINARY`
+
+```bash
+export PI_SUBAGENT_PI_BINARY=/path/to/pi-or-wrapper
+```
+
+Overrides the command used to launch child Pi processes. Package wrappers can set this to their own `pi`/agent binary so subagents inherit wrapper flags, environment setup, and bundled resources without relying on `PATH` ordering. Empty or whitespace-only values are ignored.
+
+### `intercomBridge`
+
+```json
+{
+  "intercomBridge": {
+    "mode": "always",
+    "instructionFile": "./intercom-bridge.md",
+    "resultDelivery": true
+  }
+}
+```
+
+Controls whether subagents receive runtime intercom coordination instructions and whether `intercom` and `contact_supervisor` are auto-added to their tool allowlist when needed.
+
+Fields:
+
+- `mode`: default `always`; use `fork-only` to inject only for forked runs, or `off` to disable the bridge.
+- `instructionFile`: optional Markdown template replacing the default bridge instructions. `{orchestratorTarget}` is interpolated. Relative paths resolve from `~/.pi/agent/extensions/subagent/`.
+- `resultDelivery`: default `true`; attempts acknowledged grouped completion delivery through an external `subagent:result-intercom` listener. Set `false` when native parent notifications own completion delivery. Supervisor asks/progress remain active, and genuine enabled-transport acknowledgement failures remain visible.
+
+Bridge activation requires a targetable current parent session id, which `pi-agents-flow` passes to children automatically. It no longer depends on an external `pi-intercom` installation or per-agent extension allowlists.
+
+The default injected guidance tells children to use `contact_supervisor` with `reason: "need_decision"` when blocked or needing a decision, `reason: "progress_update"` only for meaningful blocked/progress updates, generic `intercom` as fallback plumbing, and avoid routine completion handoffs.
+
+### `worktreeBaseDir`
+
+```json
+{ "worktreeBaseDir": "/Users/matt/code/.worktrees/pi-agents-flow" }
+```
+
+Sets the base directory for `worktree: true` runs. Relative paths resolve from the repository root, `~/...` expands to your home directory, and `PI_SUBAGENTS_WORKTREE_DIR` is used when config is unset. The default remains the system temp directory.
+
+### `worktreeSetupHook`
+
+```json
+{
+  "worktreeSetupHook": "./scripts/setup-worktree.mjs",
+  "worktreeSetupHookTimeoutMs": 45000
+}
+```
+
+The hook runs once per created worktree. Paths must be absolute, `~/...`, or repo-relative; bare command names are rejected.
+
+stdin is a JSON object with `repoRoot`, `worktreePath`, `agentCwd`, `branch`, `index`, `runId`, and `baseCommit`. stdout must be one JSON object, for example:
+
+```json
+{ "syntheticPaths": [".venv", ".env.local"] }
+```
+
+`syntheticPaths` must be relative to the worktree root. They are removed before diff capture so helper files do not pollute patches. Tracked files are never excluded; marking a tracked path as synthetic fails setup. Default timeout is `30000` ms.
+
+### `artifactDir`
+
+```json
+{
+  "artifactDir": "session"
+}
+```
+
+Controls where subagent artifact files (inputs, outputs, transcripts, metadata) are stored. Defaults to `"project"`, which writes to `<cwd>/.pi-agents-flow/artifacts/`. Set to `"session"` to store artifacts under pi's session directory (`~/.pi/agent/sessions/<session>/subagent-artifacts/`), keeping the working directory clean. Set to `"temp"` to use the OS temp directory.
+
+The `"session"` option uses the same directory that `cleanupAllArtifactDirs` already scans for age-based cleanup, so artifacts are still cleaned up automatically.
+
+### `completionBatch`
+
+```json
+{
+  "completionBatch": {
+    "enabled": true,
+    "debounceMs": 150,
+    "maxWaitMs": 1000,
+    "stragglerDebounceMs": 75,
+    "stragglerMaxWaitMs": 400,
+    "stragglerWindowMs": 2000
+  }
+}
+```
+
+Controls smart batching of async-completion notifications. When several background subagents finish within a short window, their successful completions are held briefly and delivered as a single grouped message instead of separate notifications. A hard `maxWaitMs` cap (measured from the first completion in a group) guarantees nothing is held indefinitely, and late-finishing siblings that arrive within `stragglerWindowMs` of a group emit join a shorter straggler group governed by `stragglerDebounceMs` and `stragglerMaxWaitMs`.
+
+Failed and paused completions bypass batching and fire immediately, flushing any held successes first, so failure and needs-attention signals are never delayed. Set `enabled` to `false` to restore the original one-notification-per-completion behavior. Changes apply on the next session start.
+
+## Files, logs, and observability
+
+Each chain run creates a user-scoped temp directory like:
+
+```text
+<tmpdir>/pi-agents-flow-<scope>/chain-runs/{runId}/
+```
+
+It may contain files such as `context.md`, `plan.md`, `progress.md`, and `parallel-{stepIndex}/.../output.md`. Directories older than 24 hours are cleaned up on extension startup.
+
+Debug artifacts live under `{sessionDir}/subagent-artifacts/`, `.pi-agents-flow/artifacts/` for project-scoped runs, or a user-scoped temp artifact directory. Single-run relative `output` files are saved under `{artifactsDir}/outputs/{runId}/` unless `singleRunOutputBaseDir` is configured. Per task you may see:
+
+- `{runId}_{agent}_input.md`
+- `{runId}_{agent}_output.md`
+- `{runId}_{agent}.jsonl`
+- `{runId}_{agent}_meta.json`
+
+Metadata records timing, usage, exit code, final model, attempted models, fallback attempt outcomes, and the resolved acceptance ledger with its parsed child report.
+
+Session files are stored under a per-run session directory. With `context: "fork"`, each child starts with `--session <branched-session-file>` produced from the parent’s current leaf. That is a real session fork, not an injected summary.
+
+Async completions notify only the originating session. The result watcher emits `subagent:async-complete`, and the extension consumes that event to render completion notifications. Successful sibling completions are held briefly and delivered as a single grouped message when they finish within a short window (see `completionBatch`); failed and paused completions always fire immediately.
+
+Async runs write:
+
+```text
+<tmpdir>/pi-agents-flow-<scope>/async-subagent-runs/<id>/
+  status.json
+  events.jsonl
+  output-<n>.log
+  subagent-log-<id>.md
+```
+
+`status.json` powers the widget and `subagent({ action: "status" })` output. `events.jsonl` contains wrapper events plus child Pi JSON events annotated with run and step metadata, including correlated `subagent.steer.requested`, `scheduled`, `routed`, `delivered`, `failed`, and `recovered` events plus failure/partial/recovery notices. Nested fanout status is stored as compact sidecar event/registry metadata and merged into parent status views and result/intercom payloads; full recursive status snapshots are not embedded in parent result files. `output-<n>.log` is a live human-readable tail. Fallback information is persisted so background runs are debuggable after completion.
+
+## Acceptance Gates
+
+Every run resolves an effective acceptance policy. Callers may omit `acceptance` for the inferred default, or set it on single runs, top-level parallel task items, chain steps, static parallel tasks, and dynamic fanout templates.
+
+```ts
+{
+  agent: "worker",
+  task: "Implement the fix",
+  acceptance: {
+    level: "verified",
+    criteria: ["Patch the bug without widening scope"],
+    evidence: ["changed-files", "tests-added", "commands-run", "residual-risks", "no-staged-files"],
+    verify: [{ id: "focused", command: "npm test", timeoutMs: 120000 }]
+  }
+}
+```
+
+Acceptance evidence levels are `auto`, `none`, `attested`, `checked`, and `verified`. `acceptance: "auto"` is the default. Review is a separate gate configured with `acceptance.review`; async, risky, and dynamic writer contexts infer checked evidence plus `review: { agent: "reviewer", required: true }`. Read-only tasks infer lightweight attestation, while normal writer tasks infer checked evidence without review. Agent frontmatter or `subagents.agentOverrides` may set `acceptanceRole: "read-only" | "writer"` for ambiguous tasks; explicit task mutation or no-edit intent wins over that role, while omitted metadata preserves the existing reviewer/scout/worker name heuristics. The role affects acceptance inference only and does not change tool access. The bare string `"none"` is rejected; use `{ level: "none", reason: "..." }` instead. `acceptance: false` is accepted only as a deprecated shorthand for disabling gates.
+
+For reviewer/read-only calls, omit `acceptance`. The explicit value `"reviewed"` is not a policy level: it remains schema-recognized only so semantic preflight can explain the mistake without spawning a child. To require review of a writer result, use `acceptance: { level: "checked", review: { required: true, agent: "reviewer" } }` and orchestrate the reviewer separately.
+
+Acceptance provenance is stored separately from child prose. `evidenceStatus` preserves evidence progress when the overall status is waiting on or has completed review:
+
+- `claimed`: child finished but did not provide structured evidence.
+- `attested`: child returned a structured acceptance report.
+- `checked`: runtime structural checks passed, such as required evidence and no staged files.
+- `verified`: configured runtime verification commands passed. Child-reported command success does not count.
+- `review-required`: required evidence passed, but no independent reviewer result has been supplied.
+- `reviewed`: an independent reviewer result is present and has no blockers.
+- `rejected`: attestation, structural checks, verification, or review failed.
+
+For `attested` or stricter levels, the child prompt includes a standardized acceptance section and asks for a fenced `acceptance-report` JSON block. The parser canonicalizes known enum synonyms, snake_case report keys and wrappers, underscore fence tags, unambiguous scalar arrays, string booleans, and criterion-id separators. Unknown or ambiguous keys and enum values fail with field-level diagnostics. Explicit empty `changedFiles` and `testsAddedOrUpdated` arrays are recorded as not applicable; missing fields and empty required command or validation evidence still fail.
+
+Acceptance fences are removed from normal output artifacts, while the raw child transcript remains intact and per-child metadata stores the complete acceptance ledger and parsed report. Explicit failed gates fail the run. Inferred gates remain observable without failing the run.
+
+## Live progress
+
+Foreground runs show compact live progress for single, chain, and parallel modes: current tool, recent output, token counts, aggregate cost, duration, activity freshness, current-tool duration, and chain graph metadata when available.
+
+Press Pi's configured expand key (`Ctrl+O` by default) to expand the full streaming view with complete output per step.
+
+Sequential chains show a flow line like `done scout → running planner`. Chains with parallel steps show per-step cards instead. Chain status uses `label` and `phase` metadata when present, while falling back to agent names for older chains.
+
+## Session sharing
+
+Pass `share: true` to export a full session to HTML, upload it to a secret GitHub Gist through your `gh` credentials, and return a `https://shittycodingagent.ai/session/?<gistId>` URL.
+
+```ts
+{ agent: "scout", task: "...", share: true }
+```
+
+This is disabled by default. Session data may contain source code, paths, environment variables, credentials, or other sensitive output. You need `gh` installed and authenticated.
+
+## Recursion guard
+
+Subagents can call `subagent` only when their resolved builtin tools explicitly include `subagent`. That is meant for delegated fanout agents, not ordinary worker/reviewer children. A depth guard prevents unbounded nesting.
+
+By default, nesting is limited to two levels: main session → subagent → sub-subagent. Deeper calls are blocked with guidance to complete the current task directly. Nested runs appear in the parent status widget and `status` output as a tree, and `status`, `interrupt`, and `resume` can target a nested run by its id.
+
+Configure the limit with:
+
+1. `PI_SUBAGENT_MAX_DEPTH` before starting Pi
+2. `config.maxSubagentDepth`
+3. `maxSubagentDepth` in agent frontmatter, which can only tighten the inherited limit
+
+```bash
+export PI_SUBAGENT_MAX_DEPTH=3
+export PI_SUBAGENT_MAX_DEPTH=1
+export PI_SUBAGENT_MAX_DEPTH=0
+```
+
+`PI_SUBAGENT_DEPTH` is internal and propagated automatically. Do not set it manually.
+
+## Events
+
+Async events:
+
+- `subagent:async-started`
+- `subagent:async-complete`
+
+The `subagent:async-started` payload includes `task`, the backwards-compatible first child task truncated to 50 characters, and `goal`, the workflow-level caller task truncated to 120 characters (falling back to the first child task). Companion UI extensions can combine `goal`, `workflowGraph`, and the live lifecycle artifacts under `asyncDir` without scraping terminal output.
+
+Intercom delivery events:
+
+- `subagent:control-intercom`
+- `subagent:result-intercom`
+
+The result watcher emits `subagent:async-complete`; `src/extension/index.ts` registers the notification handler that consumes it. Control/attention events are surfaced as visible parent notices and persisted for async runs. Native supervisor requests are delivered only to the exact parent session that spawned the child.
+
+## Prompt-template integration
+
+`pi-agents-flow` works standalone through natural language, the `subagent` tool, slash commands, and the packaged prompt shortcuts listed near the top of this README. It also includes a native prompt-workflow adapter for reusable subagent prompt templates, so you do not need `pi-prompt-template-model` for the common subagent workflow path.
+
+Create a prompt in `.pi/prompts/` or `~/.pi/agent/prompts/`:
+
+```md
+---
+description: Take a screenshot
+model: claude-sonnet-4-20250514
+subagent: browser-screenshoter
+cwd: /tmp/screenshots
+---
+Use url in the prompt to take screenshot: $@
+```
+
+Then run it through the native adapter:
+
+```text
+/prompt-workflow take-screenshot https://example.com
+```
+
+The adapter delegates to the named subagent, applies `model`, `skill`, `cwd`, `worktree`, and fork/fresh context metadata, and supports runtime overrides such as `--subagent reviewer`, `--fork`, `--fresh`, `--worktree`, and `--bg`.
+
+For prompt-template chains, use:
+
+```text
+/chain-prompts analyze -> fix -- user arguments here
+```
+
+Each named prompt becomes a native `subagent` chain step. This is intentionally scoped to subagent workflows; compare-style prompt features such as `/best-of-n` are not part of the built-in adapter.
+
+## Runtime files
+
+The main runtime files are:
+
+| File | Purpose |
+|------|---------|
+| `src/extension/index.ts` | Extension registration, tool registration, message/render wiring. |
+| `src/agents/agents.ts` | Agent and chain discovery, frontmatter parsing. |
+| `src/runs/foreground/subagent-executor.ts` | Main execution routing for single, parallel, chain, management, status, interrupt, and doctor actions. |
+| `src/runs/foreground/execution.ts` | Core foreground `runSync` handling. |
+| `src/runs/background/subagent-runner.ts` | Detached async runner. |
+| `src/runs/background/async-execution.ts` | Background launch support. |
+| `src/runs/background/async-status.ts` | Status discovery and formatting for async runs. |
+| `src/runs/foreground/chain-execution.ts` / `src/agents/chain-serializer.ts` | Chain orchestration and `.chain.md` parsing. |
+| `src/shared/settings.ts` | Chain behavior, instructions, and config helpers. |
+| `src/runs/shared/worktree.ts` | Git worktree isolation. |
+| `src/intercom/intercom-bridge.ts` | Runtime intercom bridge instructions and diagnostics. |
+| `src/extension/schemas.ts` / `src/shared/types.ts` | Tool schemas, shared types, and event constants. |
+| `test/unit/` / `test/integration/` / `test/e2e/` | Unit, loader-based integration, and real-session E2E tests. |

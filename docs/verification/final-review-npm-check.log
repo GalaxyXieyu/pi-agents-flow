@@ -1,0 +1,22 @@
+command: cd /Users/hb00156/Documents/coding/pi && npm run check
+
+> pi-monorepo@0.0.3 check
+> biome check --write --error-on-warnings . && npm run check:pinned-deps && npm run check:ts-imports && npm run check:shrinkwrap && npm run check:install-lock:coding-agent && tsgo --noEmit && npm run check:browser-smoke
+
+Checked 1002 files in 4s. No fixes applied.
+
+> pi-monorepo@0.0.3 check:pinned-deps
+> node scripts/check-pinned-deps.mjs
+
+Direct external dependencies must use exact versions:
+  packages/pi-web-access/package.json: dependencies.@mozilla/readability must be pinned, found ^0.6.0
+  packages/pi-web-access/package.json: dependencies.linkedom must be pinned, found ^0.16.0
+  packages/pi-web-access/package.json: dependencies.p-limit must be pinned, found ^6.1.0
+  packages/pi-web-access/package.json: dependencies.promise.try must be pinned, found ^2.0.1
+  packages/pi-web-access/package.json: dependencies.turndown must be pinned, found ^7.2.0
+  packages/pi-web-access/package.json: dependencies.typebox must be pinned, found ^1.1.38
+  packages/pi-web-access/package.json: dependencies.unpdf must be pinned, found ^1.6.2
+  packages/pi-web-access/package.json: devDependencies.@types/turndown must be pinned, found ^5.0.6
+  packages/pi-web-access/package.json: devDependencies.typescript must be pinned, found ^7.0.2
+
+command_exit_code=1

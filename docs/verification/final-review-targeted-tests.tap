@@ -1,0 +1,556 @@
+# command: cd learning/pi-harness/extensions/pi-agents-flow && node --experimental-strip-types --test test/unit/workflow-scheduler.test.ts test/unit/workflow-context-bundle.test.ts test/unit/workflow-reducer.test.ts test/unit/workflow-controller.test.ts test/unit/workflow-gates.test.ts test/unit/workflow-quality.test.ts test/unit/workflow-guidance.test.ts test/unit/workflow-run-ready-parser.test.ts test/unit/workflow-delegation-adapter.test.ts
+TAP version 13
+# Subtest: accepted workflow context bundle
+    # Subtest: deduplicates accepted claims, excludes unaccepted results, and applies explicit decisions
+    ok 1 - deduplicates accepted claims, excludes unaccepted results, and applies explicit decisions
+      ---
+      duration_ms: 147.5965
+      type: 'test'
+      ...
+    1..1
+ok 1 - accepted workflow context bundle
+  ---
+  duration_ms: 150.142791
+  type: 'suite'
+  ...
+# Subtest: workflow controller
+    # Subtest: resolves and persists workflow language from the goal or explicit override
+    ok 1 - resolves and persists workflow language from the goal or explicit override
+      ---
+      duration_ms: 18.373209
+      type: 'test'
+      ...
+    # Subtest: persists the configured node-attempt ceiling when the workflow starts
+    ok 2 - persists the configured node-attempt ceiling when the workflow starts
+      ---
+      duration_ms: 8.413625
+      type: 'test'
+      ...
+    # Subtest: runs the complete supervisor-owned workflow loop and writes the delivery artifact
+    ok 3 - runs the complete supervisor-owned workflow loop and writes the delivery artifact
+      ---
+      duration_ms: 57.457
+      type: 'test'
+      ...
+    # Subtest: applies todo projections through the runtime adapter instead of asking the model
+    ok 4 - applies todo projections through the runtime adapter instead of asking the model
+      ---
+      duration_ms: 7.977167
+      type: 'test'
+      ...
+    # Subtest: refuses to complete deep research without accepted editor and reviewer nodes
+    ok 5 - refuses to complete deep research without accepted editor and reviewer nodes
+      ---
+      duration_ms: 5.076917
+      type: 'test'
+      ...
+    # Subtest: requires a research brief before planning and an outline before document production
+    ok 6 - requires a research brief before planning and an outline before document production
+      ---
+      duration_ms: 21.274458
+      type: 'test'
+      ...
+    # Subtest: requires real user approval before persisting a user-owned outline
+    ok 7 - requires real user approval before persisting a user-owned outline
+      ---
+      duration_ms: 14.380583
+      type: 'test'
+      ...
+    # Subtest: repairs rejected Section Writer ownership only after renewed user approval
+    ok 8 - repairs rejected Section Writer ownership only after renewed user approval
+      ---
+      duration_ms: 58.0555
+      type: 'test'
+      ...
+    # Subtest: collects Deep Research clarification through native Pi dialogs before the brief
+    ok 9 - collects Deep Research clarification through native Pi dialogs before the brief
+      ---
+      duration_ms: 8.5115
+      type: 'test'
+      ...
+    # Subtest: cancels running nodes on stop and keeps stopped workflows terminal
+    ok 10 - cancels running nodes on stop and keeps stopped workflows terminal
+      ---
+      duration_ms: 17.179458
+      type: 'test'
+      ...
+    # Subtest: restarts a stopped workflow only after a new repair plan is added
+    ok 11 - restarts a stopped workflow only after a new repair plan is added
+      ---
+      duration_ms: 28.86625
+      type: 'test'
+      ...
+    # Subtest: runs a ready repair without implicitly retrying an old failed node
+    ok 12 - runs a ready repair without implicitly retrying an old failed node
+      ---
+      duration_ms: 31.11275
+      type: 'test'
+      ...
+    # Subtest: revives a stopped workflow when an accepted replacement supersedes an accepted node
+    ok 13 - revives a stopped workflow when an accepted replacement supersedes an accepted node
+      ---
+      duration_ms: 62.004458
+      type: 'test'
+      ...
+    # Subtest: supersedes a failed node with an accepted same-kind replacement
+    ok 14 - supersedes a failed node with an accepted same-kind replacement
+      ---
+      duration_ms: 25.689958
+      type: 'test'
+      ...
+    # Subtest: hands an exhausted node back to the Supervisor instead of starting a fourth attempt
+    ok 15 - hands an exhausted node back to the Supervisor instead of starting a fourth attempt
+      ---
+      duration_ms: 27.376625
+      type: 'test'
+      ...
+    # Subtest: pauses only new scheduling and actively runs ready nodes on resume
+    ok 16 - pauses only new scheduling and actively runs ready nodes on resume
+      ---
+      duration_ms: 16.002083
+      type: 'test'
+      ...
+    # Subtest: recovers an orphaned running attempt as a retryable failure after reload
+    ok 17 - recovers an orphaned running attempt as a retryable failure after reload
+      ---
+      duration_ms: 7.801792
+      type: 'test'
+      ...
+    # Subtest: reconciles an early detached completion into the original attempt without launching a replacement
+    ok 18 - reconciles an early detached completion into the original attempt without launching a replacement
+      ---
+      duration_ms: 17.349041
+      type: 'test'
+      ...
+    # Subtest: recovers a completed detached attempt from durable metadata after controller reload
+    ok 19 - recovers a completed detached attempt from durable metadata after controller reload
+      ---
+      duration_ms: 10.860916
+      type: 'test'
+      ...
+    # Subtest: salvages valid structured output from a failed foreground completion before retrying
+    ok 20 - salvages valid structured output from a failed foreground completion before retrying
+      ---
+      duration_ms: 12.190084
+      type: 'test'
+      ...
+    # Subtest: interrupts and cancels a waiting detached child when the workflow stops
+    ok 21 - interrupts and cancels a waiting detached child when the workflow stops
+      ---
+      duration_ms: 17.227583
+      type: 'test'
+      ...
+    # Subtest: cancels one waiting workflow node without stopping its siblings or the workflow
+    ok 22 - cancels one waiting workflow node without stopping its siblings or the workflow
+      ---
+      duration_ms: 17.307875
+      type: 'test'
+      ...
+    1..22
+ok 2 - workflow controller
+  ---
+  duration_ms: 492.785833
+  type: 'suite'
+  ...
+# Subtest: workflow delegation adapter
+    # Subtest: maps an ephemeral AgentSpec to the existing delegation v2 contract
+    ok 1 - maps an ephemeral AgentSpec to the existing delegation v2 contract
+      ---
+      duration_ms: 3.073917
+      type: 'test'
+      ...
+    # Subtest: preserves an explicit web-search requirement while strengthening a shallow schema
+    ok 2 - preserves an explicit web-search requirement while strengthening a shallow schema
+      ---
+      duration_ms: 0.395625
+      type: 'test'
+      ...
+    # Subtest: preflights before emitting and correlates the terminal response
+    ok 3 - preflights before emitting and correlates the terminal response
+      ---
+      duration_ms: 1.175292
+      type: 'test'
+      ...
+    # Subtest: resolves the default turn-budget grace before preflight
+    ok 4 - resolves the default turn-budget grace before preflight
+      ---
+      duration_ms: 0.47925
+      type: 'test'
+      ...
+    # Subtest: does not emit a child request when preflight fails
+    ok 5 - does not emit a child request when preflight fails
+      ---
+      duration_ms: 0.452
+      type: 'test'
+      ...
+    # Subtest: emits an exact v2 cancel identity when the caller aborts
+    ok 6 - emits an exact v2 cancel identity when the caller aborts
+      ---
+      duration_ms: 1.540417
+      type: 'test'
+      ...
+    1..6
+ok 3 - workflow delegation adapter
+  ---
+  duration_ms: 8.51625
+  type: 'suite'
+  ...
+# Subtest: workflow completion gates
+    # Subtest: waits for running nodes instead of asking the supervisor to apply another plan
+    ok 1 - waits for running nodes instead of asking the supervisor to apply another plan
+      ---
+      duration_ms: 1.668458
+      type: 'test'
+      ...
+    # Subtest: allows explicitly rejected obsolete nodes when replacement section Writers, Editor, and Reviewer are accepted
+    ok 2 - allows explicitly rejected obsolete nodes when replacement section Writers, Editor, and Reviewer are accepted
+      ---
+      duration_ms: 2.802
+      type: 'test'
+      ...
+    # Subtest: requires the accepted Reviewer to review the final Editor revision
+    ok 3 - requires the accepted Reviewer to review the final Editor revision
+      ---
+      duration_ms: 1.047042
+      type: 'test'
+      ...
+    1..3
+ok 4 - workflow completion gates
+  ---
+  duration_ms: 7.336666
+  type: 'suite'
+  ...
+# Subtest: workflow repair guidance and search benchmark fixtures
+    # Subtest: prioritizes adjudication, conflict verifiers, and follow-up queries
+    ok 1 - prioritizes adjudication, conflict verifiers, and follow-up queries
+      ---
+      duration_ms: 10.053417
+      type: 'test'
+      ...
+    # Subtest: marks non-public gaps as accepted uncertainty candidates
+    ok 2 - marks non-public gaps as accepted uncertainty candidates
+      ---
+      duration_ms: 1.227
+      type: 'test'
+      ...
+    # Subtest: attaches searchBenchmark and follow-up queries to quality reports when blocked
+    ok 3 - attaches searchBenchmark and follow-up queries to quality reports when blocked
+      ---
+      duration_ms: 7.291084
+      type: 'test'
+      ...
+    # Subtest: keeps verifier source reuse out of the research search benchmark
+    ok 4 - keeps verifier source reuse out of the research search benchmark
+      ---
+      duration_ms: 0.9855
+      type: 'test'
+      ...
+    # Subtest: scores strong fixture lanes higher than weak SEO-heavy lanes
+    ok 5 - scores strong fixture lanes higher than weak SEO-heavy lanes
+      ---
+      duration_ms: 1.227417
+      type: 'test'
+      ...
+    # Subtest: demotes gap repair actions when policy allows unresolved gaps
+    ok 6 - demotes gap repair actions when policy allows unresolved gaps
+      ---
+      duration_ms: 22.110583
+      type: 'test'
+      ...
+    # Subtest: summarizes repeated provider and query-strategy benchmark runs
+    ok 7 - summarizes repeated provider and query-strategy benchmark runs
+      ---
+      duration_ms: 1.33825
+      type: 'test'
+      ...
+    # Subtest: does not recommend repair or follow-up search after the workflow is terminal
+    ok 8 - does not recommend repair or follow-up search after the workflow is terminal
+      ---
+      duration_ms: 2.081375
+      type: 'test'
+      ...
+    1..8
+ok 5 - workflow repair guidance and search benchmark fixtures
+  ---
+  duration_ms: 50.017042
+  type: 'suite'
+  ...
+# Subtest: workflow quality benchmark
+    # Subtest: passes traced research, parallel section Writers, editor, and review
+    ok 1 - passes traced research, parallel section Writers, editor, and review
+      ---
+      duration_ms: 25.745666
+      type: 'test'
+      ...
+    # Subtest: blocks snippet-only evidence and evidence URLs that were not fetched
+    ok 2 - blocks snippet-only evidence and evidence URLs that were not fetched
+      ---
+      duration_ms: 2.79625
+      type: 'test'
+      ...
+    # Subtest: excludes file probes from web fetch coverage and traces local-researcher lanes by contract
+    ok 3 - excludes file probes from web fetch coverage and traces local-researcher lanes by contract
+      ---
+      duration_ms: 6.07425
+      type: 'test'
+      ...
+    # Subtest: matches fetched web evidence by canonical URL rather than raw annotation-sensitive text
+    ok 4 - matches fetched web evidence by canonical URL rather than raw annotation-sensitive text
+      ---
+      duration_ms: 9.666042
+      type: 'test'
+      ...
+    # Subtest: does not block a source claim when one of its redundant evidence URLs was fetched
+    ok 5 - does not block a source claim when one of its redundant evidence URLs was fetched
+      ---
+      duration_ms: 2.660083
+      type: 'test'
+      ...
+    # Subtest: blocks accepted source claims without a URL or artifact reference
+    ok 6 - blocks accepted source claims without a URL or artifact reference
+      ---
+      duration_ms: 1.956833
+      type: 'test'
+      ...
+    # Subtest: accepts a semantic Writer paraphrase when its evidence traces to an accepted source
+    ok 7 - accepts a semantic Writer paraphrase when its evidence traces to an accepted source
+      ---
+      duration_ms: 3.902833
+      type: 'test'
+      ...
+    # Subtest: blocks Writer findings that introduce a new claim
+    ok 8 - blocks Writer findings that introduce a new claim
+      ---
+      duration_ms: 3.9095
+      type: 'test'
+      ...
+    # Subtest: blocks accepted nodes that bypass correlated delegation provenance
+    ok 9 - blocks accepted nodes that bypass correlated delegation provenance
+      ---
+      duration_ms: 19.298084
+      type: 'test'
+      ...
+    # Subtest: reports source-quality warnings without turning them into blockers
+    ok 10 - reports source-quality warnings without turning them into blockers
+      ---
+      duration_ms: 5.7995
+      type: 'test'
+      ...
+    # Subtest: allows local artifact research without a web trace and becomes ready after resolving gaps and conflicts
+    ok 11 - allows local artifact research without a web trace and becomes ready after resolving gaps and conflicts
+      ---
+      duration_ms: 4.141
+      type: 'test'
+      ...
+    # Subtest: excludes superseded research nodes from release metrics
+    ok 12 - excludes superseded research nodes from release metrics
+      ---
+      duration_ms: 1.2875
+      type: 'test'
+      ...
+    # Subtest: blocks a two-sentence editor draft even when the source lanes are fully traced
+    ok 13 - blocks a two-sentence editor draft even when the source lanes are fully traced
+      ---
+      duration_ms: 1.270375
+      type: 'test'
+      ...
+    # Subtest: formats a release-oriented human quality summary
+    ok 14 - formats a release-oriented human quality summary
+      ---
+      duration_ms: 1.269042
+      type: 'test'
+      ...
+    1..14
+ok 6 - workflow quality benchmark
+  ---
+  duration_ms: 106.539708
+  type: 'suite'
+  ...
+# Subtest: workflow reducer
+    # Subtest: makes dependants ready only after dependency results are accepted
+    ok 1 - makes dependants ready only after dependency results are accepted
+      ---
+      duration_ms: 4.742583
+      type: 'test'
+      ...
+    # Subtest: supersedes an accepted node with an accepted same-kind replacement and preserves audit history
+    ok 2 - supersedes an accepted node with an accepted same-kind replacement and preserves audit history
+      ---
+      duration_ms: 0.839541
+      type: 'test'
+      ...
+    # Subtest: supersedes a failed node with an accepted same-kind replacement and retains the failed attempt
+    ok 3 - supersedes a failed node with an accepted same-kind replacement and retains the failed attempt
+      ---
+      duration_ms: 1.343333
+      type: 'test'
+      ...
+    # Subtest: rejects invalid non-terminal supersession
+    ok 4 - rejects invalid non-terminal supersession
+      ---
+      duration_ms: 1.000458
+      type: 'test'
+      ...
+    # Subtest: rejects dependency cycles before mutating the run
+    ok 5 - rejects dependency cycles before mutating the run
+      ---
+      duration_ms: 1.014375
+      type: 'test'
+      ...
+    # Subtest: rejects incorrect Deep Research verifier, Writer, and Reviewer base agents before execution
+    ok 6 - rejects incorrect Deep Research verifier, Writer, and Reviewer base agents before execution
+      ---
+      duration_ms: 0.641458
+      type: 'test'
+      ...
+    # Subtest: allows the Supervisor to reject obsolete failed and pending nodes
+    ok 7 - allows the Supervisor to reject obsolete failed and pending nodes
+      ---
+      duration_ms: 0.323792
+      type: 'test'
+      ...
+    # Subtest: allows a user-approved ownership repair after rejected Section Writers are replaced
+    ok 8 - allows a user-approved ownership repair after rejected Section Writers are replaced
+      ---
+      duration_ms: 1.83425
+      type: 'test'
+      ...
+    # Subtest: rejects post-writing outline edits that bypass user approval or change document content
+    ok 9 - rejects post-writing outline edits that bypass user approval or change document content
+      ---
+      duration_ms: 2.48625
+      type: 'test'
+      ...
+    # Subtest: enforces the persisted attempt ceiling at the reducer boundary
+    ok 10 - enforces the persisted attempt ceiling at the reducer boundary
+      ---
+      duration_ms: 2.92975
+      type: 'test'
+      ...
+    # Subtest: keeps attempts immutable after a terminal result
+    ok 11 - keeps attempts immutable after a terminal result
+      ---
+      duration_ms: 4.288458
+      type: 'test'
+      ...
+    # Subtest: clears the temporary waiting reason when the same attempt completes
+    ok 12 - clears the temporary waiting reason when the same attempt completes
+      ---
+      duration_ms: 0.432333
+      type: 'test'
+      ...
+    1..12
+ok 7 - workflow reducer
+  ---
+  duration_ms: 24.7705
+  type: 'suite'
+  ...
+# Subtest: workflow run_ready public action parser
+    # Subtest: exports the schema constraints used by the public workflow tool
+    ok 1 - exports the schema constraints used by the public workflow tool
+      ---
+      duration_ms: 0.752
+      type: 'test'
+      ...
+    # Subtest: parses an explicit single-node retry
+    ok 2 - parses an explicit single-node retry
+      ---
+      duration_ms: 0.76325
+      type: 'test'
+      ...
+    # Subtest: keeps the default action free of retry authorization
+    ok 3 - keeps the default action free of retry authorization
+      ---
+      duration_ms: 0.252875
+      type: 'test'
+      ...
+    # Subtest: rejects invalid concurrency and empty retry node IDs
+    ok 4 - rejects invalid concurrency and empty retry node IDs
+      ---
+      duration_ms: 0.436
+      type: 'test'
+      ...
+    1..4
+ok 8 - workflow run_ready public action parser
+  ---
+  duration_ms: 3.460875
+  type: 'suite'
+  ...
+# Subtest: workflow scheduler
+    # Subtest: runs only ready nodes up to the concurrency limit and leaves acceptance to the supervisor
+    ok 1 - runs only ready nodes up to the concurrency limit and leaves acceptance to the supervisor
+      ---
+      duration_ms: 41.733458
+      type: 'test'
+      ...
+    # Subtest: records preflight and terminal failures as retryable failed attempts
+    ok 2 - records preflight and terminal failures as retryable failed attempts
+      ---
+      duration_ms: 25.280417
+      type: 'test'
+      ...
+    # Subtest: stops scheduling after the persisted node-attempt ceiling
+    ok 3 - stops scheduling after the persisted node-attempt ceiling
+      ---
+      duration_ms: 32.674042
+      type: 'test'
+      ...
+    # Subtest: honors a one-attempt workflow ceiling
+    ok 4 - honors a one-attempt workflow ceiling
+      ---
+      duration_ms: 14.33875
+      type: 'test'
+      ...
+    # Subtest: cancels one running node without cancelling its sibling
+    ok 5 - cancels one running node without cancelling its sibling
+      ---
+      duration_ms: 21.877917
+      type: 'test'
+      ...
+    # Subtest: keeps a detached child waiting on the original attempt without injecting full workflow bundles
+    ok 6 - keeps a detached child waiting on the original attempt without injecting full workflow bundles
+      ---
+      duration_ms: 17.045958
+      type: 'test'
+      ...
+    # Subtest: does not treat a repair subset filter as retry authorization
+    ok 7 - does not treat a repair subset filter as retry authorization
+      ---
+      duration_ms: 12.80425
+      type: 'test'
+      ...
+    # Subtest: runs new ready repairs without implicitly retrying old failures
+    ok 8 - runs new ready repairs without implicitly retrying old failures
+      ---
+      duration_ms: 24.862708
+      type: 'test'
+      ...
+    # Subtest: injects exact accepted draft paths into editor instructions
+    ok 9 - injects exact accepted draft paths into editor instructions
+      ---
+      duration_ms: 20.361709
+      type: 'test'
+      ...
+    # Subtest: hands reviewers only their direct editor result and a bounded review contract
+    ok 10 - hands reviewers only their direct editor result and a bounded review contract
+      ---
+      duration_ms: 31.243167
+      type: 'test'
+      ...
+    1..10
+ok 9 - workflow scheduler
+  ---
+  duration_ms: 243.970542
+  type: 'suite'
+  ...
+1..9
+# tests 80
+# suites 9
+# pass 80
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1136.497042
+
+command_exit_code=0

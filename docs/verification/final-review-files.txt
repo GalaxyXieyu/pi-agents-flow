@@ -1,0 +1,29 @@
+Goal mshozxoh-oyvgi3 owned files
+
+Implementation and tests:
+learning/pi-harness/extensions/pi-agents-flow/CHANGELOG.md
+learning/pi-harness/extensions/pi-agents-flow/src/workflows/context-bundle.ts
+learning/pi-harness/extensions/pi-agents-flow/src/workflows/controller.ts
+learning/pi-harness/extensions/pi-agents-flow/src/workflows/guidance.ts
+learning/pi-harness/extensions/pi-agents-flow/src/workflows/reducer.ts
+learning/pi-harness/extensions/pi-agents-flow/src/workflows/scheduler.ts
+learning/pi-harness/extensions/pi-agents-flow/src/workflows/tool.ts
+learning/pi-harness/extensions/pi-agents-flow/src/workflows/run-ready-action.ts
+learning/pi-harness/extensions/pi-agents-flow/test/unit/workflow-context-bundle.test.ts
+learning/pi-harness/extensions/pi-agents-flow/test/unit/workflow-controller.test.ts
+learning/pi-harness/extensions/pi-agents-flow/test/unit/workflow-reducer.test.ts
+learning/pi-harness/extensions/pi-agents-flow/test/unit/workflow-scheduler.test.ts
+learning/pi-harness/extensions/pi-agents-flow/test/unit/workflow-run-ready-parser.test.ts
+
+Analysis and verification artifacts:
+learning/pi-harness/extensions/pi-agents-flow/docs/final-review-economics.md
+learning/pi-harness/extensions/pi-agents-flow/docs/verification/final-review-files.txt
+learning/pi-harness/extensions/pi-agents-flow/docs/verification/final-review-npm-check.log
+learning/pi-harness/extensions/pi-agents-flow/docs/verification/final-review-targeted-tests.tap
+learning/pi-harness/extensions/pi-agents-flow/docs/verification/final-review-tsgo.log
+
+Temporary configuration handling:
+.pi/settings.json was temporarily changed and then restored byte-for-byte from the pre-Goal backup /tmp/pi-final/settings.json.bak. It is not an owned deliverable and its pre-existing Git diff remains untouched.
+
+Explicitly not owned by this Goal:
+All other modified or untracked files in the shared worktree, including packages/pi-web-access, pi-agents-flow activity/TUI/agent/foreground-runner files, .pi-agents-flow workflow records, and the completed research delivery.

@@ -1,0 +1,22 @@
+[
+	{
+		"id": "agent-swarm-architecture",
+		"question": "Kimi Agent Swarm 的 supervisor、subagent 创建、负反馈补查、并行执行和最终收敛分别是怎么实现的？请优先使用一手资料并区分公开事实与推断。"
+	},
+	{
+		"id": "pi-restart-recovery",
+		"question": "Pi Dynamic Workflow 在主进程退出、ready 节点尚未启动、child waiting 和用户 pause 四种状态下应该如何恢复？给出可验证的状态机与实现证据。"
+	},
+	{
+		"id": "loopx-fit",
+		"question": "huangruiteng/loopx 的核心运行机制、状态持久化和 human-in-the-loop 能力是什么？哪些部分适合复用到 pi-agents-flow，哪些不适合？"
+	},
+	{
+		"id": "workflow-framework-tradeoff",
+		"question": "对于需要动态创建临时 subagent、运行时技能注入、证据门禁和 TUI 干预的系统，Pi Extension、LangGraph 和独立 actor runtime 的迁移成本与控制力有什么差异？"
+	},
+	{
+		"id": "search-evidence-quality",
+		"question": "Deep Research 的 query rewrite、source ranking、全文 fetch、claim normalization 和 conflict verification 分别如何影响 unsupported-claim rate？请给出可复现实验设计。"
+	}
+]
