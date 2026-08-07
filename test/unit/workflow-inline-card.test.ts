@@ -90,74 +90,61 @@ test("localizes status labels to English", () => {
 	assert.doesNotMatch(lines[1], /状态|运行/);
 });
 
-test("shows overflow when tasks exceed visible limit", () => {
+test("shows overflow in expanded mode when tasks exceed 15-line limit", () => {
 	const input: WorkflowInlineCardInput = {
 		runId: "overflow-run",
 		language: "en",
 		status: "completed",
-		tasks: Array.from({ length: 6 }, (_, i) => makeTask({ id: `t${i}`, label: `Task ${i}`, state: "completed", completed: 1, total: 1 })),
+		tasks: Array.from({ length: 20 }, (_, i) => makeTask({ id: `t${i}`, label: `Task ${i}`, state: "completed", completed: 1, total: 1 })),
 	};
-	const lines = renderWorkflowInlineCard(input, theme as never, 120);
+	// Expanded mode should show overflow
+	const lines = renderWorkflowInlineCard(input, theme as never, 120, true);
 	const hasOverflow = lines.some((line) => line.includes("\u2026 +"));
-	assert.ok(hasOverflow, "should show overflow indicator for many tasks");
+	assert.ok(hasOverflow, "should show overflow indicator in expanded mode");
+	// Collapsed mode should NOT show tasks or overflow
+	const linesCollapsed = renderWorkflowInlineCard(input, theme as never, 120, false);
+	const hasTaskRows = linesCollapsed.some((line) => line.includes("Task"));
+	assert.ok(!hasTaskRows, "collapsed mode should not show task rows");
 });
 
-test("renders work units in expanded mode", () => {
+test("renders task list in expanded mode (ctrl+o)", () => {
 	const input: WorkflowInlineCardInput = {
 		runId: "expanded-run-001",
 		language: "en",
 		status: "active",
 		tasks: [
-			makeTask({ 
-				id: "t1", 
-				label: "Research", 
-				state: "running", 
-				workUnits: [
-					{ id: "wu1", taskId: "t1", label: "Search docs", order: 0, state: "completed", dependsOn: [], attempts: 1, artifacts: [], executions: [] },
-					{ id: "wu2", taskId: "t1", label: "Analyze results", order: 1, state: "running", dependsOn: ["wu1"], attempts: 1, artifacts: [], executions: [] },
-				],
-			}),
+			makeTask({ id: "t1", label: "Research", state: "running", completed: 0, total: 2 }),
+			makeTask({ id: "t2", label: "Implementation", state: "pending" }),
 		],
 	};
+	// Expanded mode should show task list
 	const lines = renderWorkflowInlineCard(input, theme as never, 120, true);
-	// Should have header, status, task row, and 2 work unit rows
-	assert.ok(lines.length >= 4, `expected at least 4 lines, got ${lines.length}`);
-	// Work units should be indented and show labels
-	const wuLines = lines.filter((l) => l.includes("Search docs") || l.includes("Analyze results"));
-	assert.equal(wuLines.length, 2, "should render both work units");
+	assert.ok(lines.length >= 4, `expected at least 4 lines (header + status + 2 tasks), got ${lines.length}`);
+	const hasResearch = lines.some((l) => l.includes("Research"));
+	const hasImplementation = lines.some((l) => l.includes("Implementation"));
+	assert.ok(hasResearch, "should show Research task");
+	assert.ok(hasImplementation, "should show Implementation task");
+	// Collapsed mode should NOT show task list
+	const linesCollapsed = renderWorkflowInlineCard(input, theme as never, 120, false);
+	const hasTaskInCollapsed = linesCollapsed.some((l) => l.includes("Research") || l.includes("Implementation"));
+	assert.ok(!hasTaskInCollapsed, "collapsed mode should not show task names");
 });
 
-test("shows failure details in expanded mode", () => {
+test("shows failed task with red badge in expanded mode", () => {
 	const input: WorkflowInlineCardInput = {
 		runId: "failed-run-002",
 		language: "en",
 		status: "failed",
 		tasks: [
-			makeTask({ 
-				id: "t1", 
-				label: "Implement", 
-				state: "failed", 
-				workUnits: [
-					{ 
-						id: "wu1", 
-						taskId: "t1", 
-						label: "Build feature", 
-						order: 0, 
-						state: "failed", 
-						dependsOn: [], 
-						attempts: 2,
-						artifacts: [], 
-						executions: [{ key: "e1", text: "", state: "failed", error: "timeout" } as never],
-					},
-				],
-			}),
+			makeTask({ id: "t1", label: "Implement", state: "failed" }),
 		],
 	};
 	const lines = renderWorkflowInlineCard(input, theme as never, 120, true);
-	const failedLine = lines.find((l) => l.includes("Build feature"));
-	assert.ok(failedLine, "should show failed work unit");
-	assert.match(failedLine, /×2/, "should show attempt count");
-	assert.match(failedLine, /timeout/, "should show error message");
+	// Should show the failed task in expanded mode
+	const hasImplement = lines.some((l) => l.includes("Implement"));
+	assert.ok(hasImplement, "should show failed task in expanded mode");
+	// Should have error indicator
+	assert.match(lines[0], /✕/, "header should show error badge");
 });
 
 test("shows duration footer when createdAt is provided", () => {
@@ -205,7 +192,8 @@ test("hides duration footer when createdAt is not provided", () => {
 		tasks: [makeTask({ id: "t1", label: "Research", state: "running" })],
 	};
 	const lines = renderWorkflowInlineCard(input, theme as never, 120);
+	// Collapsed mode: last line should be status line (not duration, not task)
 	const lastLine = lines[lines.length - 1];
-	// Last line should be the task row, not a duration
-	assert.match(lastLine, /Research/, "should end with task row, not duration");
+	assert.match(lastLine, /Status/, "should end with status line in collapsed mode");
+	assert.doesNotMatch(lastLine, /^\s+\d+s$/, "should not be a duration line");
 });
