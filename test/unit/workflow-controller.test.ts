@@ -895,7 +895,7 @@ describe("workflow controller", () => {
 
 		await assert.rejects(
 			controller.execute({ action: "run_ready", nodeId: "research-a" }, ctx),
-			/reached its 3-attempt ceiling.*inspect retained output.*accepted replacement/i,
+			/reached its 3-attempt ceiling.*inspect retained output.*reopen it.*replace it/i,
 		);
 		const status = await controller.execute({ action: "status" }, ctx);
 		assert.equal(calls, 3);

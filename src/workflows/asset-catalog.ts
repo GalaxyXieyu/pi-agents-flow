@@ -9,7 +9,7 @@
  * storage or registry of its own and never mutates workflow state. Scanning is
  * always live so an edited agent or skill takes effect immediately.
  */
-import { canInvokeAgent, discoverAgents, isAgentVisibleToModel, type AgentSource } from "../agents/agents.ts";
+import { canInvokeAgent, discoverAgents, effectiveAgentVisibility, type AgentSource } from "../agents/agents.ts";
 import { discoverAvailableSkills } from "../agents/skills.ts";
 import { listAvailableMcpDirectTools } from "../runs/shared/mcp-direct-tool-allowlist.ts";
 import { DEEP_RESEARCH_BASE_AGENT_BY_KIND } from "./plan-rules.ts";
@@ -20,6 +20,8 @@ export interface AssetCatalogAgent {
 	description: string;
 	/** When true the agent also receives project skills that were not named explicitly. */
 	inheritSkills: boolean;
+	/** True when the agent is hidden from user-facing catalogs but still model-invocable. */
+	hidden?: boolean;
 	skills?: string[];
 	tools?: string[];
 	mcpDirectTools?: string[];
@@ -46,12 +48,16 @@ export interface AssetCatalog {
 
 export function buildAssetCatalog(cwd: string): AssetCatalog {
 	const agents = discoverAgents(cwd, "both").agents
-		.filter((agent) => isAgentVisibleToModel(agent) && canInvokeAgent(agent, "model"))
+		// workflow_assets is the Supervisor's composition catalog, not a user-facing list:
+		// include every model-invocable agent even when `visibility: hidden` hides it from
+		// ordinary discovery. Only invocation=disabled and user-only agents are excluded.
+		.filter((agent) => canInvokeAgent(agent, "model"))
 		.map((agent): AssetCatalogAgent => ({
 			name: agent.name,
 			source: agent.source,
 			description: agent.description,
 			inheritSkills: agent.inheritSkills,
+			...(effectiveAgentVisibility(agent) === "hidden" ? { hidden: true } : {}),
 			...(agent.skills?.length ? { skills: [...agent.skills] } : {}),
 			...(agent.tools?.length ? { tools: [...agent.tools] } : {}),
 			...(agent.mcpDirectTools?.length ? { mcpDirectTools: [...agent.mcpDirectTools] } : {}),
@@ -81,6 +87,7 @@ function compact(value: string | undefined, max: number): string {
 function agentLine(agent: AssetCatalogAgent): string {
 	const attributes = [
 		`[${agent.source}]`,
+		agent.hidden ? "hidden" : undefined,
 		agent.inheritSkills ? "inheritSkills" : undefined,
 		agent.skills ? `skills=${agent.skills.join(",")}` : undefined,
 		agent.tools ? `tools=${agent.tools.join(",")}` : undefined,
@@ -95,7 +102,7 @@ export function formatAssetCatalog(catalog: AssetCatalog): string {
 		`Agents (${catalog.agents.length}) - use as agentSpec.baseAgent`,
 		...catalog.agents.map(agentLine),
 		"",
-		"Deep Research required kind -> baseAgent mapping (internal role agents are valid even when hidden from the dynamic Agents list)",
+		"Deep Research required kind -> baseAgent mapping (roles may be hidden but remain valid agentSpec.baseAgent values)",
 		...Object.entries(DEEP_RESEARCH_BASE_AGENT_BY_KIND).map(([kind, baseAgent]) => `- ${kind} -> ${baseAgent}`),
 		"- research -> researcher",
 		"",

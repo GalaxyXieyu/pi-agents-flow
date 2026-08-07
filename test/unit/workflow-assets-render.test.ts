@@ -59,7 +59,10 @@ describe("workflow assets tool rendering", () => {
 		assert.match(text, /Skills \(\d+\) - use as agentSpec\.skills/);
 		assert.match(text, /MCP tools \(\d+\)/);
 		assert.match(text, /^- scout \[/m);
-		assert.doesNotMatch(text, /^- (worker|reviewer|planner|verifier|research-reviewer) \[/m);
+		// Hidden-but-model-invocable roles are now surfaced for Supervisor composition.
+		for (const role of ["worker", "reviewer", "planner", "research-reviewer"]) {
+			assert.match(text, new RegExp(`^- ${role} \\[`, "m"), `expected model-invocable role '${role}'`);
+		}
 		assert.ok(text.split("\n").length > 10, "expanded render should include the full discoverable catalog");
 	});
 
@@ -76,6 +79,8 @@ describe("workflow assets tool rendering", () => {
 		// Collapsing is a rendering concern only; the model receives every discoverable asset.
 		assert.match(text, /Agents \(\d+\) - use as agentSpec\.baseAgent/);
 		assert.match(text, /^- scout \[/m);
-		assert.doesNotMatch(text, /^- (worker|reviewer|planner|verifier|research-reviewer) \[/m);
+		// Hidden-but-model-invocable roles reach the model unchanged by display state.
+		assert.match(text, /^- planner \[/m);
+		assert.match(text, /^- research-reviewer \[/m);
 	});
 });

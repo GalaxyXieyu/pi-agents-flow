@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
 import { buildAssetCatalog, formatAssetCatalog } from "../../src/workflows/asset-catalog.ts";
+import { canInvokeAgent, discoverAgents, effectiveAgentVisibility } from "../../src/agents/agents.ts";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -20,8 +21,19 @@ describe("workflow asset catalog", () => {
 		assert.equal(typeof scout.description, "string");
 		assert.equal(typeof scout.inheritSkills, "boolean");
 		assert.ok(scout.tools?.includes("read"));
-		for (const hidden of ["worker", "reviewer", "planner", "verifier", "research-reviewer"]) {
-			assert.equal(catalog.agents.some((agent) => agent.name === hidden), false, `hidden Workflow role '${hidden}' must not leak into dynamic discovery`);
+		assert.notEqual(scout.hidden, true, "scout stays a directly selectable, non-hidden agent");
+
+		// workflow_assets is the Supervisor composition catalog: it lists every
+		// model-invocable agent (including visibility:hidden roles) and excludes only
+		// invocation=disabled and user-only agents. Derive expectations from live
+		// discovery so the assertion does not depend on ambient user settings.
+		const discovered = discoverAgents(projectRoot, "both").agents;
+		const expectedNames = discovered.filter((agent) => canInvokeAgent(agent, "model")).map((agent) => agent.name).sort((a, b) => a.localeCompare(b));
+		assert.deepEqual(catalog.agents.map((agent) => agent.name), expectedNames);
+		for (const agent of discovered) {
+			const entry = catalog.agents.find((candidate) => candidate.name === agent.name);
+			assert.equal(Boolean(entry), canInvokeAgent(agent, "model"), `catalog membership for '${agent.name}' must match model-invocability`);
+			if (entry) assert.equal(entry.hidden === true, effectiveAgentVisibility(agent) === "hidden", `hidden flag for '${agent.name}'`);
 		}
 
 		assert.ok(catalog.skills.some((skill) => skill.name === "deep-research"));
@@ -56,7 +68,9 @@ describe("workflow asset catalog", () => {
 		assert.match(text, /^Deep Research required kind -> baseAgent mapping/m);
 		assert.match(text, /^- outline -> research-architect$/m);
 		assert.match(text, /^- section-writer -> research-section-writer$/m);
-		assert.doesNotMatch(text, /^- (worker|reviewer|planner|verifier|research-reviewer) \[/m);
+		const built = buildAssetCatalog(projectRoot);
+		const hiddenread = built.agents.find((agent) => agent.hidden);
+		if (hiddenread) assert.match(text, new RegExp(`^- ${hiddenread.name} \\[[a-z-]+\\] hidden`, "m"));
 	});
 
 	it("keeps placeholder lines for empty sections", () => {
