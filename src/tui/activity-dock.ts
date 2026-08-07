@@ -146,10 +146,49 @@ function expandedRows(selection: ActivitySelection, theme: Theme, width: number,
 	return execution.recent.slice(0, 3).map((event) => bounded(`    ${badge(event.state, theme, frame)} ${theme.fg("dim", event.text)}`, width));
 }
 
+/**
+ * One-line collapsed summary shown while the dock is inactive.
+ *
+ * The dock defaults to a single aggregate line so it never eats vertical space; the
+ * full task tree only appears once the user expands it. Counts come from the shared
+ * snapshot so the collapsed and expanded surfaces never disagree. Wording follows
+ * snapshot.language (zh/en).
+ */
+function dockSummaryLine(snapshot: ActivitySnapshot, theme: Theme, width: number, frame: number): string {
+	let running = 0;
+	let done = 0;
+	let failed = 0;
+	let waiting = 0;
+	let pending = 0;
+	for (const execution of snapshot.executions) {
+		switch (execution.state) {
+			case "running": running++; break;
+			case "completed":
+			case "accepted": done++; break;
+			case "failed": failed++; break;
+			case "waiting":
+			case "paused": waiting++; break;
+			default: pending++; break;
+		}
+	}
+	const lead: ActivityState = running > 0 ? "running" : failed > 0 ? "failed" : waiting > 0 ? "waiting" : pending > 0 ? "pending" : "completed";
+	const zh = snapshot.language === "zh";
+	const parts = [
+		snapshot.workflow ? (zh ? "工作流" : "Workflow") : undefined,
+		`${running} ${zh ? "运行" : "running"}`,
+		`${done} ${zh ? "完成" : "done"}`,
+		failed > 0 ? `${failed} ${zh ? "失败" : "failed"}` : undefined,
+	].filter((part): part is string => Boolean(part));
+	const left = `${badge(lead, theme, frame)} ${parts.join(" · ")}`;
+	const hint = zh ? "↓/Tab 展开" : "↓/Tab expand";
+	return rightAlign(left, theme.fg("dim", hint), width);
+}
+
 export function renderActivityDock(snapshot: ActivitySnapshot, width: number, theme: Theme, state: ActivityDockState = {}): string[] {
 	const perspective = state.perspective ?? (snapshot.workflow ? "work" : "agents");
 	const rows = activitySelections(snapshot, perspective);
 	if (rows.length === 0) return [];
+	if (!state.active) return [dockSummaryLine(snapshot, theme, width, state.spinnerFrame ?? 0)];
 	const tasksLabel = snapshot.language === "zh" ? "任务" : "Tasks";
 	const header = perspective === "work"
 		? `${theme.bold(`[${tasksLabel}]`)}  Agents`
@@ -247,7 +286,8 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 	const handleKey = (data: string): { consume?: boolean } | undefined => {
 		if (!ctx || !snapshot || inspectorOpen || isKeyRelease(data) || !editorHasFocus()) return undefined;
 		if (!active) {
-			if (!matchesKey(data, "down") || ctx.ui.getEditorText() !== "") return undefined;
+			const wantsExpand = matchesKey(data, "down") || matchesKey(data, "tab");
+			if (!wantsExpand || ctx.ui.getEditorText() !== "") return undefined;
 			active = true;
 			clampSelection();
 			requestRender();

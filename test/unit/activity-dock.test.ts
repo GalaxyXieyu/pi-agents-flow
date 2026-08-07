@@ -117,7 +117,7 @@ describe("activity dock projection", () => {
 
 	it("folds terminal tasks to one row and expands active tasks", () => {
 		const snapshot = buildActivitySnapshot(liveState(), run());
-		const lines = renderActivityDock(snapshot, 120, theme as never, { perspective: "work" }).join("\n");
+		const lines = renderActivityDock(snapshot, 120, theme as never, { active: true, perspective: "work" }).join("\n");
 		assert.match(lines, /\[任务\]/);
 		assert.match(lines, /● 收尾旧文档/);
 		assert.doesNotMatch(lines, /归档旧文/, "completed work units stay folded under their terminal task");
@@ -130,7 +130,7 @@ describe("activity dock projection", () => {
 
 	it("shows started executions in Agents without planned Work Units or model metadata", () => {
 		const snapshot = buildActivitySnapshot(liveState(), run());
-		const lines = renderActivityDock(snapshot, 120, theme as never, { perspective: "agents" }).join("\n");
+		const lines = renderActivityDock(snapshot, 120, theme as never, { active: true, perspective: "agents" }).join("\n");
 		assert.match(lines, /\[Agents\]/);
 		assert.match(lines, /● researcher/);
 		assert.match(lines, /◐ researcher/);
@@ -144,7 +144,7 @@ describe("activity dock projection", () => {
 
 	it("uses the agreed status symbols and no status words", () => {
 		const snapshot = buildActivitySnapshot(liveState(), run());
-		const lines = renderActivityDock(snapshot, 120, theme as never, { perspective: "work" }).join("\n");
+		const lines = renderActivityDock(snapshot, 120, theme as never, { active: true, perspective: "work" }).join("\n");
 		assert.match(lines, /◐/);
 		assert.match(lines, /●/);
 		assert.match(lines, /○/);
@@ -194,11 +194,15 @@ describe("activity dock controller", () => {
 		try {
 			controller.setContext(ui.ctx);
 			assert.equal(ui.widgets.has(ACTIVITY_DOCK_WIDGET_KEY), true);
-			assert.match(renderDock(ui).join("\n"), /\[任务\]/);
+			// Collapsed by default: a single aggregate line, no task tree yet.
+			const collapsed = renderDock(ui);
+			assert.equal(collapsed.length, 1, "inactive dock renders one summary line");
+			assert.doesNotMatch(collapsed.join("\n"), /\[任务\]/);
 
 			const handler = ui.handler();
 			assert.ok(handler);
 			assert.deepEqual(handler!("\x1b[B"), { consume: true }, "down activates the dock at an empty editor");
+			assert.match(renderDock(ui).join("\n"), /\[任务\]/);
 			assert.deepEqual(handler!("v"), { consume: true });
 			assert.match(renderDock(ui).join("\n"), /\[Agents\]/);
 			assert.deepEqual(handler!("v"), { consume: true });
@@ -299,5 +303,35 @@ describe("activity selections", () => {
 		assert.ok(keys.includes("task:task-recon"));
 		assert.ok(keys.includes("work-unit:loop"), "work units under an active task remain visible as single rows");
 		assert.ok(keys.includes("work-unit:vibe"));
+	});
+});
+
+describe("activity dock collapsed summary", () => {
+	it("defaults to a single aggregate line with counts and an expand hint (zh)", () => {
+		const snapshot = buildActivitySnapshot(liveState(), run());
+		const lines = renderActivityDock(snapshot, 120, theme as never);
+		assert.equal(lines.length, 1, "inactive dock stays one line tall");
+		const line = lines[0]!;
+		assert.match(line, /工作流/);
+		assert.match(line, /2 运行/);
+		assert.match(line, /3 完成/);
+		assert.match(line, /↓\/Tab 展开/);
+		assert.doesNotMatch(line, /\[任务\]/);
+	});
+
+	it("localizes the collapsed summary to English", () => {
+		const snapshot = { ...buildActivitySnapshot(liveState(), run()), language: "en" as const };
+		const line = renderActivityDock(snapshot, 120, theme as never)[0]!;
+		assert.match(line, /Workflow/);
+		assert.match(line, /2 running/);
+		assert.match(line, /3 done/);
+		assert.match(line, /↓\/Tab expand/);
+	});
+
+	it("omits the failed count when nothing has failed and shows the running badge", () => {
+		const snapshot = buildActivitySnapshot(liveState(), run());
+		const line = renderActivityDock(snapshot, 120, theme as never)[0]!;
+		assert.doesNotMatch(line, /失败|failed/);
+		assert.match(line, /◐/);
 	});
 });
