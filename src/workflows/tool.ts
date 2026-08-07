@@ -13,6 +13,7 @@ import type {
 import { assertWorkflowDataContract } from "./data-contract.ts";
 import { WORKFLOW_PORT_NAME_PATTERN, workflowProfileForKind } from "./plan-rules.ts";
 import { resolveWorkflowPolicy, type WorkflowPolicy } from "./policy.ts";
+import { MAX_WORKFLOW_MAX_NODE_ATTEMPTS } from "./retry-policy.ts";
 import type { DocumentOutline, EphemeralAgentSpec, ResearchBrief, WorkflowClarificationOption, WorkflowClarificationQuestion, WorkflowDataContract, WorkflowNodeKind, WorkflowTaskPlan, WorkflowWorkUnitPlan } from "./types.ts";
 
 const MAX_NODE_TOOL_ENTRIES = 64;
@@ -179,11 +180,12 @@ const WorkflowWorkUnitPlanParams = Type.Object({
 	dependsOn: Type.Array(Type.String(), { description: "Work-unit ids that must be accepted before this work unit becomes ready." }),
 	agentSpec: WorkflowAgentSpecParams,
 	dataContract: WorkflowDataContractParams,
+	replaces: Type.Optional(Type.String({ description: "Id of a failed/cancelled node this work unit replaces (same kind). The replaced node is auto-superseded when this one is accepted." })),
 }, { additionalProperties: false });
 
 const WorkflowParams = Type.Object({
 	action: Type.String({
-		enum: ["start", "clarify", "set_brief", "set_outline", "apply_plan", "run_ready", "evaluate", "quality", "get_result", "accept", "reject", "supersede", "record_decision", "complete", "status", "pause", "resume", "stop", "cancel_node"],
+		enum: ["start", "clarify", "set_brief", "set_outline", "apply_plan", "run_ready", "evaluate", "quality", "get_result", "accept", "reject", "supersede", "reopen", "record_decision", "complete", "status", "pause", "resume", "stop", "cancel_node"],
 		description: "Workflow state transition to perform.",
 	}),
 	runId: Type.Optional(Type.String({ description: "Workflow run id. Omit to use the run bound to this session branch." })),
@@ -201,7 +203,8 @@ const WorkflowParams = Type.Object({
 	port: Type.Optional(Type.String({ pattern: WORKFLOW_PORT_NAME_PATTERN, description: "Accepted artifact output port for action=complete." })),
 	digest: Type.Optional(Type.String({ minLength: 1, description: "SHA-256 digest of the accepted artifact output for action=complete." })),
 	replacementNodeId: Type.Optional(Type.String({ description: "Accepted replacement node for action=supersede." })),
-	decision: Type.Optional(Type.String({ description: "Supervisor rationale for action=accept, reject, or supersede." })),
+	additionalAttempts: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_WORKFLOW_MAX_NODE_ATTEMPTS, description: "Extra attempts to grant a failed/cancelled node for action=reopen. Defaults to the run's per-node attempt budget." })),
+	decision: Type.Optional(Type.String({ description: "Supervisor rationale for action=accept, reject, supersede, or reopen." })),
 	decisionKind: Type.Optional(Type.String({ enum: ["accepted_uncertainty", "gap_resolution", "conflict_resolution"], description: "Decision category for action=record_decision." })),
 	target: Type.Optional(Type.String({ description: "Exact gap question or conflict statement for action=record_decision." })),
 	rationale: Type.Optional(Type.String({ description: "Evidence-based rationale for action=record_decision." })),
@@ -333,6 +336,7 @@ function parseWorkUnits(value: unknown): WorkflowWorkUnitPlan[] {
 			dependsOn: [...entry.dependsOn] as string[],
 			agentSpec: parseAgentSpec(entry.agentSpec, id),
 			dataContract: parseWorkflowDataContract(entry.dataContract, id),
+			...(entry.replaces !== undefined ? { replaces: requiredString(entry.replaces, `Work unit '${id}' replaces`) } : {}),
 		};
 		assertWorkflowDataContract(workUnit);
 		const expectedProfile = workflowProfileForKind(kind);
@@ -487,6 +491,18 @@ export function parseWorkflowActionParams(value: unknown): WorkflowActionParams 
 				replacementNodeId: requiredString(value.replacementNodeId, "replacementNodeId"),
 				decision: requiredString(value.decision, "decision"),
 			};
+		case "reopen": {
+			if (value.additionalAttempts !== undefined && (!Number.isInteger(value.additionalAttempts) || (value.additionalAttempts as number) < 1 || (value.additionalAttempts as number) > MAX_WORKFLOW_MAX_NODE_ATTEMPTS)) {
+				throw new Error(`additionalAttempts must be an integer between 1 and ${MAX_WORKFLOW_MAX_NODE_ATTEMPTS}.`);
+			}
+			return {
+				action: "reopen",
+				...(runId ? { runId } : {}),
+				nodeId: requiredString(value.nodeId, "nodeId"),
+				...(typeof value.additionalAttempts === "number" ? { additionalAttempts: value.additionalAttempts } : {}),
+				decision: requiredString(value.decision, "decision"),
+			};
+		}
 		case "complete":
 			const nodeId = requiredString(value.nodeId, "nodeId");
 			const port = requiredString(value.port, "port");
@@ -573,7 +589,7 @@ export function registerWorkflowTool(pi: ExtensionAPI, controller: WorkflowContr
 	const tool: ToolDefinition<typeof WorkflowParams, WorkflowControllerDetails> = {
 		name: "workflow",
 		label: "Workflow",
-		description: "Operate the root Pi Agent's durable dynamic workflow. Deep Research persists a user-intent brief and detailed outline before applying a typed DAG, then runs evidence lanes, parallel section Writers, a lead editor, and review through pi-agents-flow delegation v2.",
+		description: "Operate the root Pi Agent's durable dynamic workflow. Deep Research persists a user-intent brief and detailed outline before applying a typed DAG, then runs evidence lanes, parallel section Writers, a lead editor, and review through pi-agents-flow delegation protocol.",
 		promptSnippet: "Create and control a durable dynamic workflow with parallel subagents and explicit result acceptance.",
 		promptGuidelines: [
 			"The primary Pi Agent is the sole workflow Supervisor; children must not call the workflow tool.",

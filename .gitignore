@@ -1,5 +1,5 @@
 .pi/todos/
-.pi-agents-flow/
+.pi-swarm/
 .DS_Store
 AGENTS.md
 node_modules/

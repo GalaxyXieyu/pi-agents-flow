@@ -18,10 +18,10 @@ const hostPeerPackages = [
 	"@earendil-works/pi-tui",
 ] as const;
 const expectedHostPeerRanges = {
-	"@earendil-works/pi-agent-core": "*",
-	"@earendil-works/pi-ai": ">=0.80.0",
-	"@earendil-works/pi-coding-agent": "*",
-	"@earendil-works/pi-tui": "*",
+	"@earendil-works/pi-agent-core": ">=0.81.0 <0.82.0",
+	"@earendil-works/pi-ai": ">=0.81.0 <0.82.0",
+	"@earendil-works/pi-coding-agent": ">=0.81.0 <0.82.0",
+	"@earendil-works/pi-tui": ">=0.81.0 <0.82.0",
 } satisfies Record<(typeof hostPeerPackages)[number], string>;
 const expectedHostDevVersions = {
 	"@earendil-works/pi-agent-core": "0.81.0",
@@ -60,6 +60,9 @@ test("published extension APIs use supported package entrypoints", async () => {
 		"./delegation": "./src/api/delegation.ts",
 		"./preflight": "./src/api/preflight.ts",
 	});
+	assert.equal(packageJson.name, "pi-agents-flow");
+	assert.equal(packageJson.version, "0.1.0-alpha.1");
+	assert.equal(packageJson.engines?.node, ">=22.19.0");
 	const backgroundWork = await import("pi-agents-flow/background-work");
 	assert.equal(backgroundWork.BACKGROUND_WORK_PROTOCOL_VERSION, 1);
 	assert.equal(backgroundWork.BACKGROUND_WORK_REGISTRY_KEY, "pi-agents-flow.background-work.v1");

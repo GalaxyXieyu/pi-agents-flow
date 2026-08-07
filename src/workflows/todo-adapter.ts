@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import type { WorkflowTodoOperation, WorkflowTodoProjection } from "./todo-projection.ts";
 
-export const WORKFLOW_TODO_APPLY_EVENT = "pi-swarm:workflow-todo-apply:v0";
-export const WORKFLOW_TODO_RESULT_EVENT = "pi-swarm:workflow-todo-result:v0";
-export const WORKFLOW_TODO_SNAPSHOT_ENTRY_TYPE = "pi-swarm-workflow-todo-snapshot";
+export const WORKFLOW_TODO_APPLY_EVENT = "pi-agents-flow:workflow-todo-apply:v0";
+export const WORKFLOW_TODO_RESULT_EVENT = "pi-agents-flow:workflow-todo-result:v0";
+export const WORKFLOW_TODO_SNAPSHOT_ENTRY_TYPE = "pi-agents-flow-workflow-todo-snapshot";
 
 export interface WorkflowTodoSnapshotTask {
 	id: number;

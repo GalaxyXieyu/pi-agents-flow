@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Alpha release
+- Renamed the entire project to Pi Agents Flow / `pi-agents-flow`, including the npm package, source and skill directories, `.pi-agents-flow` runtime data, protocol and registry namespaces, profile paths, diagnostics, screenshots, CI paths, and package-discovery metadata. This Alpha does not migrate state written under earlier project names.
+- Consolidated extension delegation behind one current strict protocol and unversioned public type family while retaining the existing wire version field.
+- Added Node 22.19 and 24 CI across Linux, macOS, and Windows, an Ubuntu E2E lane, and a clean-directory tarball installation smoke test that loads every public export.
+- Added Alpha release automation with provenance and the `alpha` dist-tag, plus contribution, security, support, release, and upstream-attribution policies.
+- Declared Dynamic Workflow, Deep Research, Coding Workflow, and Watchdog experimental for the Alpha support window; core delegation, Agent discovery, Activity Dock, Fleet inspection, and public launch APIs form the supported surface.
+
 ### Activity Dock (breaking)
 - Replaced the mutually exclusive FleetView roster and Workflow Cockpit with a single persistent Activity Dock below the editor. It models `Workflow > Task > Work Unit > Attempt > Agent Execution`, so one human-level task can own several work units and Agents; `dependsOn` orders work units only and never implies hierarchy.
 - `workflow apply_plan` now requires `tasks` (hierarchy with `parentId`/`order`) plus `workUnits` (schedulable units with `taskId`, `order`, `dependsOn`, one `agentSpec`). Legacy `nodes` plans are rejected; persisted V0 runs are not migrated.

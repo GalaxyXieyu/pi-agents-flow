@@ -9,8 +9,9 @@ export function resolveWorkflowMaxNodeAttempts(value: number | undefined): numbe
 }
 
 export function workflowNodeAttemptsExhausted(
-	node: { status: string; attempts: readonly unknown[] },
+	node: { status: string; attempts: readonly unknown[]; maxAttempts?: number },
 	maxNodeAttempts: number,
 ): boolean {
-	return (node.status === "failed" || node.status === "cancelled") && node.attempts.length >= maxNodeAttempts;
+	const ceiling = node.maxAttempts ?? maxNodeAttempts;
+	return (node.status === "failed" || node.status === "cancelled") && node.attempts.length >= ceiling;
 }

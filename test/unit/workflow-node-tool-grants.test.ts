@@ -161,7 +161,7 @@ describe("node-level tool grants and revocations", () => {
 		});
 	});
 
-	describe("delegation v2 transport", () => {
+	describe("delegation protocol transport", () => {
 		it("accepts the fields through the receiver whitelist", () => {
 			const parsed = parseSubagentDelegationRequest(v2Request({ extraTools: ["write", "db/query"], denyTools: ["bash"] }));
 			assert.equal(parsed.ok, true);

@@ -16,6 +16,8 @@ export interface WorkflowArtifactStore {
 		slotPath: string;
 		expectedSha256?: string;
 		maxBytes: number;
+		/** Additional trusted directories accepted when the file is not at its preallocated slot. */
+		fallbackDirs?: string[];
 	}): WorkflowArtifactDescriptor;
 	put(input: {
 		workflowId: string;
@@ -35,8 +37,24 @@ function safeSegment(value: string, field: string): string {
 	return value;
 }
 
+function isWithinRoot(filePath: string, rootPath: string): boolean {
+	const relative = path.relative(rootPath, filePath);
+	return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
+
 function descriptorDigest(content: Buffer): string {
 	return createHash("sha256").update(content).digest("hex");
+}
+
+/**
+ * Text-bearing media types are stored as UTF-8 so completion and quality readers can treat the
+ * artifact as text. File submissions written to an output slot arrive as raw bytes; without this
+ * classification every slot-captured document would be tagged `binary` and rejected by the
+ * deep-research completion gate, which requires UTF-8 deliverables.
+ */
+function isTextMediaType(mediaType: string): boolean {
+	const normalized = mediaType.trim().toLowerCase();
+	return normalized.startsWith("text/") || normalized === "application/json" || normalized.endsWith("+json") || normalized.endsWith("+xml");
 }
 
 export function createLocalWorkflowArtifactStore(rootDir: string): WorkflowArtifactStore {
@@ -59,7 +77,15 @@ export function createLocalWorkflowArtifactStore(rootDir: string): WorkflowArtif
 			const port = safeSegment(input.port, "port");
 			const expected = path.join(root, "staging", workflowId, nodeId, attemptId, port);
 			const actual = path.resolve(input.slotPath);
-			if (actual !== expected) throw new Error(`Output port '${input.port}' file must use its preallocated output slot.`);
+			if (actual !== expected) {
+				// Children launched before slot paths were communicated (or instructed by an
+				// older guide) write into their harness-managed submission directory. Accept
+				// those trusted directories; reject everything else with the slot named.
+				const trusted = (input.fallbackDirs ?? []).map((dir) => path.resolve(dir));
+				if (!trusted.some((dir) => isWithinRoot(actual, dir))) {
+					throw new Error(`Output port '${input.port}' file must use its preallocated output slot '${expected}'.`);
+				}
+			}
 			let descriptor: number | undefined;
 			let content: Buffer;
 			try {
@@ -75,7 +101,7 @@ export function createLocalWorkflowArtifactStore(rootDir: string): WorkflowArtif
 			}
 			const digest = descriptorDigest(content);
 			if (input.expectedSha256 && input.expectedSha256.toLowerCase() !== digest) throw new Error(`Output port '${input.port}' SHA-256 mismatch.`);
-			return this.put({ ...input, content });
+			return this.put({ ...input, content: isTextMediaType(input.mediaType) ? content.toString("utf8") : content });
 		},
 		put(input) {
 			const workflowId = safeSegment(input.workflowId, "workflowId");

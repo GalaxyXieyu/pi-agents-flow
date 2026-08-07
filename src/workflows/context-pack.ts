@@ -42,6 +42,7 @@ export interface WorkflowContextPackManifest {
 	revision: number;
 	nodeId: string;
 	inputs: WorkflowContextPackInput[];
+	outputSlots: Record<string, string>;
 	omitted: Array<{ binding: string; source: string; reason: string }>;
 	budget: {
 		maxInlineBytes: number;
@@ -168,6 +169,7 @@ export function materializeWorkflowContextPack(input: {
 	outputDir: string;
 	artifactStore: WorkflowArtifactStore;
 	taskContext: string;
+	outputSlots?: Record<string, string>;
 }): MaterializedWorkflowContextPack {
 	const context = input.contract.context ?? {};
 	const maxInlineBytes = context.maxInlineBytes ?? DEFAULT_WORKFLOW_CONTEXT_INLINE_BYTES;
@@ -226,6 +228,13 @@ export function materializeWorkflowContextPack(input: {
 			if (item.delivery === "reference") return `- ${item.binding} (${item.purpose}, ${item.mediaType}, ${item.bytes} bytes): ${item.materializedPath}`;
 			return `- ${item.binding} (${item.purpose}, manifest only, ${item.mediaType}, ${item.bytes} bytes): ${item.artifactId ?? "inline value omitted"}`;
 		}),
+		...(Object.entries(input.outputSlots ?? {}).length
+			? [
+					"",
+					"## Output slots",
+					...Object.entries(input.outputSlots ?? {}).map(([port, slotPath]) => `- ${port}: file submissions must write exactly to ${slotPath} and report that path unchanged.`),
+				]
+			: []),
 	];
 	const contextText = instructionLines.join("\n");
 	const estimatedTokens = Math.ceil(Buffer.byteLength(contextText, "utf8") / 4);
@@ -235,6 +244,7 @@ export function materializeWorkflowContextPack(input: {
 		revision: input.run.revision,
 		nodeId: input.node.id,
 		inputs,
+		outputSlots: { ...(input.outputSlots ?? {}) },
 		omitted,
 		budget: { maxInlineBytes, maxPackBytes, maxEstimatedTokens, inlineBytes, packBytes: 0, estimatedTokens },
 	};

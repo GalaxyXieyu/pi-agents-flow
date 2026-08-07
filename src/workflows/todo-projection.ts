@@ -69,7 +69,7 @@ function record(value: unknown): value is Record<string, unknown> {
 
 function latestTodos(branch: readonly unknown[]): ExistingTodo[] {
 	for (const entry of [...branch].reverse()) {
-		if (record(entry) && entry.type === "custom" && entry.customType === "pi-swarm-workflow-todo-snapshot" && record(entry.data) && Array.isArray(entry.data.tasks)) {
+		if (record(entry) && entry.type === "custom" && entry.customType === "pi-agents-flow-workflow-todo-snapshot" && record(entry.data) && Array.isArray(entry.data.tasks)) {
 			return parseTodos(entry.data.tasks);
 		}
 		if (!record(entry) || entry.type !== "message" || !record(entry.message)) continue;

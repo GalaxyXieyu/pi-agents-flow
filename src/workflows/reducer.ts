@@ -195,6 +195,17 @@ function applyPlan(run: WorkflowRun, tasks: Record<string, WorkflowTaskPlan>, pl
 		if (seen.has(plan.id)) throw new Error(`Duplicate workflow work unit '${plan.id}'.`);
 		seen.add(plan.id);
 		assertWorkflowDataContract(plan);
+		if (plan.replaces !== undefined) {
+			if (plan.replaces === plan.id) throw new Error(`Work unit '${plan.id}' cannot replace itself.`);
+			const target = run.nodes[plan.replaces];
+			if (!target) throw new Error(`Work unit '${plan.id}' replaces unknown node '${plan.replaces}'.`);
+			if (target.status !== "failed" && target.status !== "cancelled") {
+				throw new Error(`Work unit '${plan.id}' can only replace a failed or cancelled node; '${plan.replaces}' is ${target.status}.`);
+			}
+			if (target.kind !== plan.kind) {
+				throw new Error(`Work unit '${plan.id}' must have kind '${target.kind}' to replace '${plan.replaces}', not '${plan.kind}'.`);
+			}
+		}
 		const existing = next[plan.id];
 		if (existing && existing.attempts.length > 0) {
 			throw new Error(`Cannot replace workflow work unit '${plan.id}' after execution has started.`);
@@ -399,11 +410,25 @@ export function reduceWorkflowEvent(run: WorkflowRun | undefined, event: Workflo
 		case "node.accepted": {
 			const node = nodeFor(run, event.nodeId);
 			if (node.status !== "completed") throw new Error(`Workflow node '${node.id}' must be completed before acceptance.`);
-			const nodes = refreshReadiness({
+			const accepted: Record<string, WorkflowNode> = {
 				...run.nodes,
 				[node.id]: { ...node, status: "accepted", decision: event.decision },
-			});
-			return withEvent(run, event, nodes);
+			};
+			// Declarative replacement: accepting a node that declares `replaces` retires the
+			// still-failing target it was built to supersede, so the supervisor's intent
+			// (expressed at creation) resolves the failure without a separate supersede call.
+			if (node.replaces) {
+				const target = run.nodes[node.replaces];
+				if (target && (target.status === "failed" || target.status === "cancelled")) {
+					accepted[target.id] = {
+						...target,
+						status: "superseded",
+						decision: `Superseded by accepted replacement '${node.id}'.`,
+						supersededBy: node.id,
+					};
+				}
+			}
+			return withEvent(run, event, refreshReadiness(accepted));
 		}
 		case "node.superseded": {
 			if (run.status === "completed") throw new Error("Completed workflows cannot change node supersession.");
@@ -425,6 +450,24 @@ export function reduceWorkflowEvent(run: WorkflowRun | undefined, event: Workflo
 				[node.id]: { ...node, status: "superseded", decision: event.decision, supersededBy: replacement.id },
 			});
 			return withEvent(run, event, nodes);
+		}
+		case "node.reopened": {
+			if (run.status === "completed") throw new Error("Completed workflows cannot reopen nodes.");
+			const node = nodeFor(run, event.nodeId);
+			if (node.status !== "failed" && node.status !== "cancelled") {
+				throw new Error(`Workflow node '${node.id}' is ${node.status}; only failed or cancelled nodes can be reopened for another attempt.`);
+			}
+			const runMax = resolveWorkflowMaxNodeAttempts(run.maxNodeAttempts);
+			const additional = event.additionalAttempts !== undefined && Number.isInteger(event.additionalAttempts) && event.additionalAttempts > 0
+				? event.additionalAttempts
+				: runMax;
+			// Lift only this node's ceiling so a subsequent run_ready nodeId=<node> can retry it
+			// in place. Its status stays failed/cancelled until the retry runs; identity, history,
+			// and plan position are preserved (no new node, no supersession bookkeeping).
+			return withEvent(run, event, {
+				...run.nodes,
+				[node.id]: { ...node, maxAttempts: node.attempts.length + additional, decision: event.decision },
+			});
 		}
 		case "node.rejected": {
 			const node = nodeFor(run, event.nodeId);

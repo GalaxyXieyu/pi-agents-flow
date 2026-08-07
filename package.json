@@ -1,7 +1,7 @@
 {
   "name": "pi-agents-flow",
-  "version": "0.1.0",
-  "description": "Supervisor-led multi-agent workflow extension for Pi with dynamic orchestration, durable recovery, quality gates, and observable subagents",
+  "version": "0.1.0-alpha.1",
+  "description": "Supervisor-led multi-Agent orchestration for Pi with durable workflows, quality gates, and observable subagents",
   "author": "GalaxyXieyu, based on pi-subagents by Nico Bailon",
   "license": "MIT",
   "type": "module",
@@ -20,12 +20,6 @@
   "bugs": {
     "url": "https://github.com/GalaxyXieyu/pi-agents-flow/issues"
   },
-  "engines": {
-    "node": ">=22"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
   "keywords": [
     "pi-package",
     "pi",
@@ -43,16 +37,33 @@
     "skills/**/*",
     "prompts/**/*",
     "README.md",
-    "CHANGELOG.md"
+    "TEACHING.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "SUPPORT.md",
+    "RELEASING.md",
+    "UPSTREAM.md",
+    "docs/pi-agents-flow-overview.zh-CN.md",
+    "docs/images/*"
   ],
 	"scripts": {
 		"benchmark:workflow": "node --experimental-strip-types scripts/workflow-benchmark.ts",
 		"check:rpiv-todo-bridge": "node scripts/check-rpiv-todo-bridge.mjs",
+		"smoke:pack": "node scripts/smoke-pack.mjs",
 		"test": "npm run test:unit",
     "test:unit": "node --experimental-strip-types --test test/unit/*.test.ts",
     "test:integration": "node --experimental-strip-types --import ./test/support/register-loader.mjs --test test/integration/*.test.ts",
     "test:e2e": "node --experimental-strip-types --import ./test/support/register-loader.mjs --test test/e2e/*.test.ts",
     "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "tag": "alpha"
   },
   "pi": {
     "extensions": [
@@ -66,10 +77,10 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-agent-core": "*",
-    "@earendil-works/pi-ai": ">=0.80.0",
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*"
+    "@earendil-works/pi-agent-core": ">=0.81.0 <0.82.0",
+    "@earendil-works/pi-ai": ">=0.81.0 <0.82.0",
+    "@earendil-works/pi-coding-agent": ">=0.81.0 <0.82.0",
+    "@earendil-works/pi-tui": ">=0.81.0 <0.82.0"
   },
   "peerDependenciesMeta": {
     "@earendil-works/pi-agent-core": {

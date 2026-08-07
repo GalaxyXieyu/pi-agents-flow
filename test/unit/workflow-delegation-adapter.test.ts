@@ -81,7 +81,7 @@ const attempt: WorkflowAttempt = {
 };
 
 describe("workflow delegation adapter", () => {
-	it("maps an ephemeral AgentSpec to the existing delegation v2 contract", () => {
+	it("maps an ephemeral AgentSpec to the existing delegation protocol contract", () => {
 		const expectedSchema = workflowResultSchema(node.dataContract);
 		const request = buildWorkflowDelegationRequest(run, node, attempt, {
 			agent: "researcher",
@@ -206,7 +206,7 @@ describe("workflow delegation adapter", () => {
 		assert.equal(events.emitted.some((entry) => entry.event === SUBAGENT_DELEGATION_REQUEST_EVENT), false);
 	});
 
-	it("emits an exact v2 cancel identity when the caller aborts", async () => {
+	it("emits an exact cancel identity when the caller aborts", async () => {
 		const events = new FakeEvents();
 		const adapter = createWorkflowDelegationAdapter({
 			events,

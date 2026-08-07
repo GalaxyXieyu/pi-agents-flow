@@ -1,4 +1,4 @@
-# Script-Driven Workflow: Pi Agents Flow 脚本驱动工作流设计文档
+# Script-Driven Workflow: Pi Swarm 脚本驱动工作流设计文档
 
 > 版本: v1 (草案)
 > 状态: 待评审
@@ -11,7 +11,7 @@
 
 ### 1.1 当前 State of the Art
 
-Pi Agents Flow 当前的工作流系统是 **Supervisor 驱动模式**。核心流程如下：
+Pi Swarm 当前的工作流系统是 **Supervisor 驱动模式**。核心流程如下：
 
 ```
 用户输入 /swarm 或 /deep-research
@@ -318,7 +318,7 @@ async function deepResearch(goal) {
         └── complete() → 写最终 artifact
 
 完成后
-    脚本可保存为 .pi-agents-flow/scripts/<runId>.js
+    脚本可保存为 .pi-swarm/scripts/<runId>.js
     用户可编辑后重跑: /script run <scriptPath>
 ```
 
@@ -330,7 +330,7 @@ LLM 生成脚本后，通过 workflow 工具返回：
 
 TUI 弹出审批卡片：
   ┌─────────────────────────────────────────┐
-  │  Pi Agents Flow · 脚本审批                      │
+  │  Pi Swarm · 脚本审批                      │
   │  ─────────────────────────────────────── │
   │                                           │
   │  脚本预览:                                │
@@ -415,10 +415,10 @@ interface WorkflowViewSnapshot {
 
 ### 3.6 文件存储
 
-**脚本存储路径**：`.pi-agents-flow/scripts/`
+**脚本存储路径**：`.pi-swarm/scripts/`
 
 ```
-.pi-agents-flow/scripts/
+.pi-swarm/scripts/
   ├── history/
   │   ├── <runId>-v1.js     # 首次执行的脚本
   │   ├── <runId>-v2.js     # 用户编辑后的版本

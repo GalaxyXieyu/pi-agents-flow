@@ -18,10 +18,10 @@ try {
 }
 
 const checks = [
-	[indexPath, "pi-swarm:workflow-todo-apply:v0", "workflow apply event"],
+	[indexPath, "pi-agents-flow:workflow-todo-apply:v0", "workflow apply event"],
 	[indexPath, "pi.events.on(WORKFLOW_TODO_APPLY_EVENT", "workflow event listener"],
 	[indexPath, "applyTaskMutation(state, operation.action, operation)", "rpiv-todo state mutation"],
-	[replayPath, "pi-swarm-workflow-todo-snapshot", "workflow snapshot replay"],
+	[replayPath, "pi-agents-flow-workflow-todo-snapshot", "workflow snapshot replay"],
 ];
 
 for (const [filePath, marker, label] of checks) {

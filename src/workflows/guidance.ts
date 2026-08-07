@@ -157,7 +157,8 @@ export function buildWorkflowRepairGuidance(
 			promptHints: [
 				"Inspect retained structured output and artifacts before launching any replacement.",
 				retained.length > 0 ? `Retained paths: ${[...new Set(retained)].join(", ")}` : "No persisted result artifact was recorded; inspect attempt errors and metadata before deciding.",
-				"Prefer accepting a salvaged completion or reusing an accepted equivalent result; otherwise reject/supersede and create one bounded replacement node, or stop.",
+				`To try the same node again, reopen it (action=reopen nodeId='${node.id}') to grant fresh attempts, then run_ready nodeId='${node.id}'.`,
+				`To replace it with a different approach, add one bounded work unit with replaces='${node.id}' (same kind); accepting it auto-supersedes this node. Otherwise accept a salvaged/equivalent result, reject, or stop.`,
 			],
 		});
 	}

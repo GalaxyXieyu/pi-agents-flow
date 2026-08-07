@@ -3,7 +3,7 @@
 1. Restate the deliverable and release criteria internally.
 2. Call `workflow.start` with the literal user goal and policy mode.
 3. Call `workflow_assets` once when you are unsure which base Agents, skills, or MCP tools exist. Choose `baseAgent` and `skills` from that catalog; do not guess names.
-4. Decompose the goal into a typed DAG. When nodes and dependencies are knowable before execution, include the complete static DAG. Each node must have one bounded objective and a structured result schema.
+4. Decompose the goal into human-level tasks plus a typed Work Unit DAG. When work and dependencies are knowable before execution, include the complete static DAG. Each Work Unit must have one bounded objective and a WorkflowDataContract; optional JSON Schemas belong on declared output ports, not on AgentSpec.
 5. Submit that complete static DAG in one `workflow.apply_plan` call as `tasks` (human-level hierarchy) plus `workUnits` (schedulable units referencing their `taskId`); correct cycle, dependency, Agent, Skill, or preflight failures before execution. Do not stage a known plan, implementation, and verification chain through separate `apply_plan` calls.
 6. Call `workflow.run_ready` to execute independent ready nodes concurrently.
 7. Call `workflow.evaluate`. Inspect completed results, gaps, conflicts, failures, and the recommended next action.

@@ -40,7 +40,7 @@ function once(events: FakeEvents, event: string): Promise<unknown> {
 }
 
 describe("prompt-template delegation bridge", () => {
-	it("uses trusted user origin for prompt templates and model origin for Workflow V2 requests", async () => {
+	it("uses trusted user origin for prompt templates and model origin for Workflow delegation requests", async () => {
 		const events = new FakeEvents();
 		const origins: Array<"model" | "user"> = [];
 		let resolveWorkflowOrigin!: () => void;

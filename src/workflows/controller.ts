@@ -48,6 +48,7 @@ export type WorkflowActionParams =
 	| { action: "accept"; runId?: string; nodeId: string; decision: string }
 	| { action: "reject"; runId?: string; nodeId: string; decision: string }
 	| { action: "supersede"; runId?: string; nodeId: string; replacementNodeId: string; decision: string }
+	| { action: "reopen"; runId?: string; nodeId: string; additionalAttempts?: number; decision: string }
 	| { action: "record_decision"; runId?: string; decisionKind: "accepted_uncertainty" | "gap_resolution" | "conflict_resolution"; target: string; rationale: string }
 	| { action: "complete"; runId?: string; nodeId: string; port: string; digest: string }
 	| { action: "status"; runId?: string }
@@ -279,6 +280,7 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 	const registerCompletion = (store: WorkflowStore, run: WorkflowRun, nodeId: string, attemptId: string, result: WorkflowResult): Pick<Extract<WorkflowEvent, { type: "node.completed" }>, "result" | "resultArtifact" | "outputs"> => {
 		const node = run.nodes[nodeId];
 		if (!node) throw new Error(`Unknown workflow node '${nodeId}'.`);
+		const structuredOutputPath = node.attempts.at(-1)?.structuredOutputPath;
 		const registered = registerWorkflowOutputs({
 			run,
 			node,
@@ -286,6 +288,7 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 			result,
 			contract: node.dataContract,
 			artifactStore: createLocalWorkflowArtifactStore(store.paths(run.id).artifacts),
+			...(structuredOutputPath ? { trustedSubmissionDir: path.join(path.dirname(structuredOutputPath), "submissions") } : {}),
 		});
 		return { result: registered.eventResult, resultArtifact: registered.resultArtifact, outputs: registered.outputs };
 	};
@@ -457,7 +460,8 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 		return next;
 	};
 	const qualityDetails = (store: WorkflowStore, run: WorkflowRun): Pick<WorkflowControllerDetails, "qualityReport" | "qualityReportPath"> => {
-		const qualityReport = assessWorkflowQuality(run);
+		const artifactStore = createLocalWorkflowArtifactStore(store.paths(run.id).artifacts);
+		const qualityReport = assessWorkflowQuality(run, undefined, { readArtifact: (descriptor) => artifactStore.read(descriptor).toString("utf8") });
 		const qualityReportPath = path.join(store.paths(run.id).bundles, "quality-report.json");
 		writeAtomicJson(qualityReportPath, qualityReport);
 		return { qualityReport, qualityReportPath };
@@ -757,12 +761,12 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 						throw new Error(`Workflow node '${requestedNode.id}' is ${requestedNode.status}; nodeId on run_ready is only for explicit failed/cancelled retries.`);
 					}
 					if (requestedNode && workflowNodeAttemptsExhausted(requestedNode, persistedMaxNodeAttempts)) {
-						throw new Error(`Workflow node '${requestedNode.id}' reached its ${persistedMaxNodeAttempts}-attempt ceiling. Inspect retained output, then reject or supersede it with one accepted replacement.`);
+						throw new Error(`Workflow node '${requestedNode.id}' reached its ${persistedMaxNodeAttempts}-attempt ceiling. Inspect retained output, then reopen it (action=reopen) to grant more attempts, replace it (add a work unit with replaces='${requestedNode.id}'), or reject it.`);
 					}
 					const readyNodes = Object.values(run.nodes).filter((node) => node.status === "ready");
 					const exhaustedNodes = Object.values(run.nodes).filter((node) => workflowNodeAttemptsExhausted(node, persistedMaxNodeAttempts));
 					if (!requestedNode && readyNodes.length === 0 && exhaustedNodes.length > 0) {
-						throw new Error(`Workflow node attempt ceiling ${persistedMaxNodeAttempts} reached for: ${exhaustedNodes.map((node) => node.id).join(", ")}. Supervisor intervention required: inspect retained structured output/artifacts first, then reject or supersede with one accepted replacement. The exhausted nodes will not be retried.`);
+						throw new Error(`Workflow node attempt ceiling ${persistedMaxNodeAttempts} reached for: ${exhaustedNodes.map((node) => node.id).join(", ")}. Supervisor intervention required: inspect retained structured output/artifacts first, then reopen (grant more attempts), replace (add a work unit with replaces=<id>), or reject each exhausted node. The exhausted nodes will not be retried automatically.`);
 					}
 					if (!requestedNode && readyNodes.length === 0) {
 						const retryable = Object.values(run.nodes).filter((node) => (node.status === "failed" || node.status === "cancelled") && !workflowNodeAttemptsExhausted(node, persistedMaxNodeAttempts));
@@ -906,6 +910,31 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 					const evaluation = evaluateWorkflow(repaired);
 					return resultFor(ctx, repaired, evaluation, statusText(repaired, evaluation));
 				}
+				case "reopen": {
+					if (!params.decision.trim()) throw new Error("Workflow reopen decision must not be blank.");
+					const node = run.nodes[params.nodeId];
+					if (!node) throw new Error(`Unknown workflow node '${params.nodeId}'.`);
+					if (node.status !== "failed" && node.status !== "cancelled") {
+						throw new Error(`Workflow node '${params.nodeId}' is ${node.status}; only failed or cancelled nodes can be reopened.`);
+					}
+					const reopened = store.append(run.id, {
+						id: createEventId(),
+						type: "node.reopened",
+						at: now(),
+						nodeId: params.nodeId,
+						...(params.additionalAttempts !== undefined ? { additionalAttempts: params.additionalAttempts } : {}),
+						decision: params.decision,
+					});
+					// Mirror supersede: a run stopped after exhaustion becomes active again so the
+					// reopened node can be retried with run_ready nodeId=<node>.
+					const repaired = run.status === "stopped"
+						? store.append(run.id, { id: createEventId(), type: "workflow.status_changed", at: now(), status: "active" })
+						: reopened;
+					fs.rmSync(path.join(store.paths(run.id).bundles, "quality-gate-failures.json"), { force: true });
+					persistBinding(repaired);
+					const evaluation = evaluateWorkflow(repaired);
+					return resultFor(ctx, repaired, evaluation, statusText(repaired, evaluation));
+				}
 				case "record_decision": {
 					const next = store.append(run.id, {
 						id: createEventId(),
@@ -963,10 +992,13 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 					const finalMarkdown = createLocalWorkflowArtifactStore(store.paths(run.id).artifacts).read(output.artifact).toString("utf8");
 					if (run.mode === "deep-research") {
 						const acceptedEditor = evaluation.finalEditorNodeId ? run.nodes[evaluation.finalEditorNodeId] : undefined;
-						if (!acceptedEditor?.result?.summary.text.trim()) throw new Error("Accepted Deep Research editor returned no final Markdown draft.");
-						if (params.nodeId && params.nodeId !== acceptedEditor.id) throw new Error("Deep Research completion artifact must come from the final accepted editor node.");
-						if (finalMarkdown.trim() !== acceptedEditor.result.summary.text.trim()) {
-							throw new Error("Final Markdown must exactly match the accepted research-editor draft. Repair and re-accept the editor node instead of bypassing it at completion.");
+						if (!acceptedEditor?.result) throw new Error("Accepted Deep Research editor returned no result.");
+						if (params.nodeId !== acceptedEditor.id) throw new Error("Deep Research completion artifact must come from the final accepted editor node.");
+						if (params.port !== "document") throw new Error("Deep Research completion must use the editor's 'document' output port.");
+						const editorDocument = acceptedEditor.outputs?.document;
+						if (!editorDocument || editorDocument.kind !== "artifact") throw new Error("Deep Research final editor must expose a 'document' artifact output before completion.");
+						if (output.artifact.sha256 !== editorDocument.artifact.sha256) {
+							throw new Error("Completion artifact must be the accepted editor 'document' output. Repair and re-accept the editor node instead of bypassing it at completion.");
 						}
 					}
 					const finalPath = path.join(store.paths(run.id).delivery, "final.md");

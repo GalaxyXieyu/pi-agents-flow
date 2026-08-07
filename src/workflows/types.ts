@@ -255,6 +255,13 @@ export interface WorkflowWorkUnitPlan {
 	dependsOn: string[];
 	agentSpec: EphemeralAgentSpec;
 	dataContract: WorkflowDataContract;
+	/**
+	 * Optional id of a failed/cancelled node this work unit is meant to replace.
+	 * When this work unit is accepted, the replaced node is automatically superseded,
+	 * so a supervisor declares replacement intent once, at creation, instead of
+	 * remembering a separate supersede call afterwards.
+	 */
+	replaces?: string;
 }
 
 export interface WorkflowAttempt {
@@ -299,6 +306,11 @@ export interface WorkflowNode extends WorkflowWorkUnitPlan {
 	decision?: string;
 	/** Accepted replacement that makes this historical result ineffective. */
 	supersededBy?: string;
+	/**
+	 * Per-node attempt ceiling that overrides the run-level maximum. Set when a
+	 * failed/cancelled node is reopened to grant it additional attempts in place.
+	 */
+	maxAttempts?: number;
 }
 
 export interface WorkflowDecision {
@@ -441,6 +453,7 @@ export type WorkflowEvent =
 	})
 	| (WorkflowEventBase & { type: "node.accepted"; nodeId: string; decision: string })
 	| (WorkflowEventBase & { type: "node.superseded"; nodeId: string; replacementNodeId: string; decision: string })
+	| (WorkflowEventBase & { type: "node.reopened"; nodeId: string; additionalAttempts?: number; decision: string })
 	| (WorkflowEventBase & { type: "node.rejected"; nodeId: string; decision: string })
 	| (WorkflowEventBase & { type: "workflow.decision_recorded"; decision: Omit<WorkflowDecision, "at"> })
 	| (WorkflowEventBase & {

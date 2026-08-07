@@ -5,7 +5,7 @@ export const WORKFLOW_RESULT_SUBMISSION_GUIDE = [
 	"Return WorkflowResult through structured_output.",
 	"summary.text is a bounded semantic summary, never the complete document or dataset.",
 	"Submit every declared output port in outputs using {kind:'value', value:...} or {kind:'file', path:'...', sha256:'...'}.",
-	"Large text, documents, logs, and datasets must use a file submission from the structured-output submissions directory.",
+	"Large text, documents, logs, and datasets must use a file submission written exactly to that port's preallocated output slot path (listed under Output slots); report that path unchanged.",
 	"Use diagnostics for gaps, conflicts, and warnings. Research profiles also return evidence.findings and evidence.search.",
 ].join("\n");
 

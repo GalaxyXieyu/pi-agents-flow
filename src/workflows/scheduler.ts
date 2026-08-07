@@ -10,7 +10,7 @@ import { workflowLanguageInstruction, workflowRunLanguage } from "./language.ts"
 import { createLocalWorkflowArtifactStore } from "./artifact-store.ts";
 import type { WorkflowDelegationAdapter } from "./delegation-adapter.ts";
 import { resolveWorkflowPolicy } from "./policy.ts";
-import { registerWorkflowOutputs } from "./output-ports.ts";
+import { allocateWorkflowOutputSlots, registerWorkflowOutputs } from "./output-ports.ts";
 import { parseWorkflowResult } from "./result-contract.ts";
 import { resolveWorkflowMaxNodeAttempts, workflowNodeAttemptsExhausted } from "./retry-policy.ts";
 import { buildResearchSearchPlan, formatResearchSearchPlan, type ResearchSourcePortfolio } from "./query-strategy.ts";
@@ -73,12 +73,18 @@ function salvageEnvelope(structuredOutputPath: string | undefined, contract: Wor
 	}
 }
 
+function trustedSubmissionDirFor(structuredOutputPath: string | undefined): string | undefined {
+	return structuredOutputPath ? path.join(path.dirname(structuredOutputPath), "submissions") : undefined;
+}
+
 function registeredCompletion(
 	store: WorkflowStore,
 	run: WorkflowRun,
 	node: WorkflowRun["nodes"][string],
 	attemptId: string,
 	result: WorkflowResult,
+	outputSlots?: Record<string, string>,
+	trustedSubmissionDir?: string,
 ): Pick<Extract<WorkflowEvent, { type: "node.completed" }>, "result" | "resultArtifact" | "outputs"> {
 	const registered = registerWorkflowOutputs({
 		run,
@@ -87,6 +93,8 @@ function registeredCompletion(
 		result,
 		contract: node.dataContract,
 		artifactStore: createLocalWorkflowArtifactStore(store.paths(run.id).artifacts),
+		...(outputSlots ? { outputSlots } : {}),
+		...(trustedSubmissionDir ? { trustedSubmissionDir } : {}),
 	});
 	return { result: registered.eventResult, resultArtifact: registered.resultArtifact, outputs: registered.outputs };
 }
@@ -147,6 +155,7 @@ function withLegacyDependencyOutputs(store: WorkflowStore, run: WorkflowRun, nod
 			result: dependency.result,
 			contract: dependency.dataContract,
 			artifactStore,
+			...(trustedSubmissionDirFor(dependency.attempts.at(-1)?.structuredOutputPath) ? { trustedSubmissionDir: trustedSubmissionDirFor(dependency.attempts.at(-1)?.structuredOutputPath) } : {}),
 		});
 		nodes[dependencyId] = { ...dependency, resultArtifact: registered.resultArtifact, outputs: registered.outputs };
 		changed = true;
@@ -154,7 +163,7 @@ function withLegacyDependencyOutputs(store: WorkflowStore, run: WorkflowRun, nod
 	return changed ? { ...run, nodes } : run;
 }
 
-function withWorkflowContext(store: WorkflowStore, run: WorkflowRun, node: WorkflowRun["nodes"][string]): WorkflowRun["nodes"][string] {
+function withWorkflowContext(store: WorkflowStore, run: WorkflowRun, node: WorkflowRun["nodes"][string], outputSlots: Record<string, string> = {}): WorkflowRun["nodes"][string] {
 	const contextRun = withLegacyDependencyOutputs(store, run, node);
 	const contextNode = contextRun.nodes[node.id] ?? node;
 	const contract = contextNode.dataContract;
@@ -209,6 +218,7 @@ function withWorkflowContext(store: WorkflowStore, run: WorkflowRun, node: Workf
 		outputDir: path.join(store.paths(run.id).bundles, "context-packs", node.id, attemptId.replace(/[^a-zA-Z0-9._-]/g, "_")),
 		artifactStore: createLocalWorkflowArtifactStore(store.paths(run.id).artifacts),
 		taskContext,
+		outputSlots,
 	});
 	return {
 		...node,
@@ -224,6 +234,12 @@ function withWorkflowContext(store: WorkflowStore, run: WorkflowRun, node: Workf
 				`Workflow Context Pack V1: ${pack.instructionsPath}`,
 				`Workflow input manifest: ${pack.manifestPath}`,
 				"Read the context pack and only the authorized references it names. Do not inspect the workflow directory, global bundles, result envelopes, or parent-session history.",
+				...(Object.keys(outputSlots).length
+					? [
+							"Preallocated output slots (file submissions must write exactly to these paths and report them unchanged):",
+							...Object.entries(outputSlots).map(([port, slotPath]) => `- ${port}: ${slotPath}`),
+						]
+					: []),
 			].join("\n\n"),
 			...(run.mode === "deep-research" && node.kind === "reviewer" && node.agentSpec.timeoutMs === undefined ? { timeoutMs: 600_000 } : {}),
 			...(run.mode === "deep-research" && node.kind === "reviewer" && !node.agentSpec.turnBudget ? { turnBudget: { maxTurns: 8, graceTurns: 2 } } : {}),
@@ -297,6 +313,13 @@ export function createWorkflowScheduler(options: CreateWorkflowSchedulerOptions)
 					});
 					const startedNode = startedRun.nodes[node.id];
 					if (!startedNode) throw new Error(`Workflow node '${node.id}' disappeared after start.`);
+					const outputSlots = allocateWorkflowOutputSlots({
+						run: startedRun,
+						node: startedNode,
+						attemptId: attempt.attemptId,
+						contract: startedNode.dataContract,
+						artifactStore: createLocalWorkflowArtifactStore(options.store.paths(runId).artifacts),
+					});
 					const nodeController = new AbortController();
 					nodeControllers.set(node.id, nodeController);
 					const combinedController = new AbortController();
@@ -311,7 +334,7 @@ export function createWorkflowScheduler(options: CreateWorkflowSchedulerOptions)
 					let result: Awaited<ReturnType<WorkflowDelegationAdapter["run"]>> | undefined;
 					let adapterError: unknown;
 					try {
-						result = await options.adapter.run(startedRun, withWorkflowContext(options.store, startedRun, startedNode), attempt, combinedController.signal);
+						result = await options.adapter.run(startedRun, withWorkflowContext(options.store, startedRun, startedNode, outputSlots), attempt, combinedController.signal);
 					} catch (error) {
 						adapterError = error;
 					} finally {
@@ -404,7 +427,7 @@ export function createWorkflowScheduler(options: CreateWorkflowSchedulerOptions)
 									at: now(),
 									nodeId: node.id,
 									attemptId: attempt.attemptId,
-									...registeredCompletion(options.store, startedRun, startedNode, attempt.attemptId, parsed),
+									...registeredCompletion(options.store, startedRun, startedNode, attempt.attemptId, parsed, outputSlots, trustedSubmissionDirFor(response.structuredOutputPath)),
 									...terminalMetadata(response, result.launchContractDigest),
 								});
 					} catch (error) {
@@ -436,7 +459,7 @@ export function createWorkflowScheduler(options: CreateWorkflowSchedulerOptions)
 								at: now(),
 								nodeId: node.id,
 								attemptId: attempt.attemptId,
-								...registeredCompletion(options.store, startedRun, startedNode, attempt.attemptId, salvaged),
+								...registeredCompletion(options.store, startedRun, startedNode, attempt.attemptId, salvaged, outputSlots, trustedSubmissionDirFor(terminal.structuredOutputPath)),
 								recoveredFromError: error,
 								...terminalMetadata(terminal, result.launchContractDigest),
 							});

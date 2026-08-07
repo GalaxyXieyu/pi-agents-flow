@@ -5,7 +5,7 @@ import { canonicalEvidenceUrl, canonicalFetchedUrl, claimSimilarity, evidenceReq
 import { buildWorkflowRepairGuidance } from "./guidance.ts";
 import { resolveWorkflowPolicy, type WorkflowPolicy } from "./policy.ts";
 import { normalizeWorkflowText } from "./text-normalize.ts";
-import type { WorkflowRun } from "./types.ts";
+import type { WorkflowArtifactDescriptor, WorkflowRun } from "./types.ts";
 
 export interface WorkflowQualityMetrics {
 	claimCitationCoverage: number;
@@ -114,7 +114,12 @@ function substantiveParagraphs(markdown: string): string[] {
 		.filter((paragraph) => paragraph && !/^#{1,6}\s/.test(paragraph) && !/^```/.test(paragraph) && documentUnits(paragraph) >= 40);
 }
 
-export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: WorkflowPolicy): WorkflowQualityReport {
+export interface WorkflowQualityContext {
+	/** Reads a resolved output artifact as UTF-8 text. Enables reading full deliverables that exceed the summary cap. */
+	readArtifact?: (descriptor: WorkflowArtifactDescriptor) => string;
+}
+
+export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: WorkflowPolicy, context?: WorkflowQualityContext): WorkflowQualityReport {
 	const policy = policyOverride ?? resolveWorkflowPolicy(run.mode, run.policy);
 	const accepted = effectiveAcceptedResultNodes(run);
 	const researchNodes = accepted.filter((node) => node.kind === "research");
@@ -124,7 +129,11 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 	const legacyWriterNode = accepted.filter((node) => node.kind === "writer").at(-1);
 	const editorResolvedOutput = editorNode?.outputs?.document;
 	const editorRawOutput = editorNode?.result?.outputs?.document;
+	// The deliverable is the editor's `document` output, not summary.text (a bounded abstract capped at
+	// MAX_WORKFLOW_SUMMARY_BYTES). Prefer the registered artifact/inline value; only fall back to summary
+	// when no resolved document is available.
 	const finalMarkdown = editorResolvedOutput?.kind === "inline" ? String(editorResolvedOutput.value)
+		: editorResolvedOutput?.kind === "artifact" && context?.readArtifact ? context.readArtifact(editorResolvedOutput.artifact)
 		: editorRawOutput?.kind === "value" && typeof editorRawOutput.value === "string" ? String(editorRawOutput.value)
 		: editorNode?.result?.summary.text ?? "";
 	const sourceNodes = accepted.filter((node) => node.kind === "research" || node.kind === "verification");

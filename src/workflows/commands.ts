@@ -19,7 +19,7 @@ const WORKFLOW_SUPERVISOR_CONTEXT = "workflow-supervisor-context";
 
 function supervisorContext(mode: WorkflowMode, goal: string, runId: string, language: "zh" | "en"): string {
 	return [
-		"[PI SWARM SUPERVISOR CONTEXT]",
+		"[PI AGENTS FLOW SUPERVISOR CONTEXT]",
 		`Run ${runId} already exists in ${mode} mode for this goal: ${goal}`,
 		"You are the sole Supervisor. Do not call workflow start and do not read package skill or reference files; the required operating contract is included here.",
 		workflowLanguageInstruction(language),
@@ -52,7 +52,7 @@ function codingSupervisorContext(stage: CodingStage, goal: string, runId: string
 				? "Run the existing parallel code-review and integration-check nodes, then goal verification. This is read-only verification. Evaluate and explicitly accept or reject all results, then complete from coding-verify.result."
 				: "Run the existing plan -> approval-gated implementation -> parallel code-review and integration-check -> goal-verification DAG. Evaluate planning nodes first. Before accepting coding-plan-check, present the verified plan to the user; the accept transition opens native approval and implementation must remain locked until the user confirms. Then run and evaluate implementation and all quality gates. Complete only from coding-verify.result after the final verifier is accepted.";
 	return [
-		"[PI SWARM CODING WORKFLOW CONTEXT]",
+		"[PI AGENTS FLOW CODING WORKFLOW CONTEXT]",
 		`Coding workflow ${runId} already exists for stage '${stage}' and goal: ${goal}`,
 		"You are the sole Supervisor. The complete deterministic DAG and WorkflowDataContract V1 bindings are already persisted. Do not call workflow start, workflow_assets, or apply_plan unless a completed result reveals one precise repair node that could not have been known earlier.",
 		workflowLanguageInstruction(language),

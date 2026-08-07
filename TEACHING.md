@@ -12,7 +12,7 @@
 6. 人怎样观察、暂停、干预和追溯一次执行；
 7. 最终答案怎样经过证据、冲突、Writer 和 Reviewer 收敛。
 
-Pi Agents Flow 的答案是 supervisor-led swarm：当前根 Pi Agent 是唯一 Supervisor，Extension 提供持久化工作图、调度器、临时 AgentSpec、结果协议、质量门禁和 TUI。子 Agent 只执行一个受限节点，不拥有整个工作流。
+Pi Agents Flow 的答案是 supervisor-led orchestration：当前根 Pi Agent 是唯一 Supervisor，Extension 提供持久化工作图、调度器、临时 AgentSpec、结果协议、质量门禁和 TUI。子 Agent 只执行一个受限节点，不拥有整个工作流。
 
 ## 2. 一个贯穿全程的例子
 
@@ -80,7 +80,7 @@ pi install ./learning/pi-harness/extensions/pi-agents-flow
 
 ### 4.2 状态与 Graph
 
-- `src/workflows/types.ts`：WorkflowRun、WorkflowNode、Attempt、AgentSpec 和 ResultEnvelope。
+- `src/workflows/types.ts`：Task、Work Unit、WorkflowRun、Attempt、AgentSpec、WorkflowDataContract 和 WorkflowResult。
 - `src/workflows/store.ts`：append-only event log 与原子 manifest 投影。
 - `src/workflows/reducer.ts`：事件如何变成当前工作流状态。
 - `src/workflows/gates.ts`：节点依赖、接受状态、gap/conflict 和完成条件。
@@ -99,7 +99,7 @@ new_state = reduce(old_state, event)
 - `src/workflows/controller.ts`：Supervisor 的状态转换入口。
 - `src/workflows/scheduler.ts`：选择 ready 节点、限制并发、记录 immutable attempt。
 - `src/workflows/runtime.ts`：启动、reload、resume 后的主动续跑。
-- `src/workflows/delegation-adapter.ts`：把 AgentSpec 转换成现有 subagent delegation v2 请求。
+- `src/workflows/delegation-adapter.ts`：把 AgentSpec 和 WorkflowDataContract 转换成当前 delegation protocol 请求。
 - `src/workflows/query-strategy.ts`：Research lane 的 query 和 source portfolio。
 
 这里最重要的边界是：Extension 调度节点，模型决定策略；模型不能直接编辑 Workflow Store。
@@ -120,7 +120,7 @@ AgentSpec 可以缩小能力，但不能凭空增加工具。真正的工具集�
 - `src/workflows/benchmark.ts`：研究搜索质量指标。
 - `src/workflows/quality.ts`：发布质量报告和 blockers。
 - `src/workflows/guidance.ts`：根据 gap/conflict/状态生成下一步建议。
-- `src/workflows/context-bundle.ts`：把 accepted claims 变成 Writer 上下文。
+- `src/workflows/context-pack.ts`：把 accepted dependency outputs 变成有边界的 Writer 上下文。
 - `src/workflows/policy.ts`：把硬编码 gate 变成可配置策略。
 
 负反馈不是一句“再搜索一下”。它必须变成可追踪动作：reject、retry、record decision、spawn verifier 或 append research lane。
@@ -138,8 +138,8 @@ AgentSpec 可以缩小能力，但不能凭空增加工具。真正的工具集�
 
 ### 4.7 可观察性
 
-- `src/workflows/board.ts`：Workflow Board TUI。
-- `src/workflows/view.ts`：从 run 投影出可显示的 graph/attempt/child 信息。
+- `src/tui/activity-board.ts`：Activity Board TUI。
+- `src/activity/projection.ts`：从 run 投影出 Task、Work Unit、Attempt 和 Agent Execution。
 - `src/workflows/todo-projection.ts`：把 phase 和 node 投影到现有 Todo。
 - `src/workflows/todo-adapter.ts`：通过版本化事件桥接 `rpiv-todo`。
 

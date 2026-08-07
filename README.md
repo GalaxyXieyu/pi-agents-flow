@@ -5,50 +5,28 @@ creates a durable workflow graph, configures bounded temporary Agents, runs
 independent nodes in parallel, evaluates their structured results, requests
 targeted repair, and completes only after explicit quality gates pass.
 
-This project lives at
-[`GalaxyXieyu/pi-agents-flow`](https://github.com/GalaxyXieyu/pi-agents-flow). It is
-based on [`nicobailon/pi-subagents`](https://github.com/nicobailon/pi-subagents)
-and retains its MIT license and changelog history. See [TEACHING.md](./TEACHING.md)
+This learning fork is maintained inside
+[`GalaxyXieyu/pi`](https://github.com/GalaxyXieyu/pi). It is based on
+[`nicobailon/pi-subagents`](https://github.com/nicobailon/pi-subagents) and
+retains its MIT license and changelog history. See [TEACHING.md](./TEACHING.md)
 for the Chinese architecture and learning guide. For the project background,
 current architecture, product screenshots, usage examples, and open-source
 rollout plan, see
-[docs/open-source-overview.zh-CN.md](./docs/open-source-overview.zh-CN.md).
-
-Note: this project was formerly named `pi-swarm` and is based on
-[`nicobailon/pi-subagents`](https://github.com/nicobailon/pi-subagents). All
-runtime identifiers now use the `pi-agents-flow` name. The one exception is the
-optional rpiv-todo bridge, whose event and snapshot keys
-(`pi-swarm:workflow-todo-apply:v0`, `pi-swarm:workflow-todo-result:v0`,
-`pi-swarm-workflow-todo-snapshot`) stay unchanged so they keep matching the
-external `@juicesharp/rpiv-todo` package that binds to them.
+[docs/pi-agents-flow-overview.zh-CN.md](./docs/pi-agents-flow-overview.zh-CN.md).
 
 ## Installation
 
-`pi-agents-flow` is a Pi extension. It attaches to your existing Pi install and
-does not bundle or replace Pi (the `@earendil-works/pi-*` packages are optional
-peer dependencies). It requires Node >= 22 and a working `pi` install.
-
-Install the published package into your existing Pi:
+Clone the parent repository, then install this checked-out Extension directly:
 
 ```bash
-pi install npm:pi-agents-flow
+git clone https://github.com/GalaxyXieyu/pi.git
+cd pi
+pi install ./learning/pi-harness/extensions/pi-agents-flow
 ```
 
-Use `-l` to record it in project settings (`.pi/settings.json`) so a team shares
-it, instead of user settings.
+For a tagged Alpha, install the exact prerelease with `pi install npm:pi-agents-flow@0.1.0-alpha.1`. The similarly named npm package `pi-agent-flow` (singular) is unrelated to this project.
 
-Install a pinned commit or tag straight from the repo without npm:
-
-```bash
-pi install git:github.com/GalaxyXieyu/pi-agents-flow@v0.1.0
-```
-
-For local development, clone the repo and install the checkout directly:
-
-```bash
-git clone https://github.com/GalaxyXieyu/pi-agents-flow.git
-pi install ./pi-agents-flow
-```
+Supported: Node.js 22.19+, Pi packages 0.81.x, Linux, macOS, and Windows. CI covers Node 22.19/24 on Linux and Windows plus tarball installation. See [SUPPORT.md](./SUPPORT.md), [SECURITY.md](./SECURITY.md), [CONTRIBUTING.md](./CONTRIBUTING.md), [RELEASING.md](./RELEASING.md), and [UPSTREAM.md](./UPSTREAM.md).
 
 ## Try this first
 
@@ -78,9 +56,11 @@ Pi is the parent session. A subagent is a focused child Pi session with its own 
 
 When you ask for a subagent, Pi starts the child, gives it the task, and brings the result back. Foreground runs stream in the conversation. Background runs keep working and can be checked later.
 
-## Dynamic Workflow and Deep Research (experimental V0)
+## Experimental Workflows
 
-This package also contains an experimental, supervisor-owned workflow extension. The main Pi Agent remains the only Supervisor: it creates a typed dependency graph, chooses the next action, launches bounded child Agents through the existing delegation v2 transport, evaluates structured results, and decides what is accepted. Child Agents execute one node and return an envelope; they do not create or control the workflow.
+Dynamic Workflow, Deep Research, Coding Workflow, and Watchdog are experimental in Alpha. Their commands, schemas, persisted artifacts, and UI may change between prereleases. Core delegation, Agent discovery, invocation policy, saved chains, Fleet, and Activity surfaces are the primary Alpha scope.
+
+This package also contains an experimental, supervisor-owned workflow extension. The main Pi Agent remains the only Supervisor: it creates a typed dependency graph, chooses the next action, launches bounded child Agents through the delegation protocol, evaluates structured results, and decides what is accepted. Child Agents execute one node and return an envelope; they do not create or control the workflow.
 
 Use these entry points:
 
@@ -166,20 +146,20 @@ Templates live at `<cwd>/.pi-agents-flow/compositions/<name>.json`. Saving over 
     { "name": "targetModule", "required": true },
     { "name": "hasDb", "required": false, "default": false }
   ],
-  "nodes": [
-    { "id": "plan", "kind": "custom", "label": "Plan {{targetModule}}", "dependsOn": [],
-      "agentSpec": { "id": "s1", "baseAgent": "planner", "role": "Planner",
-        "objective": "Plan {{targetModule}}: {{goal}}", "instructions": "Emit executable steps",
-        "context": "fresh", "resultSchema": { "type": "object" } } },
-    { "id": "dev", "kind": "custom", "label": "Implement", "dependsOn": ["plan"],
-      "agentSpec": { "id": "s2", "baseAgent": "worker", "role": "Engineer",
-        "objective": "Implement the plan", "instructions": "Follow the plan; do not widen scope",
-        "context": "fresh", "resultSchema": { "type": "object" } } },
-    { "id": "db-verify", "kind": "verification", "label": "Verify database", "dependsOn": ["dev"],
-      "enableIf": "hasDb || targetModule.includes(\"db\")",
-      "agentSpec": { "id": "s3", "baseAgent": "reviewer", "role": "Verifier",
-        "objective": "Verify database changes", "instructions": "Database scope only",
-        "context": "fresh", "resultSchema": { "type": "object" } } }
+  "tasks": [
+    { "id": "task-plan", "label": "Planning", "order": 0 },
+    { "id": "task-build", "label": "Build and verify", "order": 1 }
+  ],
+  "workUnits": [
+    { "id": "plan", "taskId": "task-plan", "kind": "custom", "label": "Plan {{targetModule}}", "order": 0, "dependsOn": [],
+      "agentSpec": { "id": "s1", "baseAgent": "planner", "role": "Planner", "objective": "Plan {{targetModule}}: {{goal}}", "instructions": "Emit executable steps", "context": "fresh" },
+      "dataContract": { "version": 1, "profile": "generic", "inputs": [], "outputs": { "result": { "mediaType": "text/markdown", "description": "Plan", "storage": "artifact", "required": true, "classification": "internal" } } } },
+    { "id": "dev", "taskId": "task-build", "kind": "custom", "label": "Implement", "order": 0, "dependsOn": ["plan"],
+      "agentSpec": { "id": "s2", "baseAgent": "worker", "role": "Engineer", "objective": "Implement the plan", "instructions": "Follow the plan; do not widen scope", "context": "fresh" },
+      "dataContract": { "version": 1, "profile": "generic", "inputs": [{ "name": "plan", "purpose": "Accepted plan", "from": [{ "nodeId": "plan", "port": "result" }], "delivery": "manifest", "merge": "first", "required": true }], "outputs": { "result": { "mediaType": "text/markdown", "description": "Implementation result", "storage": "artifact", "required": true, "classification": "internal" } } } },
+    { "id": "db-verify", "taskId": "task-build", "kind": "verification", "label": "Verify database", "order": 1, "dependsOn": ["dev"], "enableIf": "hasDb || targetModule.includes(\"db\")",
+      "agentSpec": { "id": "s3", "baseAgent": "research-verifier", "role": "Verifier", "objective": "Verify database changes", "instructions": "Database scope only", "context": "fresh" },
+      "dataContract": { "version": 1, "profile": "research", "inputs": [{ "name": "implementation", "purpose": "Accepted implementation", "from": [{ "nodeId": "dev", "port": "result" }], "delivery": "manifest", "merge": "first", "required": true }], "outputs": { "result": { "mediaType": "application/json", "description": "Verification result", "storage": "artifact", "required": true, "classification": "internal" } } } }
   ]
 }
 ```
@@ -198,9 +178,7 @@ Each run is stored under the project checkout:
   events.jsonl        # append-only recovery source of truth
   nodes/               # node-scoped artifacts
   artifacts/           # child outputs and registered evidence
-  bundles/
-    accepted-claims.json
-    writer-context.md
+  bundles/            # bounded context packs and quality evidence
   delivery/
     final.md
 ```
@@ -213,7 +191,7 @@ Saved composition templates are stored per project, outside any single run, beca
 
 The session also records a binding containing the run id, revision, session id, cwd, and Git branch. Reload or branch/cwd changes fail closed until the Supervisor starts a new run or the user makes an explicit decision. Retried nodes keep immutable attempt history and receive a new attempt number. A child that blocks on `contact_supervisor` moves its existing attempt to `waiting`; after the reply, completion is written back to that same attempt and child run. Reload recovery uses the persisted child metadata and structured output paths rather than launching a replacement.
 
-An ephemeral AgentSpec can select a persistent base Agent, role, objective, instructions, context (`fresh` or `fork`), required skills, result schema, model, thinking, and bounded budgets. The runtime strengthens every workflow result schema to the canonical `WorkflowResult` shape before preflight and launch, so a shallow Supervisor schema cannot omit nested finding, evidence, confidence, gap, or conflict contracts. A node can explicitly require the optional search trace by including `search` in its top-level `required` fields.
+An ephemeral AgentSpec selects a persistent base Agent, role, objective, instructions, context (`fresh` or `fork`), required skills, model, thinking, and bounded budgets. Every Work Unit separately declares a `WorkflowDataContract`: input bindings identify accepted dependency ports, output ports define storage, classification, media type, and optional JSON Schema. The runtime generates the canonical `WorkflowResult` capture schema from that contract before preflight and launch.
 
 A node can also adjust its tool set with `extraTools` and `denyTools`:
 
@@ -228,15 +206,15 @@ A node can also adjust its tool set with `extraTools` and `denyTools`:
 
 `extraTools` entries containing `/` are MCP direct-tool selectors (`server` or `server/tool`); the rest are builtin tool names. Entries that look like extension paths (`.ts`, `.js`) are rejected, because loading an arbitrary extension file is a far larger grant than naming a tool. Grants are merged in *before* capability-ceiling filtering and revocations are applied after, so a node can open a tool the base Agent does not enable by default but can never exceed the ceiling. Both fields require a base Agent that declares an explicit `tools` allowlist: without one the child is already unrestricted, and layering a list would narrow it instead of adjusting it, so the launch fails with that explanation rather than silently doing the opposite. `denyTools` is independent of `toolBudget.block`, which only degrades tool access after the hard budget is exhausted. Extensions are never expanded per node. The launch contract reports the resulting `grantedTools` and `revokedTools`.
 
-The Deep Research editorial team includes `research-architect`, `researcher`, `research-verifier`, `research-section-writer`, `research-editor`, and `research-reviewer`; `research-writer` remains only for legacy workflow compatibility. The Architect, Section Writers, and Editor cannot search. The Reviewer can fetch only registered citations, while a verifier can search narrowly for a named gap or conflict. Ordinary completion returns through delegation v2. Use `contact_supervisor` only when a child is blocked on a material decision or needs user input; routine results return directly.
+The Deep Research editorial team includes `research-architect`, `researcher`, `research-verifier`, `research-section-writer`, `research-editor`, and `research-reviewer`; `research-writer` remains only for legacy workflow compatibility. The Architect, Section Writers, and Editor cannot search. The Reviewer can fetch only registered citations, while a verifier can search narrowly for a named gap or conflict. Ordinary completion returns through the delegation protocol. Use `contact_supervisor` only when a child is blocked on a material decision or needs user input; routine results return directly.
 
-The workflow uses the existing Pi and pi-agents-flow facilities rather than a second executor: delegation v2 supplies child run identity, exact cancellation correlation, structured output, model/thinking, usage, and preflight; the append-only Workflow Store supplies graph state and recovery. Web research still depends on the selected base Agent's configured `web_search`/fetch capabilities and provider authentication. Kimi models can be used for the parent or children through their normal Pi model id; the workflow does not require a separate Kimi-specific subagent API.
+The workflow uses the existing Pi and Pi Agents Flow facilities rather than a second executor: the delegation protocol supplies child run identity, exact cancellation correlation, structured output, model/thinking, usage, and preflight; the append-only Workflow Store supplies graph state and recovery. Web research still depends on the selected base Agent's configured `web_search`/fetch capabilities and provider authentication. Kimi models can be used for the parent or children through their normal Pi model id; the workflow does not require a separate Kimi-specific subagent API.
 
 Settled-idle completion can request a deduplicated Supervisor follow-up. `/workflow stop` cancels the whole run, while `workflow({ action: "cancel_node", nodeId })` cancels only the selected running or waiting child through its exact delegation identity. Completed results and immutable attempt history remain available. On startup, reload, or resume, an active workflow recovers waiting attempts and actively schedules ready nodes that were persisted before process exit.
 
 The Activity Dock is the single persistent bottom surface for both workflows and standalone Agents. It models `Workflow > Task > Work Unit > Attempt > Agent Execution`: a Task is a human-level unit that may own several work units (and therefore several Agents), while `dependsOn` only orders work units and never implies hierarchy. The Tasks perspective retains planned Work Units before launch; the Agents perspective lists only executions that have an attempt or an independently assigned child, so unassigned Work Units do not produce placeholder Agent rows. Statuses render as symbols only (`◐` active, `●` done, `✕` failed, `○` pending, `◌` waiting, `⏸` paused, `⊘` cancelled/superseded). Terminal tasks collapse to one row; active rows show compact observable activity, duration, and reported token usage (current tool plus semantic args, never model, thinking, or raw JSON). With an empty editor, `↓` activates the dock, `v` switches between the Tasks and Agents perspectives (the choice persists for the session), `↑↓`/`j`/`k` select, `x` expands the recent activity of an active row, `Enter` opens the matching board perspective, and `Esc` returns to the editor. `/workflow board` and `/workflow inspect` open the Activity Board; `/subagents-fleet` remains the deep transcript inspector for steer/stop and full tool output.
 
-Workflow state is projected into the existing `rpiv-todo` list at phase and node granularity; it does not create a second Todo system. Projection is automatic only when the installed `rpiv-todo` exposes the versioned bridge events `pi-swarm:workflow-todo-apply:v0` and `pi-swarm:workflow-todo-result:v0`, and replays the `pi-swarm-workflow-todo-snapshot` custom entry. The current integration was validated with `@juicesharp/rpiv-todo@2.3.1`. Run `npm run check:rpiv-todo-bridge` after `pi update --extensions`: npm updates can replace a locally patched package. If the bridge is absent, workflow execution remains authoritative and non-fatal, but the controller returns explicit existing-todo operations instead of claiming automatic projection. The maintainable endpoint is to upstream this small event/snapshot protocol into `rpiv-todo`; do not import or duplicate its internal store in pi-agents-flow.
+Workflow state is projected into the existing `rpiv-todo` list at phase and node granularity; it does not create a second Todo system. Projection is automatic only when the installed `rpiv-todo` exposes the versioned bridge events `pi-agents-flow:workflow-todo-apply:v0` and `pi-agents-flow:workflow-todo-result:v0`, and replays the `pi-agents-flow-workflow-todo-snapshot` custom entry. The current integration was validated with `@juicesharp/rpiv-todo@2.3.1`. Run `npm run check:rpiv-todo-bridge` after `pi update --extensions`: npm updates can replace a locally patched package. If the bridge is absent, workflow execution remains authoritative and non-fatal, but the controller returns explicit existing-todo operations instead of claiming automatic projection. The maintainable endpoint is to upstream this small event/snapshot protocol into `rpiv-todo`; do not import or duplicate its internal store in pi-agents-flow.
 
 Deep Research assigns independent first-wave nodes different source portfolios (mechanism, implementation, operations, and alternatives) so parallel workers do not issue the same generic queries. Section Writers own non-overlapping outline sections; the Lead Editor is the only node allowed to produce the accepted final document. Quality reports check research trace and fetch coverage, unsupported Writer claims, outline and Section Writer coverage, final citation density, unsupported final citations, readable document length, delegation provenance, gaps, and conflicts. Repeated references inside one lane remain legitimate multi-claim evidence, while duplicate-source rate is measured across lanes. V0 still does not execute model-generated workflow JavaScript.
 
@@ -558,7 +536,7 @@ Foreground and async runners share bounded child-protocol handling. A child JSON
 
 The stable v1 status/result fields are `lifecycleArtifactVersion`, `runId`/`id`, `sessionId`, `mode`, `state`, `startedAt`, `lastUpdate`, `endedAt`, `durationMs`, `cwd`, `asyncDir`, `sessionFile`, `outputFile`, `workflowGraph`, `steps`, `results`, `totalTokens`, `totalCost`, `model`/`attemptedModels`/`modelAttempts`, `toolCount`, `turnCount`, optional `launchResolvedExtensions`, optional `runtimeAcknowledgedExtensions`, and nested `children` when a child is allowed to launch subagents. `launchResolvedExtensions` is parent-resolved launch intent only: it reports opaque extension identifiers and whether ambient extensions were disabled, without exposing raw extension paths or claiming the child runtime acknowledged that those extensions loaded. Cooperating child extensions can acknowledge child-runtime registration by emitting `subagent:acknowledge-extension` on the child process `pi.events` bus with payload `{ id: string }`. Acknowledgement ids are self-declared opaque strings, must be non-empty, at most 128 characters, contain only `A-Z`, `a-z`, `0-9`, `.`, `_`, `:`, `@`, `+`, or `-`, and must not contain `/`, `\\`, or `..`. The reported `runtimeAcknowledgedExtensions` projection is `{ version: 1, source: "child-runtime", ids, omitted }`, deduplicates ids, keeps at most 32 ids, and counts additional valid unique ids in `omitted`. It is best-effort observability only: absence means no cooperating extension acknowledged, and presence means only that the extension registered in the child runtime, not that its tools, health checks, or features succeeded. Late acknowledgements after terminal serialization are ignored. `events.jsonl` records lifecycle transitions such as `subagent.run.started`, `subagent.step.started`, `subagent.step.completed`/`failed`/`paused`/`stopped`, control attention events, nested interrupt failures, and `subagent.run.completed`/`stopped`; run boundary events include the lifecycle artifact version. Consumers should read these JSON files instead of scraping terminal output; unknown fields and event types should be ignored for forward compatibility.
 
-Other Pi extensions can use the versioned in-process event-bus RPC instead of scraping slash output or calling internal modules. Listen for `subagents:rpc:v1:ready`, send requests on `subagents:rpc:v1:request`, and read replies from `subagents:rpc:v1:reply:<requestId>`. The `ping` capability metadata also advertises `events.asyncComplete` for exact process-local completion correlation after RPC `spawn`. Delegation v1/v2 progress updates carry `runId` as soon as foreground execution allocates it, so a caller can retain the package-owned revival target even if its own tool turn is interrupted before the terminal response. Foreground `details.results[]` rows also include a numeric `index` that is unique within the run and stable across partial progress snapshots and the final result; use `(runId, index)` instead of row position to correlate single, counted parallel, and chain children.
+Other Pi extensions can use the versioned in-process event-bus RPC instead of scraping slash output or calling internal modules. Listen for `subagents:rpc:v1:ready`, send requests on `subagents:rpc:v1:request`, and read replies from `subagents:rpc:v1:reply:<requestId>`. The `ping` capability metadata also advertises `events.asyncComplete` for exact process-local completion correlation after RPC `spawn`. Delegation progress updates carry `runId` as soon as foreground execution allocates it, so a caller can retain the package-owned revival target even if its own tool turn is interrupted before the terminal response. Foreground `details.results[]` rows also include a numeric `index` that is unique within the run and stable across partial progress snapshots and the final result; use `(runId, index)` instead of row position to correlate single, counted parallel, and chain children.
 
 ```typescript
 const requestId = crypto.randomUUID();
@@ -1324,12 +1302,13 @@ console.log(result.contract.digest, result.contract.tools.effectiveAllowlist);
 
 Preflight covers ordinary single-agent launch resolution under public contract version 2: selected agent identity and shadowed candidates, a versioned parsed-definition digest (including system prompt and launch-affecting model, tool, skill, extension, output, and memory fields), fresh/fork context, effective model and thinking, skill and tool resolution, direct MCP selections, runtime/configured extensions, artifact/session paths, async lifecycle/status/result/event/process-terminal paths, package/lifecycle versions, capability-ceiling audit data, and stable digests. `launchContractDigest` is the canonical digest of the caller task, effective system prompt (including the resolved `turnBudget` prompt augmentation when supplied), model candidates, effective tools/extensions/MCP (including inherited capability ceilings), output binding, and structured-output schema that ordinary foreground and async execution report in results/status/events and metadata. Runtime acceptance prose and output-task annotations are intentionally excluded because side-effect-free preflight does not resolve those host/runtime augmentations; the contract version and task digest make that boundary explicit. Raw prompts are not exposed in public contract output. It is side-effect-free for launch state: it does not create child sessions, temp prompt files, structured-output runtimes, tool-diagnostic files, or run artifacts. Some host-owned facts, such as exact fork snapshots, nested async roots, and live model registries, can only be proven by the Pi host; those appear as `host_required` diagnostics instead of silently pretending to be exact.
 
-### Delegation v1
+### Delegation protocol
 
-The compatibility v1 contract runs one configured foreground agent per request:
+The public delegation contract runs one owned foreground leaf per request. Independent logical nodes can overlap through the delegated executor without weakening the ordinary model-facing tool's one-foreground-call-per-turn guard.
 
 ```ts
 import {
+  SUBAGENT_DELEGATION_PROTOCOL_VERSION,
   SUBAGENT_DELEGATION_REQUEST_EVENT,
   SUBAGENT_DELEGATION_RESPONSE_EVENT,
   type SubagentDelegationRequest,
@@ -1337,51 +1316,7 @@ import {
 } from "pi-agents-flow/delegation";
 
 const request: SubagentDelegationRequest = {
-  version: 1,
-  requestId: crypto.randomUUID(),
-  agent: "reviewer",
-  task: "Review the supplied evidence.",
-  context: "fresh",
-  cwd: ctx.cwd,
-  timeoutMs: 120_000,
-  toolBudget: { soft: 10, hard: 16, block: "*" },
-};
-
-const unsubscribe = pi.events.on(SUBAGENT_DELEGATION_RESPONSE_EVENT, (payload) => {
-  const response = payload as SubagentDelegationResponse;
-  if (response.requestId !== request.requestId) return;
-  unsubscribe();
-  // Inspect response.status and the metadata present for this run.
-});
-pi.events.emit(SUBAGENT_DELEGATION_REQUEST_EVENT, request);
-```
-
-The contract uses the established `prompt-template:subagent:*` event transport and the same executor as the `subagent` tool; it does not add another launcher. New integrations must send `version: 1`. Requests are strict and single-agent only. They can set fresh or fork context, model, cwd, timeout, turn and tool-call budgets, skills, output behavior, acceptance, and artifact capture. Unknown or malformed fields return `invalid_request` before execution.
-
-Responses distinguish completion, failure, timeout, cancellation, interruption,
-turn or tool-budget exhaustion, explicit acceptance failure, invalid requests,
-and unavailable active context. Optional metadata is omitted when unavailable.
-Request IDs must be unique while active; duplicate active IDs are ignored so the
-original request keeps ownership of its terminal response. Emit
-`SUBAGENT_DELEGATION_CANCEL_EVENT` with the same version and request ID to cancel
-queued or active work.
-
-### Delegation v2
-
-V2 is the owned-leaf contract for workflow supervisors. Independent requests
-can overlap through the delegated executor without weakening the ordinary
-model-facing tool's one-foreground-call-per-turn guard.
-
-```ts
-import {
-  SUBAGENT_DELEGATION_REQUEST_EVENT,
-  SUBAGENT_DELEGATION_RESPONSE_EVENT,
-  type SubagentDelegationRequest,
-  type SubagentDelegationResponse,
-} from "pi-agents-flow/delegation";
-
-const request: SubagentDelegationRequest = {
-  version: 2,
+  version: SUBAGENT_DELEGATION_PROTOCOL_VERSION,
   requestId: crypto.randomUUID(),
   ownerRunId: workflowRunId,
   nodeId: "review-accuracy",
@@ -1403,7 +1338,8 @@ const request: SubagentDelegationRequest = {
 
 const unsubscribe = pi.events.on(SUBAGENT_DELEGATION_RESPONSE_EVENT, (payload) => {
   const response = payload as SubagentDelegationResponse;
-  if (response.version !== 2 || response.requestId !== request.requestId) return;
+  if (response.version !== SUBAGENT_DELEGATION_PROTOCOL_VERSION) return;
+  if (response.requestId !== request.requestId) return;
   if (response.ownerRunId !== request.ownerRunId || response.nodeId !== request.nodeId) return;
   unsubscribe();
   // Inspect response.status, response.result, response.usage, model, and thinking.
@@ -1411,38 +1347,13 @@ const unsubscribe = pi.events.on(SUBAGENT_DELEGATION_RESPONSE_EVENT, (payload) =
 pi.events.emit(SUBAGENT_DELEGATION_REQUEST_EVENT, request);
 ```
 
-`ownerRunId` plus `nodeId` is the active logical identity; `requestId` identifies
-one attempt. A second active attempt for the same logical node receives
-`duplicate_node` without disturbing the original. Started, update, response,
-and cancellation payloads carry the full tuple. Cancellation affects only an
-exact tuple, including cancel-before-start races. Each attempt emits at most one
-terminal response.
+`ownerRunId` plus `nodeId` is the active logical identity; `requestId` identifies one attempt. A second active attempt for the same logical node receives `duplicate_node` without disturbing the original. Started, update, response, and cancellation payloads carry the full tuple. Cancellation affects only an exact tuple, including cancel-before-start races, and each attempt emits at most one terminal response.
 
-Result mode is explicit. Text remains literal even when it looks like JSON.
-Structured mode returns the separately captured, schema-validated JSON value.
-Terminal usage reports input, output, cache-read, cache-write, cost, turns, tool
-calls, and duration alongside the effective model and thinking level when
-known. Schemas are capped at 64 KiB; tasks and returned text/structured values
-are capped at 1 MiB, with smaller bounds on identity/configuration strings and
-a maximum v2 `timeoutMs` of 2,147,483,647. V2 alone accepts
-`toolBudget: { hard: 0, block: "*" }` to block the first tool call and run a
-zero-tool leaf; delegation v1 and ordinary model-facing/configured budgets keep
-their existing minimum of one. The foreground bridge retains up to 8,192 exact
-pending-cancellation and settled-attempt identities per extension
-context. If either history fills, it fails closed with `unavailable_context`
-for later v2 starts rather than evicting identity facts; lifecycle reset clears
-the bounded history.
+Result mode is explicit. Text remains literal even when it looks like JSON. Structured mode returns the separately captured, schema-validated JSON value. Terminal usage reports input, output, cache-read, cache-write, cost, turns, tool calls, and duration alongside the effective model and thinking level when known. Schemas are capped at 64 KiB; tasks and returned values are capped at 1 MiB; `timeoutMs` is capped at 2,147,483,647. An exact `toolBudget: { hard: 0, block: "*" }` blocks the first tool call for a zero-tool leaf. The bridge retains up to 8,192 exact pending-cancellation and settled-attempt identities and fails closed with `unavailable_context` when that bounded history is exhausted.
 
-Delegation requires an active extension context. Emit requests from a supported event callback or queued application step, not by recursively invoking the `subagent` tool inside another tool's `tool_call` hook. The caller selects a configured agent, but agent discovery and effective tools remain package-owned. A request cannot grant tools beyond the active capability ceiling, and tool restrictions are not an operating-system sandbox. The detached RPC remains async-only; this API is foreground-only.
+Optional `extraTools` and `denyTools` arrays adjust one launch. Entries containing `/` are MCP direct-tool selectors; other entries are builtin tool names. Extension paths are rejected. Both arrays are capped at 64 entries, 1 KiB per entry, and 16 KiB in aggregate. Grants remain below the active capability ceiling and require a base Agent with an explicit tool allowlist; revocations apply afterwards.
 
-V2 accepts optional `extraTools` and `denyTools` arrays that adjust the selected agent's tool set for one launch. Entries containing `/` are MCP direct-tool selectors; the rest are builtin tool names. Extension paths are rejected. Both are capped at 64 entries, 1 KiB per entry, and 16 KiB in aggregate. The receiver clamps grants to the capability ceiling and applies revocations afterwards, so a request can open a tool the agent does not enable by default but cannot widen the ceiling. Both fields require an agent with an explicit tools allowlist.
-
-Existing prompt-template payloads and delegation v1 continue over the same event
-family. V2 remains foreground-only and inherits the configured agent's current
-skills, context, model policy, and workspace authority, plus its tools except for
-the bounded per-launch adjustments above; it is not a sandbox or a durable task
-broker. `pi-agents-flow/delegation` is the canonical contract for extension
-integrations.
+Delegation requires an active extension context and remains foreground-only. Emit requests from a supported event callback or queued application step, not recursively from another tool's `tool_call` hook. The caller selects a configured Agent, but discovery, invocation policy, effective tools, model policy, and workspace authority remain package-owned. The protocol is not an operating-system sandbox or a durable task broker.
 
 ## Capability ceilings
 
@@ -1468,7 +1379,7 @@ Active registrations intersect their `allowedTools` and `allowedAgents` sets and
 
 `denyExtensions` suppresses ambient, configured, and MCP provider extensions while retaining the package runtime needed for child protocol enforcement. This is a same-process policy boundary, not a sandbox against malicious code already running in the parent process. Schedules created while a ceiling is active are rejected until durable schedule persistence is available; unrestricted schedules remain subject to any policy active when they fire. Public status exposes bounded audit counts and sources, never full extension paths.
 
-Per-launch tool grants (`extraTools` on a workflow AgentSpec or a delegation v2 request) do not interact with this monotonicity. Grants are merged into the requested set before ceiling filtering, so the ceiling still removes anything it does not allow; the audit records those as `removedTools`. A ceiling is only ever narrowed by intersection and is never widened by a launch.
+Per-launch tool grants (`extraTools` on a workflow AgentSpec or a delegation request) do not interact with this monotonicity. Grants are merged into the requested set before ceiling filtering, so the ceiling still removes anything it does not allow; the audit records those as `removedTools`. A ceiling is only ever narrowed by intersection and is never widened by a launch.
 
 ## Background-work provider API
 

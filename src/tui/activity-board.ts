@@ -282,6 +282,7 @@ function planDetailLines(selection: ActivitySelection | undefined, snapshot: Act
 			theme.bold(selection.workUnit.label),
 			`${localize(snapshot.language, "Task", "任务")}        ${selection.task.label}`,
 			`${localize(snapshot.language, "Status", "状态")}      ${selection.workUnit.state}`,
+			...(selection.workUnit.reason ? [`${localize(snapshot.language, "Reason", "原因")}      ${selection.workUnit.reason}`] : []),
 			`${localize(snapshot.language, "Kind", "类型")}        ${selection.workUnit.node.kind}`,
 			`${localize(snapshot.language, "Objective", "目标")}   ${selection.workUnit.node.agentSpec.objective}`,
 			`${localize(snapshot.language, "Depends on", "依赖")}  ${dependencies.length ? dependencies.join(", ") : localize(snapshot.language, "none", "无")}`,
@@ -289,7 +290,6 @@ function planDetailLines(selection: ActivitySelection | undefined, snapshot: Act
 			`${localize(snapshot.language, "Duration", "时长")}    ${durationSummary(selection.workUnit.durationMs, snapshot.language)}`,
 			`${localize(snapshot.language, "Usage", "用量")}       ${usageSummary(selection.workUnit.usage, snapshot.language)}`,
 			...artifactLines(selection.workUnit.artifacts, theme, snapshot.language),
-			...(selection.workUnit.reason ? [`${localize(snapshot.language, "Reason", "原因")}      ${selection.workUnit.reason}`] : []),
 		];
 	}
 	return [theme.bold(selection.execution.agent), localize(snapshot.language, "Independent execution", "独立执行"), localize(snapshot.language, "Press v to inspect independent executions in Agents.", "按 v 在代理视图中查看独立执行。")];

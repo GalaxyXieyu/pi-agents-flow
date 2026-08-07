@@ -220,7 +220,7 @@ background 路径（`runs/background/subagent-runner.ts`）无需改动：v2 委
 存储声明式配置，不是脚本：
 
 ```
-.pi-agents-flow/compositions/
+.pi-swarm/compositions/
   └── <name>.json
 ```
 
@@ -287,7 +287,7 @@ background 路径（`runs/background/subagent-runner.ts`）无需改动：v2 委
 
 #### 4.4.4 Deep research 的模板化路径
 
-`script-driven-workflow.md` 里设想的"预置 `deep-research.js` 模板"，在本方案下变成：用户跑过一次后存成 `.pi-agents-flow/compositions/deep-research.json`。但其中 gap 修复循环属于运行时动态拓扑，仍需脚本模式承担；该模板应是"静态部分声明式 + 动态部分引用脚本片段"的混合体。混合结构的具体形态留给脚本模式落地时定义，本文档不展开。
+`script-driven-workflow.md` 里设想的"预置 `deep-research.js` 模板"，在本方案下变成：用户跑过一次后存成 `.pi-swarm/compositions/deep-research.json`。但其中 gap 修复循环属于运行时动态拓扑，仍需脚本模式承担；该模板应是"静态部分声明式 + 动态部分引用脚本片段"的混合体。混合结构的具体形态留给脚本模式落地时定义，本文档不展开。
 
 ---
 

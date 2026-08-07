@@ -51,7 +51,9 @@ export function registerWorkflowOutputs(input: {
 	result: WorkflowResult;
 	contract: WorkflowDataContract;
 	artifactStore: WorkflowArtifactStore;
-	outputSlots: Record<string, string>;
+	outputSlots?: Record<string, string>;
+	/** Harness-managed submission directory accepted for file submissions that missed their slot. */
+	trustedSubmissionDir?: string;
 }): RegisteredWorkflowOutputs {
 	const resultArtifact = input.artifactStore.put({
 		workflowId: input.run.id,
@@ -84,6 +86,7 @@ export function registerWorkflowOutputs(input: {
 					slotPath: submission.path,
 					...(submission.sha256 ? { expectedSha256: submission.sha256 } : {}),
 					maxBytes: MAX_WORKFLOW_OUTPUT_FILE_BYTES,
+					...(input.trustedSubmissionDir ? { fallbackDirs: [input.trustedSubmissionDir] } : {}),
 				}),
 			};
 			continue;

@@ -322,10 +322,14 @@ function taskActivities(run: WorkflowRun, workUnits: WorkUnitActivity[]): TaskAc
 			.filter((task) => task.parentId === taskId)
 			.sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))
 			.map((task) => build(task.id));
-		const states = [...ownUnits.map((unit) => unit.state), ...children.map((child) => child.state)];
-		const completed = ownUnits.filter((unit) => unit.state === "completed" || unit.state === "accepted").length
+		// Superseded units are intentionally replaced work: they still appear in the tree (dimmed)
+		// and keep contributing usage/artifacts/cost, but they must not count toward completion or
+		// drag the group into a failed/cancelled aggregate. Only "live" units drive state and ratio.
+		const liveUnits = ownUnits.filter((unit) => unit.state !== "superseded");
+		const states = [...liveUnits.map((unit) => unit.state), ...children.map((child) => child.state)];
+		const completed = liveUnits.filter((unit) => unit.state === "completed" || unit.state === "accepted").length
 			+ children.reduce((sum, child) => sum + child.completed, 0);
-		const total = ownUnits.length + children.reduce((sum, child) => sum + child.total, 0);
+		const total = liveUnits.length + children.reduce((sum, child) => sum + child.total, 0);
 		const durationMs = sumDuration([...ownUnits.map((unit) => unit.durationMs), ...children.map((child) => child.durationMs)]);
 		const usage = sumUsage([...ownUnits.map((unit) => unit.usage), ...children.map((child) => child.usage)]);
 		const artifacts = uniqueArtifacts([...ownUnits.flatMap((unit) => unit.artifacts), ...children.flatMap((child) => child.artifacts)]);

@@ -1,6 +1,9 @@
-name: Release
+name: Alpha Release
 
 on:
+  push:
+    tags:
+      - v*-alpha.*
   workflow_dispatch:
 
 permissions:
@@ -14,15 +17,18 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: npm-publish
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version: 22.19.0
           registry-url: https://registry.npmjs.org
-      - name: Install devDependencies
-        run: npm ci --ignore-scripts
-      - name: Run tests
-        run: npm run test:all
-      - name: Publish to npm
-        run: npm publish --provenance
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run test:all
+      - run: npm run smoke:pack
+      - name: Verify tag matches package version
+        shell: bash
+        run: test "${GITHUB_REF_NAME}" = "v$(node -p "require('./package.json').version")"
+      - run: npm publish --provenance --tag alpha

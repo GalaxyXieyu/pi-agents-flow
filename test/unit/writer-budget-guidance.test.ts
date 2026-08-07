@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
-const readProjectFile = (file: string): string => readFileSync(join(process.cwd(), file), "utf-8");
+const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const readProjectFile = (file: string): string => readFileSync(join(packageRoot, file), "utf-8");
 
 describe("writer budget guidance", () => {
 	it("keeps hard turn and tool caps off mutation-capable workers", () => {
