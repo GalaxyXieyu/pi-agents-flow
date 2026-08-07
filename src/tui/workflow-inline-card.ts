@@ -22,6 +22,8 @@ export interface WorkflowInlineCardInput {
 	status: "active" | "completed" | "failed" | "paused" | "cancelled" | "stopped";
 	tasks: TaskActivity[];
 	frame?: number;
+	createdAt?: number;
+	updatedAt?: number;
 }
 
 interface AggregateCounts {
@@ -125,6 +127,13 @@ export function renderWorkflowInlineCard(input: WorkflowInlineCardInput, theme: 
 		const overflow = tasks.length - visibleTasks.length;
 		if (overflow > 0) lines.push(theme.fg("dim", `  … +${overflow}`));
 	}
+	// Duration footer (right-aligned)
+	const durationMs = getDurationMs(input.createdAt, input.updatedAt, status);
+	if (durationMs !== undefined) {
+		const durationText = formatDuration(durationMs);
+		const padded = durationText.padStart(width);
+		lines.push(theme.fg("dim", padded));
+	}
 	return lines;
 }
 
@@ -137,4 +146,20 @@ function statusColorFor(status: WorkflowInlineCardInput["status"]): "success" | 
 		case "paused": return "warning";
 		default: return "dim";
 	}
+}
+
+function formatDuration(ms: number): string {
+	const totalSeconds = Math.floor(ms / 1000);
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	const seconds = totalSeconds % 60;
+	if (hours > 0) return `${hours}h${minutes > 0 ? `${minutes}m` : ""}`;
+	if (minutes > 0) return `${minutes}m${seconds > 0 ? `${seconds}s` : ""}`;
+	return `${seconds}s`;
+}
+
+function getDurationMs(createdAt?: number, updatedAt?: number, status?: string): number | undefined {
+	if (!createdAt) return undefined;
+	const endTime = (status === "active" || status === "paused") ? Date.now() : (updatedAt ?? Date.now());
+	return Math.max(0, endTime - createdAt);
 }

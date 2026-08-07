@@ -159,3 +159,53 @@ test("shows failure details in expanded mode", () => {
 	assert.match(failedLine, /×2/, "should show attempt count");
 	assert.match(failedLine, /timeout/, "should show error message");
 });
+
+test("shows duration footer when createdAt is provided", () => {
+	const now = Date.now();
+	const input: WorkflowInlineCardInput = {
+		runId: "duration-run-001",
+		language: "zh",
+		status: "active",
+		tasks: [makeTask({ id: "t1", label: "调研", state: "running" })],
+		createdAt: now - 45000,
+	};
+	const lines = renderWorkflowInlineCard(input, theme as never, 120);
+	// Last line should contain duration in right-aligned dim text
+	const lastLine = lines[lines.length - 1];
+	assert.match(lastLine, /45s/, "should show elapsed time");
+});
+
+test("formats duration correctly for minutes and hours", () => {
+	const now = Date.now();
+	const input1: WorkflowInlineCardInput = {
+		runId: "duration-run-002",
+		language: "en",
+		status: "completed",
+		tasks: [],
+		createdAt: now - 125000,
+		updatedAt: now,
+	};
+	const lines1 = renderWorkflowInlineCard(input1, theme as never, 120);
+	assert.match(lines1[lines1.length - 1], /2m5s/, "should format as minutes+seconds");
+
+	const input2: WorkflowInlineCardInput = {
+		...input1,
+		createdAt: now - 7320000,
+		updatedAt: now,
+	};
+	const lines2 = renderWorkflowInlineCard(input2, theme as never, 120);
+	assert.match(lines2[lines2.length - 1], /2h2m/, "should format as hours+minutes");
+});
+
+test("hides duration footer when createdAt is not provided", () => {
+	const input: WorkflowInlineCardInput = {
+		runId: "no-duration-run",
+		language: "en",
+		status: "active",
+		tasks: [makeTask({ id: "t1", label: "Research", state: "running" })],
+	};
+	const lines = renderWorkflowInlineCard(input, theme as never, 120);
+	const lastLine = lines[lines.length - 1];
+	// Last line should be the task row, not a duration
+	assert.match(lastLine, /Research/, "should end with task row, not duration");
+});

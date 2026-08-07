@@ -592,7 +592,7 @@ export function registerWorkflowAssetsTool(pi: ExtensionAPI): void {
 function renderWorkflowInlineCardFromRun(run: WorkflowRun, theme: Theme, frame?: number, expanded = false): import("@earendil-works/pi-tui").Component {
 	const c = new Container();
 	const lines = renderWorkflowInlineCard(
-		{ runId: run.id, goal: run.goal, language: run.language, status: run.status, tasks: aggregateTasksFromRun(run), frame } as WorkflowInlineCardInput,
+		{ runId: run.id, goal: run.goal, language: run.language, status: run.status, tasks: aggregateTasksFromRun(run), frame, createdAt: run.createdAt, updatedAt: run.updatedAt } as WorkflowInlineCardInput,
 		theme,
 		process.stdout.columns || 120,
 		expanded,
