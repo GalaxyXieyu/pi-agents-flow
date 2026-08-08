@@ -5,7 +5,7 @@ import { writeAtomicJson } from "../shared/atomic-json.ts";
 import { createLocalWorkflowArtifactStore } from "./artifact-store.ts";
 import { hydrateWorkflowResult } from "./output-ports.ts";
 import { reduceWorkflowEvent, reduceWorkflowEvents } from "./reducer.ts";
-import { resolveWorkflowMaxNodeAttempts } from "./retry-policy.ts";
+import { resolveWorkflowMaxNodeAttempts, resolveWorkflowMaxNodes } from "./retry-policy.ts";
 import type { WorkflowPolicy } from "./policy.ts";
 import type { WorkflowLanguage } from "./language.ts";
 import type { WorkflowEvent, WorkflowMode, WorkflowRun } from "./types.ts";
@@ -35,6 +35,7 @@ export interface CreateWorkflowInput {
 	at?: number;
 	policy?: WorkflowPolicy;
 	maxNodeAttempts?: number;
+	maxNodes?: number;
 }
 
 export interface WorkflowStore {
@@ -135,6 +136,7 @@ export function createWorkflowStore(options: CreateWorkflowStoreOptions): Workfl
 				...(input.policy ? { policy: input.policy } : {}),
 				...(input.codingContract ? { codingContract: input.codingContract } : {}),
 				maxNodeAttempts: resolveWorkflowMaxNodeAttempts(input.maxNodeAttempts),
+				...(input.maxNodes !== undefined ? { maxNodes: resolveWorkflowMaxNodes(input.maxNodes) } : {}),
 			};
 			const run = reduceWorkflowEvent(undefined, event);
 			appendEvent(paths.events, event);

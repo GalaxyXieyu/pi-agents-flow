@@ -17,7 +17,7 @@ import type {
 import { assertWorkflowDataContract } from "./data-contract.ts";
 import { WORKFLOW_PORT_NAME_PATTERN, workflowProfileForKind } from "./plan-rules.ts";
 import { resolveWorkflowPolicy, type WorkflowPolicy } from "./policy.ts";
-import { MAX_WORKFLOW_MAX_NODE_ATTEMPTS } from "./retry-policy.ts";
+import { MAX_WORKFLOW_MAX_NODE_ATTEMPTS, MAX_WORKFLOW_MAX_NODES } from "./retry-policy.ts";
 import type { DocumentOutline, EphemeralAgentSpec, ResearchBrief, WorkflowClarificationOption, WorkflowClarificationQuestion, WorkflowDataContract, WorkflowNodeKind, WorkflowTaskPlan, WorkflowWorkUnitPlan } from "./types.ts";
 
 const MAX_NODE_TOOL_ENTRIES = 64;
@@ -196,6 +196,7 @@ const WorkflowParams = Type.Object({
 	mode: Type.Optional(Type.String({ enum: ["general", "deep-research"], description: "Workflow policy mode for action=start." })),
 	language: Type.Optional(Type.String({ enum: ["auto", "zh", "en"], description: "Workflow UI/output language for action=start. Auto detects from the goal." })),
 	policy: Type.Optional(Type.Object({}, { additionalProperties: true, description: "Optional gate/evidence/quality policy overrides for action=start." })),
+	maxNodes: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_WORKFLOW_MAX_NODES, description: "Hard cumulative work-unit budget for the workflow (default 64)." })),
 	goal: Type.Optional(Type.String({ description: "User goal for action=start." })),
 	questions: Type.Optional(Type.Array(ClarificationQuestionParams, { minItems: 1, maxItems: 5 })),
 	brief: Type.Optional(ResearchBriefParams),
@@ -441,6 +442,7 @@ export function parseWorkflowActionParams(value: unknown): WorkflowActionParams 
 				...(mode ? { mode } : {}),
 				...(value.language === "auto" || value.language === "zh" || value.language === "en" ? { language: value.language } : {}),
 				...(policy ? { policy } : {}),
+				...(typeof value.maxNodes === "number" ? { maxNodes: value.maxNodes } : {}),
 			};
 		}
 		case "set_brief":

@@ -31,6 +31,10 @@ The Reviewer checks:
 
 The Reviewer may fetch a registered citation to validate it but cannot introduce a new claim. Repair the smallest failing section or editor responsibility, then review again while budget remains. If a release-critical gate still fails when the repair budget is exhausted, stop and report the unresolved blocker rather than silently delivering.
 
+### Reviewer release
+
+The Reviewer may declare residual gaps, conflicts, or citation/length shortfalls acceptable for the target deliverable by returning `extensions.release = { release: true, gapsAccepted?, conflictsAccepted?, citationShortfallAccepted?, lengthShortfallAccepted?, rationale }`. When present, the corresponding completion gates release so the supervisor is not forced to manually record a decision per outstanding item. Be conservative: only release a gate you have independently concluded does not undermine the deliverable. Do not use release to bypass a blocker that actually requires repair.
+
 ## Do not damage prose to satisfy a gate
 
 Outline and section coverage are satisfied by covering each section's reader questions and content, not by cosmetic marker matching. Never inject chapter-number or section-id markers (for example "本章编号 S3", "S1-S8") into headings or body sentences to make a heading string match an approved outline title. If a heading must align with the approved outline, edit the heading text itself; do not relocate labels into the prose. A gate that can only be passed by making the document uglier is a signal to fix the outline or the gate mapping, not the prose. Report an unresolvable gate as a blocker rather than satisfying it with scaffolding. This applies to every repair node, including a final repair pass.

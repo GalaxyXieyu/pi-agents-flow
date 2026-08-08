@@ -1,6 +1,6 @@
 import { DEEP_RESEARCH_BASE_AGENT_BY_KIND } from "./plan-rules.ts";
 import { resolveWorkflowPolicy } from "./policy.ts";
-import { resolveWorkflowMaxNodeAttempts, workflowNodeAttemptsExhausted } from "./retry-policy.ts";
+import { resolveWorkflowMaxNodeAttempts, workflowNodeAttemptsExhausted, resolveWorkflowMaxNodes } from "./retry-policy.ts";
 import { assertWorkflowDataContract, assertWorkflowDataFlow } from "./data-contract.ts";
 import { dependencyIsAccepted } from "./effective-nodes.ts";
 import { resolveWorkflowLanguage } from "./language.ts";
@@ -187,6 +187,12 @@ function applyPlan(run: WorkflowRun, tasks: Record<string, WorkflowTaskPlan>, pl
 	assertWorkflowDataFlow([...Object.values(run.nodes), ...plans]);
 	const next = { ...run.nodes };
 	const seen = new Set<string>();
+	const existingNodeIds = new Set(Object.keys(next));
+	const addedCount = plans.filter((plan) => !existingNodeIds.has(plan.id)).length;
+	const maxNodes = resolveWorkflowMaxNodes(run.maxNodes);
+	if (existingNodeIds.size + addedCount > maxNodes) {
+		throw new Error(`Workflow work-unit budget exceeded: ${existingNodeIds.size} existing + ${addedCount} new exceeds the ${maxNodes}-node cap. Reject or supersede obsolete nodes before adding more, or start a new workflow.`);
+	}
 	for (const plan of plans) {
 		assertNonBlank(plan.id, "workUnit.id");
 		assertNonBlank(plan.label, `work unit '${plan.id}' label`);
@@ -283,6 +289,7 @@ export function reduceWorkflowEvent(run: WorkflowRun | undefined, event: Workflo
 			decisions: [],
 			policy: resolveWorkflowPolicy(event.mode, event.policy),
 			maxNodeAttempts: resolveWorkflowMaxNodeAttempts(event.maxNodeAttempts),
+			maxNodes: resolveWorkflowMaxNodes(event.maxNodes),
 			appliedEventIds: [event.id],
 			...(event.codingContract ? { codingContract: event.codingContract } : {}),
 		};

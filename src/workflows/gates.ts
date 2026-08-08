@@ -1,8 +1,8 @@
-import { effectiveAcceptedNodes, isAdjudicatedStatus } from "./effective-nodes.ts";
+import { effectiveAcceptedNodes, isAdjudicatedStatus, acceptedReviewerRelease } from "./effective-nodes.ts";
 import { policyAllowsCompletion, resolveWorkflowPolicy, type WorkflowPolicy } from "./policy.ts";
 import { resolveWorkflowMaxNodeAttempts, workflowNodeAttemptsExhausted } from "./retry-policy.ts";
 import { normalizeWorkflowText } from "./text-normalize.ts";
-import type { WorkflowNodeKind, WorkflowRun } from "./types.ts";
+import type { WorkflowNodeKind, WorkflowReviewerRelease, WorkflowRun } from "./types.ts";
 
 export interface WorkflowEvaluation {
 	totalNodes: number;
@@ -26,6 +26,8 @@ export interface WorkflowEvaluation {
 	finalEditorCoversOutline: boolean;
 	reviewedFinalEditor: boolean;
 	readyToComplete: boolean;
+	/** Reviewer release declaration, if any, which releases specific completion gates. */
+	reviewerRelease?: WorkflowReviewerRelease;
 	policy: WorkflowPolicy;
 	nextAction: "apply_plan" | "run_ready" | "wait_for_subagents" | "evaluate_results" | "resolve_failures" | "complete";
 }
@@ -81,7 +83,20 @@ export function evaluateWorkflow(run: WorkflowRun, policyOverride?: WorkflowPoli
 	});
 	const editorialChainReady = (!policy.gates.requireEditor || finalEditorCoversOutline)
 		&& (!policy.gates.requireReviewer || (policy.gates.requireEditor ? reviewedFinalEditor : acceptedKinds.includes("reviewer")));
-	const readyToComplete = policyReady && editorialChainReady;
+	const reviewerRelease = acceptedReviewerRelease(run);
+	const readyToComplete = policyAllowsCompletion({
+		mode: run.mode,
+		policy,
+		acceptedResearchLanes,
+		acceptedSectionWriters,
+		acceptedKinds,
+		hasBrief: Boolean(run.researchBrief),
+		hasOutline: Boolean(run.documentOutline),
+		unresolvedGaps: gaps,
+		unresolvedConflicts: conflicts,
+		allAdjudicated,
+		reviewerRelease,
+	}) && editorialChainReady;
 	const nextAction = ready > 0
 		? "run_ready" as const
 		: completedAwaitingDecision > 0
@@ -114,6 +129,7 @@ export function evaluateWorkflow(run: WorkflowRun, policyOverride?: WorkflowPoli
 		...(finalEditorNodeId ? { finalEditorNodeId } : {}),
 		finalEditorCoversOutline,
 		reviewedFinalEditor,
+		...(reviewerRelease ? { reviewerRelease } : {}),
 		readyToComplete,
 		policy,
 		nextAction,

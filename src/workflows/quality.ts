@@ -1,11 +1,11 @@
 import { benchmarkResearchLanes, type SearchQualityBenchmarkResult } from "./benchmark.ts";
 import { evaluateWorkflow } from "./gates.ts";
-import { effectiveAcceptedResultNodes } from "./effective-nodes.ts";
+import { effectiveAcceptedResultNodes, acceptedReviewerRelease } from "./effective-nodes.ts";
 import { canonicalEvidenceUrl, canonicalFetchedUrl, claimSimilarity, evidenceRequiresWebFetch, findingHasCitation } from "./evidence.ts";
 import { buildWorkflowRepairGuidance } from "./guidance.ts";
 import { resolveWorkflowPolicy, type WorkflowPolicy } from "./policy.ts";
 import { normalizeWorkflowText } from "./text-normalize.ts";
-import type { WorkflowArtifactDescriptor, WorkflowRun } from "./types.ts";
+import type { WorkflowArtifactDescriptor, WorkflowReviewerRelease, WorkflowRun } from "./types.ts";
 
 export interface WorkflowQualityMetrics {
 	claimCitationCoverage: number;
@@ -39,6 +39,8 @@ export interface WorkflowQualityReport {
 	warnings: string[];
 	searchBenchmark?: SearchQualityBenchmarkResult;
 	recommendedFollowUpQueries?: string[];
+	/** Present when an accepted reviewer declared a release that relaxed specific gates. */
+	reviewerRelease?: WorkflowReviewerRelease;
 }
 
 function percent(value: number): string {
@@ -52,6 +54,16 @@ export function formatWorkflowQualityReport(report: WorkflowQualityReport, repor
 	];
 	if (report.blockers.length > 0) lines.push("", "Blockers:", ...report.blockers.map((blocker) => `- ${blocker}`));
 	if (report.warnings.length > 0) lines.push("", "Warnings:", ...report.warnings.map((warning) => `- ${warning}`));
+	if (report.reviewerRelease) {
+		const r = report.reviewerRelease;
+		const released = [
+			r.gapsAccepted ? "gaps" : undefined,
+			r.conflictsAccepted ? "conflicts" : undefined,
+			r.citationShortfallAccepted ? "citation-shortfall" : undefined,
+			r.lengthShortfallAccepted ? "length-shortfall" : undefined,
+		].filter((value): value is string => Boolean(value));
+		lines.push("", `Reviewer release: ${released.length ? released.join(", ") : "overall"}${r.rationale ? ` — ${r.rationale}` : ""}`);
+	}
 	lines.push(
 		"",
 		"Coverage:",
@@ -125,6 +137,11 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 	const researchNodes = accepted.filter((node) => node.kind === "research");
 	const writerNodes = accepted.filter((node) => node.kind === "section-writer" || node.kind === "writer" || node.kind === "editor");
 	const evaluation = evaluateWorkflow(run, policy);
+	const reviewerRelease = acceptedReviewerRelease(run);
+	const gapsReleased = reviewerRelease?.gapsAccepted === true;
+	const conflictsReleased = reviewerRelease?.conflictsAccepted === true;
+	const citationReleased = reviewerRelease?.citationShortfallAccepted === true;
+	const lengthReleased = reviewerRelease?.lengthShortfallAccepted === true;
 	const editorNode = evaluation.finalEditorNodeId ? accepted.find((node) => node.id === evaluation.finalEditorNodeId) : undefined;
 	const legacyWriterNode = accepted.filter((node) => node.kind === "writer").at(-1);
 	const editorResolvedOutput = editorNode?.outputs?.document;
@@ -243,10 +260,10 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 	if (metrics.sectionWriterCoverage < policy.quality.minSectionWriterCoverage) {
 		blockers.push(`Section Writer coverage ${metrics.sectionWriterCoverage.toFixed(2)} is below policy minimum ${policy.quality.minSectionWriterCoverage}.`);
 	}
-	if (metrics.finalCitationCoverage < policy.quality.minFinalCitationCoverage) {
+	if (!citationReleased && metrics.finalCitationCoverage < policy.quality.minFinalCitationCoverage) {
 		blockers.push(`Final document citation coverage ${metrics.finalCitationCoverage.toFixed(2)} is below policy minimum ${policy.quality.minFinalCitationCoverage}.`);
 	}
-	if (metrics.finalDocumentLengthRatio < policy.quality.minFinalDocumentLengthRatio) {
+	if (!lengthReleased && metrics.finalDocumentLengthRatio < policy.quality.minFinalDocumentLengthRatio) {
 		blockers.push(`Final document length ${finalDocumentUnits} is below the research brief minimum ${minimumDocumentUnits}.`);
 	}
 	if (metrics.unsupportedFinalCitationRate > policy.quality.maxUnsupportedFinalCitationRate) {
@@ -255,10 +272,10 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 	if (metrics.delegationProvenanceCoverage < policy.quality.minDelegationProvenanceCoverage) {
 		blockers.push(`Delegation provenance coverage ${metrics.delegationProvenanceCoverage.toFixed(2)} is below policy minimum ${policy.quality.minDelegationProvenanceCoverage}.`);
 	}
-	if (metrics.unresolvedGaps > policy.gates.maxUnresolvedGaps) {
+	if (!gapsReleased && metrics.unresolvedGaps > policy.gates.maxUnresolvedGaps) {
 		blockers.push(`${metrics.unresolvedGaps} evidence gap(s) remain unresolved (policy max ${policy.gates.maxUnresolvedGaps}).`);
 	}
-	if (metrics.unresolvedConflicts > policy.gates.maxUnresolvedConflicts) {
+	if (!conflictsReleased && metrics.unresolvedConflicts > policy.gates.maxUnresolvedConflicts) {
 		blockers.push(`${metrics.unresolvedConflicts} evidence conflict(s) remain unresolved (policy max ${policy.gates.maxUnresolvedConflicts}).`);
 	}
 	const warnings: string[] = [];
@@ -301,6 +318,7 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 		metrics,
 		blockers,
 		warnings,
+		...(reviewerRelease ? { reviewerRelease } : {}),
 		...(searchBenchmark ? { searchBenchmark } : {}),
 		...(followUps.length > 0 ? { recommendedFollowUpQueries: followUps } : {}),
 	};

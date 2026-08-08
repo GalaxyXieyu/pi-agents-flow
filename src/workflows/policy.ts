@@ -203,13 +203,17 @@ export function policyAllowsCompletion(input: {
 	unresolvedGaps: number;
 	unresolvedConflicts: number;
 	allAdjudicated: boolean;
+	/** Reviewer may release residual gaps/conflicts so they do not block completion. */
+	reviewerRelease?: { gapsAccepted?: boolean; conflictsAccepted?: boolean };
 }): boolean {
 	if (!input.allAdjudicated) return false;
 	const { gates } = input.policy;
 	if (input.acceptedResearchLanes < gates.minAcceptedResearchLanes) return false;
 	if (input.acceptedSectionWriters < gates.minAcceptedSectionWriters) return false;
-	if (input.unresolvedGaps > gates.maxUnresolvedGaps) return false;
-	if (input.unresolvedConflicts > gates.maxUnresolvedConflicts) return false;
+	const gapsReleased = input.reviewerRelease?.gapsAccepted === true;
+	const conflictsReleased = input.reviewerRelease?.conflictsAccepted === true;
+	if (!gapsReleased && input.unresolvedGaps > gates.maxUnresolvedGaps) return false;
+	if (!conflictsReleased && input.unresolvedConflicts > gates.maxUnresolvedConflicts) return false;
 	if (gates.requireBrief && !input.hasBrief) return false;
 	if (gates.requireOutline && !input.hasOutline) return false;
 	if (gates.requireWriter && !input.acceptedKinds.includes("writer")) return false;

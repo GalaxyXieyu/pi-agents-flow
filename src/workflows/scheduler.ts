@@ -207,7 +207,7 @@ function withWorkflowContext(store: WorkflowStore, run: WorkflowRun, node: Workf
 				]
 			: []),
 		...(node.kind === "editor" ? ["Act as lead editor. Merge only the authorized direct-dependency inputs into one complete document."] : []),
-		...(node.kind === "reviewer" ? ["Review only the authorized final editor input. Do not broaden the research scope or call web/search tools by default."] : []),
+		...(node.kind === "reviewer" ? ["Review only the authorized final editor input. Do not broaden the research scope or call web/search tools by default.", "If you judge the final document ready despite residual gaps, conflicts, or citation/length shortfalls, return extensions.release={release:true, gapsAccepted?, conflictsAccepted?, citationShortfallAccepted?, lengthShortfallAccepted?, rationale} to release those specific completion gates. Be conservative: only release a gate when you have independently concluded the residual issue does not undermine the deliverable."] : []),
 		...qualityContract,
 	].join("\n\n");
 	const attemptId = node.attempts.at(-1)?.attemptId ?? `${node.id}:pending`;

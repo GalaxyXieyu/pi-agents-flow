@@ -465,4 +465,51 @@ describe("workflow reducer", () => {
 		assert.equal(completed?.structuredOutputPath, "/tmp/output.json");
 		assert.equal(completed?.metadataPath, "/tmp/meta.json");
 	});
+
+	it("enforces the cumulative work-unit budget and rejects over-budget apply_plan", () => {
+		const budgetStarted: WorkflowEvent = {
+			id: "event-budget-start",
+			type: "workflow.started",
+			at: 1,
+			runId: "workflow-budget",
+			mode: "deep-research",
+			goal: "Budget test",
+			cwd: "/repo",
+			sessionId: "session-1",
+			branch: "main",
+			maxNodes: 2,
+		};
+		const budgetRun = reduceWorkflowEvents([budgetStarted]);
+		const first = reduceWorkflowEvent(budgetRun, {
+			id: "event-2",
+			type: "workflow.plan_applied",
+			at: 2,
+			tasks: [{ id: "task-research", label: "Research", order: 0 }],
+			workUnits: [
+				{ id: "research-a", taskId: "task-research", kind: "research", label: "a", order: 0, dependsOn: [], agentSpec: agentSpec("agent-a", "researcher"), dataContract: researchContract() },
+				{ id: "research-b", taskId: "task-research", kind: "research", label: "b", order: 1, dependsOn: [], agentSpec: agentSpec("agent-b", "researcher"), dataContract: researchContract() },
+			],
+		});
+		assert.equal(Object.keys(first.nodes).length, 2);
+		assert.throws(() => reduceWorkflowEvent(first, {
+			id: "event-3",
+			type: "workflow.plan_applied",
+			at: 3,
+			tasks: [{ id: "task-repair", label: "Repair", order: 1 }],
+			workUnits: [
+				{ id: "research-c", taskId: "task-repair", kind: "research", label: "c", order: 0, dependsOn: [], agentSpec: agentSpec("agent-c", "researcher"), dataContract: researchContract() },
+			],
+		}), /budget exceeded/);
+		// Replacing an existing node (same id) does not grow the budget.
+		const replaced = reduceWorkflowEvent(first, {
+			id: "event-4",
+			type: "workflow.plan_applied",
+			at: 4,
+			tasks: [{ id: "task-repair", label: "Repair", order: 1 }],
+			workUnits: [
+				{ id: "research-a", taskId: "task-repair", kind: "research", label: "a2", order: 0, dependsOn: [], agentSpec: agentSpec("agent-a2", "researcher"), dataContract: researchContract() },
+			],
+		});
+		assert.equal(Object.keys(replaced.nodes).length, 2);
+	});
 });

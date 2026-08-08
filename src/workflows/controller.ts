@@ -590,6 +590,7 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 					...(policy ? { policy } : {}),
 					...(codingContract ? { codingContract } : {}),
 					maxNodeAttempts,
+					...(params.maxNodes !== undefined ? { maxNodes: params.maxNodes } : {}),
 				});
 				persistBinding(run);
 				const evaluation = evaluateWorkflow(run);

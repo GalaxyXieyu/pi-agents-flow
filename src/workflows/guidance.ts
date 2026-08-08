@@ -1,5 +1,5 @@
 import { benchmarkResearchLanes, type SearchQualityBenchmarkResult } from "./benchmark.ts";
-import { effectiveAcceptedResultNodes } from "./effective-nodes.ts";
+import { effectiveAcceptedResultNodes, acceptedReviewerRelease } from "./effective-nodes.ts";
 import { suggestFollowUpQueries } from "./evidence.ts";
 import { normalizeWorkflowText } from "./text-normalize.ts";
 import type { WorkflowEvaluation } from "./gates.ts";
@@ -230,6 +230,21 @@ export function buildWorkflowRepairGuidance(
 				promptHints: followUpQueries.filter((query) => query.toLowerCase().includes(gap.question.toLowerCase().slice(0, 24)) || query.includes("primary source")).slice(0, 3),
 			});
 		}
+	}
+	const reviewerRelease = acceptedReviewerRelease(run);
+	if (reviewerRelease) {
+		const released = [
+			reviewerRelease.gapsAccepted ? "gaps" : undefined,
+			reviewerRelease.conflictsAccepted ? "conflicts" : undefined,
+			reviewerRelease.citationShortfallAccepted ? "citation-shortfall" : undefined,
+			reviewerRelease.lengthShortfallAccepted ? "length-shortfall" : undefined,
+		].filter((value): value is string => Boolean(value));
+		actions.push({
+			kind: "complete",
+			priority: 20,
+			reason: `Accepted Reviewer declared release${released.length ? ` of ${released.join(", ")}` : ""}; the corresponding gates are relaxed.`,
+			target: run.id,
+		});
 	}
 	if (evaluation.readyToComplete) {
 		actions.push({

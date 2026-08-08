@@ -313,6 +313,20 @@ export interface WorkflowNode extends WorkflowWorkUnitPlan {
 	maxAttempts?: number;
 }
 
+export interface WorkflowReviewerRelease {
+	/** Overall: the reviewer approves release of the final document. */
+	release: boolean;
+	/** Reviewer accepts the remaining unresolved evidence gaps. */
+	gapsAccepted?: boolean;
+	/** Reviewer accepts the remaining unresolved conflicts. */
+	conflictsAccepted?: boolean;
+	/** Reviewer accepts the final-citation coverage shortfall. */
+	citationShortfallAccepted?: boolean;
+	/** Reviewer accepts the final-document length shortfall. */
+	lengthShortfallAccepted?: boolean;
+	rationale?: string;
+}
+
 export interface WorkflowDecision {
 	id: string;
 	kind: "accepted_uncertainty" | "gap_resolution" | "conflict_resolution";
@@ -352,6 +366,11 @@ export interface WorkflowRun {
 	codingContract?: CodingWorkflowContract;
 	/** Persisted node-attempt ceiling resolved when this workflow started. Legacy fixtures may omit it. */
 	maxNodeAttempts?: number;
+	/**
+	 * Hard cumulative cap on work units that may ever be added via apply_plan.
+	 * Prevents unbounded repair/adjudication node growth from burning budget.
+	 */
+	maxNodes?: number;
 	/** Persisted Deep Research user-intent contract. */
 	researchBrief?: ResearchBrief;
 	/** Durable answers collected through the native Pi human-in-the-loop dialogs. */
@@ -382,6 +401,7 @@ export type WorkflowEvent =
 		policy?: WorkflowPolicy;
 		codingContract?: CodingWorkflowContract;
 		maxNodeAttempts?: number;
+		maxNodes?: number;
 	})
 	| (WorkflowEventBase & { type: "workflow.plan_applied"; tasks: WorkflowTaskPlan[]; workUnits: WorkflowWorkUnitPlan[] })
 	| (WorkflowEventBase & { type: "workflow.clarification_recorded"; round: WorkflowClarificationRound })

@@ -353,6 +353,24 @@ describe("workflow quality benchmark", () => {
 		assert.ok(report.blockers.some((blocker) => blocker.toLowerCase().includes("length")));
 	});
 
+	it("releases citation and length shortfalls when the Reviewer declares acceptance", () => {
+		const research = [validResearchNode("architecture"), validResearchNode("safety"), validResearchNode("recovery")];
+		const documents = documentNodes(research);
+		// Short editor draft: fails length and citation-density gates but keeps outline headings.
+		const editor = documents.find((node) => node.kind === "editor")!;
+		editor.result = { ...editor.result!, summary: { text: "# Research report\n\n## Background\n\nShort background.\n\n## Technical Details\n\nShort details.", covers: [], omissions: [], confidence: "high" }, outputs: { document: { kind: "value", value: "# Research report\n\n## Background\n\nShort background.\n\n## Technical Details\n\nShort details." } } };
+		// Reviewer declares it accepts the shortfalls.
+		const reviewer = documents.find((node) => node.kind === "reviewer")!;
+		reviewer.result = {
+			...reviewer.result!,
+			extensions: { release: { release: true, citationShortfallAccepted: true, lengthShortfallAccepted: true, rationale: "Short, focused deliverable is acceptable." } },
+		};
+		const blocked = assessWorkflowQuality(run([...research, ...documents]));
+		assert.equal(blocked.releaseReady, true, blocked.blockers.join("\n"));
+		assert.equal(blocked.reviewerRelease?.citationShortfallAccepted, true);
+		assert.match(formatWorkflowQualityReport(blocked), /Reviewer release: citation-shortfall, length-shortfall/);
+	});
+
 	it("formats a release-oriented human quality summary", () => {
 		const report = assessWorkflowQuality(run([
 			acceptedNode("unsupported", "research", envelope([{ claim: "unsupported", confidence: "low", evidence: [{ title: "snippet" }] }])),

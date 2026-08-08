@@ -170,4 +170,61 @@ describe("workflow completion gates", () => {
 		assert.equal(evaluation.readyToComplete, false);
 		assert.equal(evaluation.nextAction, "apply_plan");
 	});
+
+	it("releases unresolved gap/conflict gates when the final Reviewer declares acceptance", () => {
+		const nodes = [
+			node("research-a", "research", "accepted"),
+			node("research-b", "research", "accepted"),
+			node("research-c", "research", "accepted"),
+			node("section-a", "section-writer", "accepted"),
+			node("section-b", "section-writer", "accepted"),
+			node("editor", "editor", "accepted", ["section-a", "section-b"]),
+		];
+		const reviewer = node("reviewer", "reviewer", "accepted", ["editor"]);
+		reviewer.result = {
+			version: 1,
+			summary: { text: "Review", covers: [], omissions: [], confidence: "high" },
+			outputs: {},
+			diagnostics: { gaps: [{ question: "g", reason: "r" }], conflicts: [{ statement: "c", alternatives: [], evidence: [] }], warnings: [] },
+			recommendations: [],
+			extensions: { release: { release: true, gapsAccepted: true, conflictsAccepted: true, rationale: "Residual issues do not undermine the deliverable." } },
+		};
+		nodes.push(reviewer);
+		const run: WorkflowRun = {
+			version: 0,
+			id: "workflow-reviewer-release",
+			mode: "deep-research",
+			goal: "Research",
+			cwd: "/repo",
+			sessionId: "session-1",
+			branch: "main",
+			status: "active",
+			revision: 1,
+			createdAt: 1,
+			updatedAt: 1,
+			researchBrief: {
+				version: 0, audience: "Engineers", purpose: "Support a decision", scope: "Architecture", depth: "deep", deliverable: "research-report",
+				targetWords: { min: 1000, max: 2000 }, requiredTopics: [], excludedTopics: [], constraints: [], assumptions: [], clarification: "confirmed",
+			},
+			documentOutline: {
+				version: 0, title: "Report", thesis: "Evidence supports.", approval: "user",
+				sections: [
+					{ id: "a", title: "Background", objective: "Explain context", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeId: "section-a" },
+					{ id: "b", title: "Technical details", objective: "Explain mechanism", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeId: "section-b" },
+				],
+			},
+			nodes: Object.fromEntries(nodes.map((entry) => [entry.id, entry])),
+			decisions: [],
+			appliedEventIds: ["started"],
+		};
+		// Sanity: without release, the residual gap blocks completion.
+		const withoutRelease = structuredClone(run);
+		delete withoutRelease.nodes.reviewer!.result!.extensions;
+		assert.equal(evaluateWorkflow(withoutRelease).readyToComplete, false);
+		// Reviewer release unbocks completion.
+		const evaluation = evaluateWorkflow(run);
+		assert.equal(evaluation.reviewerRelease?.gapsAccepted, true);
+		assert.equal(evaluation.readyToComplete, true);
+		assert.equal(evaluation.nextAction, "complete");
+	});
 });

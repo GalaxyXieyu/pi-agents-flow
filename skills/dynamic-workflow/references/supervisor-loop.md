@@ -13,7 +13,7 @@
    - reject it with a concrete defect;
    - add a targeted verifier or repair node.
 	For failed/cancelled nodes, either fix the cause and call `run_ready` to retry the same node, or reject the obsolete node and its unused dependants before adding a replacement.
-9. Repeat execution and evaluation until synthesis gates are satisfied. Extend the graph only when a completed result reveals a named gap, conflict, failure, release gate, or other topology decision that was not knowable before execution.
+9. Repeat execution and evaluation until synthesis gates are satisfied. Extend the graph only when a completed result reveals a named gap, conflict, failure, release gate, or other topology decision that was not knowable before execution. `workflow.start` enforces a cumulative work-unit budget (`maxNodes`, default 64): once the run exceeds it, `apply_plan` rejects further nodes so the supervisor must reject/supersede obsolete nodes or start a new run instead of growing a repair loop forever.
 10. Run one Writer against accepted material, then one Reviewer against the draft and registered evidence.
 11. Accept the Writer and Reviewer only when their respective gates pass. Call `workflow.complete` with the final Markdown.
 
