@@ -382,4 +382,53 @@ describe("workflow quality benchmark", () => {
 		assert.match(text, /citations/);
 		assert.match(text, /quality-report\.json/);
 	});
+
+	it("accepted_uncertainty decisions count toward conflict resolution", () => {
+		const research = validResearchNode("r1");
+		const r1Result = research.result!;
+		r1Result.diagnostics.conflicts = [
+			{ statement: "ambiguous fact A", alternatives: ["alt1", "alt2"], evidence: [] },
+			{ statement: "ambiguous fact B", alternatives: ["alt1", "alt2"], evidence: [] },
+		];
+		const nodes = [
+			research,
+			...documentNodes([research]),
+		];
+		// Without decisions: 2 unresolved conflicts.
+		const withoutDecisions = assessWorkflowQuality(run(nodes, []));
+		assert.equal(withoutDecisions.metrics.unresolvedConflicts, 2);
+		// With accepted_uncertainty for one conflict: should resolve it.
+		const withDecision = assessWorkflowQuality(run(nodes, [
+			{ id: "d1", kind: "accepted_uncertainty", target: "ambiguous fact A", rationale: "cannot verify", at: 10 },
+		]));
+		assert.equal(withDecision.metrics.unresolvedConflicts, 1);
+		// With conflict_resolution for the other: should resolve it too.
+		const withBoth = assessWorkflowQuality(run(nodes, [
+			{ id: "d1", kind: "accepted_uncertainty", target: "ambiguous fact A", rationale: "cannot verify", at: 10 },
+			{ id: "d2", kind: "conflict_resolution", target: "ambiguous fact B", rationale: "resolved via PoC", at: 11 },
+		]));
+		assert.equal(withBoth.metrics.unresolvedConflicts, 0);
+	});
+
+	it("section writer coverage follows superseded chain", () => {
+		const research = validResearchNode("r1");
+		const nodes = documentNodes([research]);
+		// Create a superseded section writer and its accepted replacement.
+		const originalWriter: WorkflowNode = {
+			id: "section-a",
+			kind: "section-writer",
+			label: "section-a",
+			dependsOn: ["r1"],
+			status: "superseded",
+			supersededBy: "section-a-2",
+			attempts: [],
+			agentSpec: { id: "agent-a", baseAgent: "research-section-writer", role: "writer", objective: "a", instructions: "a", context: "fresh" },
+			dataContract: { version: 1, profile: "writer", inputs: [], outputs: { document: { mediaType: "text/markdown", description: "doc", storage: "artifact", required: true, classification: "internal" } } },
+		};
+		const replacementWriter = acceptedNode("section-a-2", "section-writer", documentEnvelope("## Background\nReplacement section content with enough words to pass threshold."), ["r1"]);
+		const allNodes = [...nodes.filter((n) => n.id !== "section-a"), originalWriter, replacementWriter];
+		const report = assessWorkflowQuality(run(allNodes));
+		// section-a is superseded by section-a-2 (accepted), so coverage should count it.
+		assert.equal(report.metrics.sectionWriterCoverage, 1);
+	});
 });

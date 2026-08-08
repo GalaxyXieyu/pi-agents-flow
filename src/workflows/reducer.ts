@@ -205,8 +205,8 @@ function applyPlan(run: WorkflowRun, tasks: Record<string, WorkflowTaskPlan>, pl
 			if (plan.replaces === plan.id) throw new Error(`Work unit '${plan.id}' cannot replace itself.`);
 			const target = run.nodes[plan.replaces];
 			if (!target) throw new Error(`Work unit '${plan.id}' replaces unknown node '${plan.replaces}'.`);
-			if (target.status !== "failed" && target.status !== "cancelled") {
-				throw new Error(`Work unit '${plan.id}' can only replace a failed or cancelled node; '${plan.replaces}' is ${target.status}.`);
+			if (target.status !== "failed" && target.status !== "cancelled" && target.status !== "rejected" && target.status !== "pending" && target.status !== "ready") {
+				throw new Error(`Work unit '${plan.id}' can only replace a failed, cancelled, rejected, pending, or ready node; '${plan.replaces}' is ${target.status}.`);
 			}
 			if (target.kind !== plan.kind) {
 				throw new Error(`Work unit '${plan.id}' must have kind '${target.kind}' to replace '${plan.replaces}', not '${plan.kind}'.`);
@@ -401,18 +401,23 @@ export function reduceWorkflowEvent(run: WorkflowRun | undefined, event: Workflo
 		}
 		case "node.cancelled": {
 			const node = nodeFor(run, event.nodeId);
-			const updated = replaceAttempt(node, event.attemptId, {
-				status: "cancelled",
-				completedAt: event.at,
-				error: event.error,
-				...(event.childRunId ? { childRunId: event.childRunId } : {}),
-				...(event.launchContractDigest ? { launchContractDigest: event.launchContractDigest } : {}),
-				...(event.structuredOutputPath ? { structuredOutputPath: event.structuredOutputPath } : {}),
-				...(event.metadataPath ? { metadataPath: event.metadataPath } : {}),
-				...(event.artifactPaths?.length ? { artifactPaths: [...event.artifactPaths] } : {}),
-				...(event.model ? { model: event.model } : {}),
-				...(event.usage ? { usage: event.usage } : {}),
-			});
+			// When cancelling a node that never started (pending/ready with no attempts),
+			// there is no attempt to replace — just flip the node status to cancelled.
+			const hasMatchingAttempt = node.attempts.some((a) => a.attemptId === event.attemptId);
+			const updated = hasMatchingAttempt
+				? replaceAttempt(node, event.attemptId, {
+					status: "cancelled",
+					completedAt: event.at,
+					error: event.error,
+					...(event.childRunId ? { childRunId: event.childRunId } : {}),
+					...(event.launchContractDigest ? { launchContractDigest: event.launchContractDigest } : {}),
+					...(event.structuredOutputPath ? { structuredOutputPath: event.structuredOutputPath } : {}),
+					...(event.metadataPath ? { metadataPath: event.metadataPath } : {}),
+					...(event.artifactPaths?.length ? { artifactPaths: [...event.artifactPaths] } : {}),
+					...(event.model ? { model: event.model } : {}),
+					...(event.usage ? { usage: event.usage } : {}),
+				})
+				: node;
 			return withEvent(run, event, { ...run.nodes, [node.id]: { ...updated, status: "cancelled" } });
 		}
 		case "node.accepted": {
@@ -423,11 +428,13 @@ export function reduceWorkflowEvent(run: WorkflowRun | undefined, event: Workflo
 				[node.id]: { ...node, status: "accepted", decision: event.decision },
 			};
 			// Declarative replacement: accepting a node that declares `replaces` retires the
-			// still-failing target it was built to supersede, so the supervisor's intent
-			// (expressed at creation) resolves the failure without a separate supersede call.
+			// target it was built to supersede, so the supervisor's intent (expressed at
+			// creation) resolves the failure without a separate supersede call. Supports
+			// failed, cancelled, rejected, pending, and ready targets so that dependency-
+			// blocked chains can be repaired declaratively.
 			if (node.replaces) {
 				const target = run.nodes[node.replaces];
-				if (target && (target.status === "failed" || target.status === "cancelled")) {
+				if (target && target.status !== "accepted" && target.status !== "superseded") {
 					accepted[target.id] = {
 						...target,
 						status: "superseded",
@@ -443,10 +450,12 @@ export function reduceWorkflowEvent(run: WorkflowRun | undefined, event: Workflo
 			const node = nodeFor(run, event.nodeId);
 			const replacement = nodeFor(run, event.replacementNodeId);
 			if (node.id === replacement.id) throw new Error("A workflow node cannot supersede itself.");
-			if (node.status === "pending" || node.status === "ready" || node.status === "running" || node.status === "waiting") {
-				throw new Error(`Workflow node '${node.id}' must reach a terminal status before supersession.`);
+			// Allow superseding pending/ready nodes (typically dependency-blocked) and
+			// rejected nodes in addition to the original failed/cancelled/completed targets.
+			if (node.status === "running" || node.status === "waiting") {
+				throw new Error(`Workflow node '${node.id}' is ${node.status}; stop the running attempt before supersession.`);
 			}
-			if (node.status === "superseded" || node.status === "rejected") throw new Error(`Workflow node '${node.id}' is already adjudicated.`);
+			if (node.status === "superseded") throw new Error(`Workflow node '${node.id}' is already superseded.`);
 			if (replacement.status !== "accepted" || !replacement.result) {
 				throw new Error(`Replacement workflow node '${replacement.id}' must be accepted before supersession.`);
 			}
@@ -512,6 +521,7 @@ export function reduceWorkflowEvent(run: WorkflowRun | undefined, event: Workflo
 			return {
 				...withEvent(run, event),
 				status: event.status,
+				...(event.status === "paused" && event.reason ? { pauseReason: event.reason } : {}),
 				...(event.status === "completed" ? { repairPlanNodeIdsAfterStop: [] } : {}),
 			};
 		default: {

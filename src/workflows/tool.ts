@@ -186,7 +186,7 @@ const WorkflowWorkUnitPlanParams = Type.Object({
 	dependsOn: Type.Array(Type.String(), { description: "Work-unit ids that must be accepted before this work unit becomes ready." }),
 	agentSpec: WorkflowAgentSpecParams,
 	dataContract: WorkflowDataContractParams,
-	replaces: Type.Optional(Type.String({ description: "Id of a failed/cancelled node this work unit replaces (same kind). The replaced node is auto-superseded when this one is accepted." })),
+	replaces: Type.Optional(Type.String({ description: "Id of a failed/cancelled/rejected/pending/ready node this work unit replaces (same kind). The replaced node is auto-superseded when this one is accepted." })),
 }, { additionalProperties: false });
 
 const WorkflowParams = Type.Object({
@@ -215,6 +215,7 @@ const WorkflowParams = Type.Object({
 	decisionKind: Type.Optional(Type.String({ enum: ["accepted_uncertainty", "gap_resolution", "conflict_resolution"], description: "Decision category for action=record_decision." })),
 	target: Type.Optional(Type.String({ description: "Exact gap question or conflict statement for action=record_decision." })),
 	rationale: Type.Optional(Type.String({ description: "Evidence-based rationale for action=record_decision." })),
+	reason: Type.Optional(Type.String({ description: "Human-readable reason for action=pause. Recorded in the workflow event stream for audit." })),
 }, { additionalProperties: false });
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -469,7 +470,11 @@ export function parseWorkflowActionParams(value: unknown): WorkflowActionParams 
 		case "evaluate":
 		case "quality":
 		case "status":
-		case "pause":
+			return { action: value.action, ...(runId ? { runId } : {}) };
+		case "pause": {
+			const reason = optionalString(value.reason, "reason");
+			return { action: "pause", ...(runId ? { runId } : {}), ...(reason ? { reason } : {}) };
+		}
 		case "resume":
 		case "stop":
 			return { action: value.action, ...(runId ? { runId } : {}) };

@@ -216,7 +216,7 @@ describe("workflow reducer", () => {
 		assert.equal(run.nodes["research-a"]?.attempts[0]?.error, "timed out");
 	});
 
-	it("rejects invalid non-terminal supersession", () => {
+	it("rejects supersession with an unaccepted replacement even for pending targets", () => {
 		const run = reduceWorkflowEvents([started, planned]);
 		assert.throws(() => reduceWorkflowEvent(run, {
 			id: "event-supersede-unaccepted",
@@ -225,7 +225,7 @@ describe("workflow reducer", () => {
 			nodeId: "research-a",
 			replacementNodeId: "writer",
 			decision: "invalid",
-		}), /must reach a terminal status before supersession/);
+		}), /must be accepted before supersession/);
 	});
 
 	it("rejects dependency cycles before mutating the run", () => {
@@ -513,5 +513,118 @@ describe("workflow reducer", () => {
 			],
 		});
 		assert.equal(Object.keys(replaced.nodes).length, 2);
+	});
+
+	it("replaces accepts rejected, pending, and ready targets", () => {
+		const run = reduceWorkflowEvents([started, planned]);
+		// research-a is pending; replacing it should succeed.
+		const replacedPending = reduceWorkflowEvent(run, {
+			id: "event-replace-pending",
+			type: "workflow.plan_applied",
+			at: 3,
+			tasks: [{ id: "task-research", label: "Research and synthesis", order: 0 }],
+			workUnits: [{
+				id: "research-v2",
+				taskId: "task-research",
+				kind: "research",
+				label: "Replacement research",
+				order: 2,
+				dependsOn: [],
+				replaces: "research-a",
+				agentSpec: agentSpec("agent-v2", "researcher"),
+				dataContract: researchContract(),
+			}],
+		});
+		// No dependencies, so refreshReadiness makes it ready immediately.
+		assert.equal(replacedPending.nodes["research-v2"]?.status, "ready");
+
+		// Reject research-a then replace it — should succeed.
+		const rejectedRun = reduceWorkflowEvent(run, {
+			id: "event-reject-a",
+			type: "node.rejected",
+			at: 3,
+			nodeId: "research-a",
+			decision: "bad result",
+		});
+		const replacedRejected = reduceWorkflowEvent(rejectedRun, {
+			id: "event-replace-rejected",
+			type: "workflow.plan_applied",
+			at: 4,
+			tasks: [{ id: "task-research", label: "Research and synthesis", order: 0 }],
+			workUnits: [{
+				id: "research-v3",
+				taskId: "task-research",
+				kind: "research",
+				label: "Replacement v3",
+				order: 2,
+				dependsOn: [],
+				replaces: "research-a",
+				agentSpec: agentSpec("agent-v3", "researcher"),
+				dataContract: researchContract(),
+			}],
+		});
+		// No dependencies, so refreshReadiness makes it ready immediately.
+		assert.equal(replacedRejected.nodes["research-v3"]?.status, "ready");
+	});
+
+	it("accepting a replacement auto-supersedes rejected and pending targets", () => {
+		let run = reduceWorkflowEvents([started, planned]);
+		// Reject research-a.
+		run = reduceWorkflowEvent(run, { id: "reject-a", type: "node.rejected", at: 3, nodeId: "research-a", decision: "placeholder" });
+		// Add replacement with replaces=research-a.
+		run = reduceWorkflowEvent(run, {
+			id: "add-v2",
+			type: "workflow.plan_applied",
+			at: 4,
+			tasks: [{ id: "task-research", label: "Research and synthesis", order: 0 }],
+			workUnits: [{
+				id: "research-v2",
+				taskId: "task-research",
+				kind: "research",
+				label: "v2",
+				order: 2,
+				dependsOn: [],
+				replaces: "research-a",
+				agentSpec: agentSpec("agent-v2", "researcher"),
+				dataContract: researchContract(),
+			}],
+		});
+		// Complete and accept the replacement.
+		run = reduceWorkflowEvent(run, { id: "start-v2", type: "node.started", at: 5, nodeId: "research-v2", attempt: { attemptId: "research-v2:1", requestId: "req-v2", number: 1, startedAt: 5 } });
+		run = reduceWorkflowEvent(run, { id: "complete-v2", type: "node.completed", at: 6, nodeId: "research-v2", attemptId: "research-v2:1", result: makeResult("v2 result") });
+		run = reduceWorkflowEvent(run, { id: "accept-v2", type: "node.accepted", at: 7, nodeId: "research-v2", decision: "good" });
+		assert.equal(run.nodes["research-v2"]?.status, "accepted");
+		assert.equal(run.nodes["research-a"]?.status, "superseded");
+		assert.equal(run.nodes["research-a"]?.supersededBy, "research-v2");
+	});
+
+	it("node.cancelled handles nodes with no prior attempts (ready)", () => {
+		const run = reduceWorkflowEvents([started, planned]);
+		// research-a has dependsOn: [], so refreshReadiness marks it ready.
+		assert.equal(run.nodes["research-a"]?.status, "ready");
+		assert.equal(run.nodes["research-a"]?.attempts.length, 0);
+		const cancelled = reduceWorkflowEvent(run, {
+			id: "cancel-pending",
+			type: "node.cancelled",
+			at: 3,
+			nodeId: "research-a",
+			attemptId: "research-a:cancel-1",
+			error: "Supervisor cancelled pending node.",
+		});
+		assert.equal(cancelled.nodes["research-a"]?.status, "cancelled");
+		assert.equal(cancelled.nodes["research-a"]?.attempts.length, 0);
+	});
+
+	it("workflow.status_changed records pause reason", () => {
+		const run = reduceWorkflowEvents([started]);
+		const paused = reduceWorkflowEvent(run, {
+			id: "pause-with-reason",
+			type: "workflow.status_changed",
+			at: 2,
+			status: "paused",
+			reason: "blocked on external dependency",
+		});
+		assert.equal(paused.status, "paused");
+		assert.equal(paused.pauseReason, "blocked on external dependency");
 	});
 });

@@ -52,7 +52,7 @@ export type WorkflowActionParams =
 	| { action: "record_decision"; runId?: string; decisionKind: "accepted_uncertainty" | "gap_resolution" | "conflict_resolution"; target: string; rationale: string }
 	| { action: "complete"; runId?: string; nodeId: string; port: string; digest: string }
 	| { action: "status"; runId?: string }
-	| { action: "pause"; runId?: string }
+	| { action: "pause"; runId?: string; reason?: string }
 	| { action: "resume"; runId?: string }
 	| { action: "stop"; runId?: string }
 	| { action: "cancel_node"; runId?: string; nodeId: string };
@@ -883,38 +883,60 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 					const node = run.nodes[params.nodeId];
 					if (!node) throw new Error(`Unknown workflow node '${params.nodeId}'.`);
 					if (run.status !== "active" && run.status !== "paused") throw new Error(`Workflow '${run.id}' is ${run.status}; node cancellation requires an active or paused workflow.`);
-					const attempt = node.attempts.at(-1);
+					if (node.status === "accepted" || node.status === "superseded" || node.status === "rejected") {
+						throw new Error(`Workflow node '${node.id}' is ${node.status}; already adjudicated nodes cannot be cancelled.`);
+					}
 					if (node.status === "running") {
 						if (!activeSchedulers.get(run.id)?.cancelNode(node.id)) throw new Error(`Workflow node '${node.id}' is running but has no cancellable scheduler attempt.`);
 						const evaluation = evaluateWorkflow(run);
 						return resultFor(ctx, run, evaluation, `Cancellation requested for workflow node '${node.id}'. The node will remain in its attempt history as cancelled.`);
 					}
-					if (node.status !== "waiting" || !attempt || attempt.status !== "waiting") {
-						throw new Error(`Workflow node '${node.id}' is ${node.status}; only running or waiting nodes can be cancelled.`);
+					const attempt = node.attempts.at(-1);
+					// Waiting node with a live detached child: try to deliver an interrupt.
+					if (node.status === "waiting" && attempt && attempt.status === "waiting") {
+						let cancelDelivered = false;
+						try {
+							cancelDelivered = Boolean(attempt.childRunId && options.cancelWaitingChild?.(attempt.childRunId));
+						} catch {
+							cancelDelivered = false;
+						}
+						const next = store.append(run.id, {
+							id: createEventId(),
+							type: "node.cancelled",
+							at: now(),
+							nodeId: node.id,
+							attemptId: attempt.attemptId,
+							error: cancelDelivered
+								? "Node cancelled; interrupt delivered to the detached child."
+								: "Node cancelled; detached child was no longer interruptible in this runtime.",
+							...(attempt.childRunId ? { childRunId: attempt.childRunId } : {}),
+							...(attempt.launchContractDigest ? { launchContractDigest: attempt.launchContractDigest } : {}),
+							...(attempt.model ? { model: attempt.model } : {}),
+							...(attempt.usage ? { usage: attempt.usage } : {}),
+						});
+						persistBinding(next);
+						const evaluation = evaluateWorkflow(next);
+						return resultFor(ctx, next, evaluation, statusText(next, evaluation));
 					}
-					let cancelDelivered = false;
-					try {
-						cancelDelivered = Boolean(attempt.childRunId && options.cancelWaitingChild?.(attempt.childRunId));
-					} catch {
-						cancelDelivered = false;
+					// Pending/ready/failed/cancelled nodes: record a new cancelled attempt
+					// so the node reaches a terminal state and becomes eligible for replaces
+					// or supersession. This resolves the pending-blocked deadlock where a
+					// dependency was rejected but the downstream node could not transition.
+					if (node.status === "pending" || node.status === "ready" || node.status === "failed" || node.status === "cancelled") {
+						const syntheticAttemptId = `${node.id}:cancel-${node.attempts.length + 1}`;
+						const next = store.append(run.id, {
+							id: createEventId(),
+							type: "node.cancelled",
+							at: now(),
+							nodeId: node.id,
+							attemptId: syntheticAttemptId,
+							error: `Supervisor cancelled ${node.status} node to unblock workflow.`,
+						});
+						persistBinding(next);
+						const evaluation = evaluateWorkflow(next);
+						return resultFor(ctx, next, evaluation, statusText(next, evaluation));
 					}
-					const next = store.append(run.id, {
-						id: createEventId(),
-						type: "node.cancelled",
-						at: now(),
-						nodeId: node.id,
-						attemptId: attempt.attemptId,
-						error: cancelDelivered
-							? "Node cancelled; interrupt delivered to the detached child."
-							: "Node cancelled; detached child was no longer interruptible in this runtime.",
-						...(attempt.childRunId ? { childRunId: attempt.childRunId } : {}),
-						...(attempt.launchContractDigest ? { launchContractDigest: attempt.launchContractDigest } : {}),
-						...(attempt.model ? { model: attempt.model } : {}),
-						...(attempt.usage ? { usage: attempt.usage } : {}),
-					});
-					persistBinding(next);
-					const evaluation = evaluateWorkflow(next);
-					return resultFor(ctx, next, evaluation, statusText(next, evaluation));
+					throw new Error(`Workflow node '${node.id}' is ${node.status}; cannot cancel.`);
 				}
 				case "accept":
 				case "reject": {
@@ -1100,7 +1122,8 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 					if (canRestartRepairPlan) {
 						fs.rmSync(path.join(store.paths(run.id).bundles, "quality-gate-failures.json"), { force: true });
 					}
-					const next = store.append(run.id, { id: createEventId(), type: "workflow.status_changed", at: now(), status });
+					const pauseReason = params.action === "pause" && params.reason ? params.reason : undefined;
+					const next = store.append(run.id, { id: createEventId(), type: "workflow.status_changed", at: now(), status, ...(pauseReason ? { reason: pauseReason } : {}) });
 					persistBinding(next);
 					const evaluation = evaluateWorkflow(next);
 					if (params.action === "resume" && evaluation.ready > 0) {

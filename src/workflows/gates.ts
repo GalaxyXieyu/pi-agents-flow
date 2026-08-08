@@ -39,7 +39,10 @@ export function evaluateWorkflow(run: WorkflowRun, policyOverride?: WorkflowPoli
 	const acceptedNodes = effectiveAcceptedNodes(run);
 	const acceptedKinds = [...new Set(acceptedNodes.map((node) => node.kind))];
 	const acceptedUncertainties = new Set(run.decisions.filter((decision) => decision.kind === "accepted_uncertainty" || decision.kind === "gap_resolution").map((decision) => normalizeWorkflowText(decision.target)));
-	const conflictResolutions = new Set(run.decisions.filter((decision) => decision.kind === "conflict_resolution").map((decision) => normalizeWorkflowText(decision.target)));
+	// `accepted_uncertainty` also counts as a conflict resolution: explicitly accepting
+	// that a fact cannot be verified is a valid way to resolve a disagreement between
+	// evidence sources, not just a gap acknowledgment.
+	const conflictResolutions = new Set(run.decisions.filter((decision) => decision.kind === "conflict_resolution" || decision.kind === "accepted_uncertainty" || decision.kind === "gap_resolution").map((decision) => normalizeWorkflowText(decision.target)));
 	const gaps = new Set(acceptedNodes.flatMap((node) => node.result?.diagnostics.gaps.map((gap) => normalizeWorkflowText(gap.question)) ?? []).filter((gap) => !acceptedUncertainties.has(gap))).size;
 	const conflicts = new Set(acceptedNodes.flatMap((node) => node.result?.diagnostics.conflicts.map((conflict) => normalizeWorkflowText(conflict.statement)) ?? []).filter((conflict) => !conflictResolutions.has(conflict))).size;
 	const ready = count("ready");
@@ -58,10 +61,28 @@ export function evaluateWorkflow(run: WorkflowRun, policyOverride?: WorkflowPoli
 	const acceptedSectionWriters = acceptedNodes.filter((node) => node.kind === "section-writer").length;
 	const outlineWriterIds = new Set(run.documentOutline?.sections.map((section) => section.writerNodeId) ?? []);
 	const latestAcceptedEditor = acceptedNodes.filter((node) => node.kind === "editor").at(-1);
+	// Track replacement chains: a writer ID is considered covered if it or any node
+	// that superseded it (following the supersededBy chain) is accepted. This ensures
+	// that replacing a rejected/pending writer via `replaces` still counts toward
+	// outline coverage without requiring the outline to be manually updated.
+	const isWriterIdCovered = (writerId: string): boolean => {
+		const visited = new Set<string>();
+		let current = run.nodes[writerId];
+		while (current && !visited.has(current.id)) {
+			visited.add(current.id);
+			if (current.status === "accepted") return true;
+			if (current.status !== "superseded" || !current.supersededBy) break;
+			current = run.nodes[current.supersededBy];
+		}
+		return false;
+	};
 	const finalEditorCoversOutline = Boolean(
 		latestAcceptedEditor
 		&& outlineWriterIds.size > 0
-		&& [...outlineWriterIds].every((writerId) => latestAcceptedEditor.dependsOn.includes(writerId)),
+		&& [...outlineWriterIds].every((writerId) =>
+			latestAcceptedEditor.dependsOn.includes(writerId)
+			|| latestAcceptedEditor.dependsOn.some((dep) => isWriterIdCovered(dep) && run.nodes[dep]?.kind === "section-writer"),
+		),
 	);
 	const finalEditorNodeId = finalEditorCoversOutline ? latestAcceptedEditor?.id : undefined;
 	const reviewedFinalEditor = Boolean(

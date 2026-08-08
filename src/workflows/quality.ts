@@ -201,6 +201,20 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 	const outlineSections = run.documentOutline?.sections ?? [];
 	const expectedWriterIds = new Set(outlineSections.map((section) => section.writerNodeId));
 	const acceptedSectionWriterIds = new Set(accepted.filter((node) => node.kind === "section-writer").map((node) => node.id));
+	// Follow supersededBy chains so that replacing a rejected/pending writer via
+	// `replaces` still counts toward outline section-writer coverage.
+	const isWriterCovered = (writerId: string): boolean => {
+		if (acceptedSectionWriterIds.has(writerId)) return true;
+		const visited = new Set<string>();
+		let current = run.nodes[writerId];
+		while (current && !visited.has(current.id)) {
+			visited.add(current.id);
+			if (current.status === "accepted") return true;
+			if (current.status !== "superseded" || !current.supersededBy) break;
+			current = run.nodes[current.supersededBy];
+		}
+		return false;
+	};
 	const paragraphs = substantiveParagraphs(finalMarkdown);
 	const citedParagraphs = paragraphs.filter((paragraph) => markdownReferences(paragraph).length > 0);
 	const acceptedSourceReferences = new Set(sourceEvidence.flatMap((evidence) => [evidence.url, evidence.artifactPath]).filter((reference): reference is string => Boolean(reference)).map(normalizeWorkflowText));
@@ -220,7 +234,7 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 		searchFetchCoverage: ratio(fetchedSourceFindings.length, webSourceFindings.length),
 		unsupportedWriterClaimRate: ratio(unsupportedWriterClaims.length, writerFindings.length, 0),
 		outlineCoverage: run.mode === "deep-research" ? ratio(outlineSections.filter((section) => headings.has(normalizeWorkflowText(section.title))).length, outlineSections.length, 0) : 1,
-		sectionWriterCoverage: run.mode === "deep-research" ? ratio([...expectedWriterIds].filter((id) => acceptedSectionWriterIds.has(id)).length, expectedWriterIds.size, 0) : 1,
+		sectionWriterCoverage: run.mode === "deep-research" ? ratio([...expectedWriterIds].filter((id) => isWriterCovered(id)).length, expectedWriterIds.size, 0) : 1,
 		finalCitationCoverage: run.mode === "deep-research" ? ratio(citedParagraphs.length, paragraphs.length, 0) : 1,
 		finalDocumentLengthRatio: run.mode === "deep-research" ? Math.min(1, ratio(finalDocumentUnits, minimumDocumentUnits, 0)) : 1,
 		unsupportedFinalCitationRate: run.mode === "deep-research" ? ratio(unsupportedFinalReferences.length, finalReferences.length, finalReferences.length === 0 ? 0 : 1) : 0,

@@ -380,6 +380,8 @@ export interface WorkflowRun {
 	/** Persisted long-form document architecture and section ownership. */
 	documentOutline?: DocumentOutline;
 	continuation?: WorkflowContinuationState;
+	/** Human-readable reason recorded when the workflow was paused. */
+	pauseReason?: string;
 	/** Node ids added after stop; only these may run during an explicit repair restart. */
 	repairPlanNodeIdsAfterStop?: string[];
 	appliedEventIds: string[];
@@ -486,4 +488,4 @@ export type WorkflowEvent =
 		attempt: number;
 		trigger: WorkflowContinuationState["trigger"];
 	})
-	| (WorkflowEventBase & { type: "workflow.status_changed"; status: WorkflowRunStatus });
+	| (WorkflowEventBase & { type: "workflow.status_changed"; status: WorkflowRunStatus; reason?: string });
