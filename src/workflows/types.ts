@@ -285,6 +285,8 @@ export interface WorkflowAttempt {
 	resultArtifact?: WorkflowArtifactDescriptor;
 	outputs?: Record<string, WorkflowResolvedOutput>;
 	model?: string;
+	/** When set, a detached/waiting node that exceeds this deadline is failed to avoid an infinite wait. */
+	waitDeadline?: number;
 	usage?: {
 		input: number;
 		output: number;
@@ -423,6 +425,8 @@ export type WorkflowEvent =
 		metadataPath?: string;
 		model?: string;
 		usage?: WorkflowAttempt["usage"];
+		/** Absolute epoch-ms deadline after which this waiting node is failed if still unresolved. */
+		waitDeadline?: number;
 	})
 	| (WorkflowEventBase & {
 		type: "node.completed";

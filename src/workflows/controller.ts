@@ -18,7 +18,7 @@ import {
 	buildCodingContract,
 	type CodingWorkflowContract,
 } from "./coding-preset.ts";
-import { dependencyIsAccepted } from "./effective-nodes.ts";
+import { dependencyIsAccepted, effectiveAcceptedResultNodes } from "./effective-nodes.ts";
 import { evaluateWorkflow, type WorkflowEvaluation } from "./gates.ts";
 import { resolveWorkflowLanguage, workflowLanguageInstruction, workflowRunLanguage, type WorkflowLanguageMode } from "./language.ts";
 import { buildWorkflowRepairGuidance, formatWorkflowRepairGuidance, type WorkflowRepairGuidance } from "./guidance.ts";
@@ -363,7 +363,25 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 		let next = run;
 		for (const node of Object.values(run.nodes)) {
 			const attempt = node.attempts.at(-1);
-			if (node.status !== "waiting" || attempt?.status !== "waiting" || !attempt.metadataPath) continue;
+			if (node.status !== "waiting" || attempt?.status !== "waiting") continue;
+			// A waiting node whose wait deadline has passed and never reported back is
+			// failed so the workflow cannot wait forever on a detached child that died.
+			const deadline = attempt.waitDeadline;
+			if (deadline !== undefined && now() >= deadline) {
+				next = store.append(next.id, {
+					id: `recovery:${attempt.attemptId}:wait-timeout`,
+					type: "node.failed",
+					at: now(),
+					nodeId: node.id,
+					attemptId: attempt.attemptId,
+					error: `Detached child did not resolve within the configured wait deadline; retry is allowed.`,
+					...(attempt.childRunId ? { childRunId: attempt.childRunId } : {}),
+					...(attempt.structuredOutputPath ? { structuredOutputPath: attempt.structuredOutputPath } : {}),
+					...(attempt.metadataPath ? { metadataPath: attempt.metadataPath } : {}),
+				});
+				continue;
+			}
+			if (!attempt.metadataPath) continue;
 			const metadata = readJsonRecord(attempt.metadataPath);
 			if (!metadata) continue;
 			const exitCode = metadata.exitCode;
@@ -465,6 +483,28 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 		const qualityReportPath = path.join(store.paths(run.id).bundles, "quality-report.json");
 		writeAtomicJson(qualityReportPath, qualityReport);
 		return { qualityReport, qualityReportPath };
+	};
+	/** Persist the best available final draft so an auto-stopped run leaves a usable artifact. */
+	const preserveDraft = (store: WorkflowStore, run: WorkflowRun): string | undefined => {
+		const editor = effectiveAcceptedResultNodes(run).filter((node) => node.kind === "editor").at(-1)
+			?? Object.values(run.nodes).filter((node) => node.kind === "editor").at(-1);
+		if (!editor) return undefined;
+		const resolved = editor.outputs?.document ?? editor.attempts.at(-1)?.outputs?.document;
+		if (!resolved) return undefined;
+		let markdown: string | undefined;
+		try {
+			if (resolved.kind === "artifact") {
+				markdown = createLocalWorkflowArtifactStore(store.paths(run.id).artifacts).read(resolved.artifact).toString("utf8");
+			} else if (resolved.kind === "inline" && typeof resolved.value === "string") {
+				markdown = resolved.value;
+			}
+		} catch {
+			return undefined;
+		}
+		if (!markdown || !markdown.trim()) return undefined;
+		const draftPath = path.join(store.paths(run.id).delivery, "final.draft.md");
+		writeAtomicTextFile(draftPath, markdown);
+		return draftPath;
 	};
 	const resolveRun = (ctx: ExtensionContext, runId: string | undefined): { store: WorkflowStore; run: WorkflowRun } => {
 		const binding = latestBinding(ctx);
@@ -978,9 +1018,12 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 						const count = priorFailures + 1;
 						writeAtomicJson(failureMarker, { count, at: now(), blockers: quality.qualityReport?.blockers ?? [] });
 						if (count >= 3) {
+							// Preserve the best available draft before auto-stopping so the user has
+							// a usable artifact rather than a hard failure with no deliverable.
+							const draftPath = preserveDraft(store, run);
 							const stopped = store.append(run.id, { id: createEventId(), type: "workflow.status_changed", at: now(), status: "stopped" });
 							persistBinding(stopped);
-							throw new Error(`Deep Research quality gates failed 3 consecutive times without release. Workflow auto-stopped to avoid burning budget. Last blockers: ${quality.qualityReport?.blockers.join(" ")}`);
+							throw new Error(`Deep Research quality gates failed 3 consecutive times without release. Workflow auto-stopped to avoid burning budget. Last blockers: ${quality.qualityReport?.blockers.join(" ")}${draftPath ? ` Draft preserved at: ${draftPath}` : ""}`);
 						}
 						throw new Error(`Deep Research quality gates failed (attempt ${count}/3): ${quality.qualityReport?.blockers.join(" ")}`);
 					}

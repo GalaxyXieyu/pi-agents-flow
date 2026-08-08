@@ -50,6 +50,17 @@ function requestId(runId: string, nodeId: string, attemptNumber: number): string
 	return `workflow-${digest}`;
 }
 
+const DEFAULT_WAIT_DEADLINE_MS = 30 * 60 * 1000;
+
+/** If the node has a timeoutMs, start a wait deadline from it; otherwise a generous default. */
+function waitDeadlineFor(node: WorkflowRun["nodes"][string], at: number): number | undefined {
+	const timeoutMs = node.agentSpec.timeoutMs;
+	if (timeoutMs !== undefined && Number.isInteger(timeoutMs) && timeoutMs > 0) {
+		return at + Math.max(timeoutMs, 60_000);
+	}
+	return at + DEFAULT_WAIT_DEADLINE_MS;
+}
+
 /**
  * Read a child's persisted structured output and return it only if it is a valid
  * `WorkflowResult`.
@@ -389,6 +400,7 @@ export function createWorkflowScheduler(options: CreateWorkflowSchedulerOptions)
 							...(response.structuredOutputPath ? { structuredOutputPath: response.structuredOutputPath } : {}),
 							...(response.metadataPath ? { metadataPath: response.metadataPath } : {}),
 							...terminalMetadata(response, result.launchContractDigest),
+							...(waitDeadlineFor(startedNode, now()) !== undefined ? { waitDeadline: waitDeadlineFor(startedNode, now()) } : {}),
 						});
 						continue;
 					}

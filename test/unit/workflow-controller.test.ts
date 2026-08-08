@@ -12,6 +12,7 @@ import { createWorkflowController, WORKFLOW_BINDING_ENTRY_TYPE, type WorkflowCon
 import { workflowProfileForKind } from "../../src/workflows/plan-rules.ts";
 import { createWorkflowStore } from "../../src/workflows/store.ts";
 import type { WorkflowResult, WorkflowWorkUnitPlan } from "../../src/workflows/types.ts";
+import { evaluateWorkflow } from "../../src/workflows/gates.ts";
 
 const tempDirs: string[] = [];
 
@@ -1090,6 +1091,116 @@ describe("workflow controller", () => {
 		assert.equal(recovered?.nodes["research-a"]?.attempts.length, 1);
 		assert.equal(recovered?.nodes["research-a"]?.attempts[0]?.status, "completed");
 		assert.equal(recovered?.nodes["research-a"]?.result?.summary.text, "recovered durable result");
+	});
+
+	it("fails a waiting node whose wait deadline passed and that never reported back", () => {
+		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-controller-wait-timeout-"));
+		tempDirs.push(cwd);
+		const rootDir = path.join(cwd, ".pi-agents-flow", "workflows");
+		const store = createWorkflowStore({ rootDir });
+		store.create({ id: "workflow-wait-timeout", mode: "general", goal: "Wait timeout", cwd, sessionId: "session-1", branch: "main", at: 1 });
+		store.append("workflow-wait-timeout", { id: "plan", type: "workflow.plan_applied", at: 2, tasks: [{ id: "task-main", label: "Main", order: 0 }], workUnits: [planNode("research-a")] });
+		store.append("workflow-wait-timeout", {
+			id: "started",
+			type: "node.started",
+			at: 3,
+			nodeId: "research-a",
+			attempt: { attemptId: "research-a:1", requestId: "request-timeout", number: 1, startedAt: 3 },
+		});
+		const waiting = store.append("workflow-wait-timeout", {
+			id: "waiting",
+			type: "node.waiting",
+			at: 4,
+			nodeId: "research-a",
+			attemptId: "research-a:1",
+			reason: "detached",
+			childRunId: "child-stuck",
+			waitDeadline: 100,
+		});
+		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [{
+			type: "custom",
+			customType: WORKFLOW_BINDING_ENTRY_TYPE,
+			data: createWorkflowBinding(waiting),
+		}];
+		const createController = () => createWorkflowController({
+			adapter: { async run() { return { ok: false, stage: "transport", error: "unused" }; } },
+			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
+			now: () => 50,
+			resolveBranch: () => "main",
+		});
+		const ctx = fakeContext(cwd, entries);
+		// Before the deadline, the node stays waiting.
+		assert.equal(createController().recover(ctx)?.nodes["research-a"]?.status, "waiting");
+		// Advance now past the deadline -> the node is failed so it can be retried.
+		const createControllerLate = () => createWorkflowController({
+			adapter: { async run() { return { ok: false, stage: "transport", error: "unused" }; } },
+			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
+			now: () => 500,
+			resolveBranch: () => "main",
+		});
+		const recovered = createControllerLate().recover(ctx);
+		assert.equal(recovered?.nodes["research-a"]?.status, "failed");
+		assert.match(recovered?.nodes["research-a"]?.attempts[0]?.error ?? "", /wait deadline/i);
+	});
+
+	it("preserves the last editor draft when Deep Research auto-stops after 3 quality-gate failures", async () => {
+		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-draft-stop-"));
+		tempDirs.push(cwd);
+		const rootDir = path.join(cwd, ".pi-agents-flow", "workflows");
+		const store = createWorkflowStore({ rootDir });
+		const run = store.create({ id: "workflow-draft", mode: "deep-research", goal: "Draft preservation", cwd, sessionId: "session-1", branch: "main", at: 1 });
+		const runId = run.id;
+		store.append(runId, { id: "brief", type: "workflow.brief_set", at: 2, brief: {
+			version: 0, audience: "Engineers", purpose: "Decision", scope: "Architecture", depth: "deep", deliverable: "research-report",
+			targetWords: { min: 1500, max: 3000 }, requiredTopics: ["Background", "Mechanism"], excludedTopics: [], constraints: [], assumptions: [], clarification: "confirmed",
+		} });
+		store.append(runId, { id: "outline", type: "workflow.outline_set", at: 3, outline: {
+			version: 0, title: "Report", thesis: "Evidence.", approval: "supervisor",
+			sections: [
+				{ id: "background", title: "Background", objective: "Context", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeId: "section-a" },
+				{ id: "mechanism", title: "Mechanism", objective: "How", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeId: "section-b" },
+			],
+		} });
+		store.append(runId, { id: "plan", type: "workflow.plan_applied", at: 4, tasks: [{ id: "task-main", label: "Main", order: 0 }], workUnits: [
+			planNode("research-a", "research"), planNode("research-b", "research"), planNode("research-c", "research"),
+			planNode("section-a", "section-writer", ["research-a", "research-b"]), planNode("section-b", "section-writer", ["research-a", "research-c"]),
+			planNode("editor", "editor", ["section-a", "section-b"]), planNode("reviewer", "reviewer", ["editor"]),
+		] });
+		const acceptNode = (id: string, kind: string, result: WorkflowResult, dependsOn: string[], resolved?: Record<string, unknown>) => {
+			store.append(runId, { id: `${id}-started`, type: "node.started", at: 5, nodeId: id, attempt: { attemptId: `${id}:1`, requestId: `req-${id}`, number: 1, startedAt: 5 } });
+			store.append(runId, { id: `${id}-completed`, type: "node.completed", at: 6, nodeId: id, attemptId: `${id}:1`, result, outputs: resolved ?? result.outputs, childRunId: `child-${id}`, launchContractDigest: `digest-${id}` });
+			store.append(runId, { id: `${id}-accepted`, type: "node.accepted", at: 7, nodeId: id, decision: "accepted" });
+		};
+		const url = (id: string) => `https://example.test/${id}`;
+		const researchResult = (id: string): WorkflowResult => ({ version: 1, summary: { text: id, covers: [], omissions: [], confidence: "high" }, outputs: { result: { kind: "value", value: id } }, diagnostics: { gaps: [], conflicts: [], warnings: [] }, recommendations: [], evidence: { findings: [{ claim: `${id} claim`, evidence: [{ title: id, url: url(id), kind: "primary", quote: `${id} quote` }], confidence: "high" }], search: { queries: [`${id} query`], fetchedUrls: [url(id)], droppedSources: [] } } });
+		acceptNode("research-a", "research", researchResult("research-a"), []);
+		acceptNode("research-b", "research", researchResult("research-b"), []);
+		acceptNode("research-c", "research", researchResult("research-c"), []);
+		const shortDoc = "# Report\n\n## Background\n\nShort background.\n\n## Mechanism\n\nShort mechanism.";
+		const editorResult: WorkflowResult = { version: 1, summary: { text: shortDoc, covers: [], omissions: [], confidence: "high" }, outputs: { document: { kind: "value", value: shortDoc } }, diagnostics: { gaps: [], conflicts: [], warnings: [] }, recommendations: [], evidence: { findings: [] } };
+		const editorAttemptOutputs = { document: { kind: "inline" as const, mediaType: "text/markdown", bytes: shortDoc.length, classification: "internal" as const, value: shortDoc } };
+		acceptNode("section-a", "section-writer", { ...editorResult }, ["research-a", "research-b"]);
+		acceptNode("section-b", "section-writer", { ...editorResult }, ["research-a", "research-c"]);
+		acceptNode("editor", "editor", editorResult, ["section-a", "section-b"], editorAttemptOutputs);
+		const reviewerResult: WorkflowResult = { version: 1, summary: { text: "review", covers: [], omissions: [], confidence: "high" }, outputs: { review: { kind: "value", value: "review" } }, diagnostics: { gaps: [], conflicts: [], warnings: [] }, recommendations: [], extensions: { release: { release: true, gapsAccepted: true, conflictsAccepted: true, rationale: "gaps/conflicts acceptable" } } };
+		acceptNode("reviewer", "reviewer", reviewerResult, ["editor"]);
+		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [{ type: "custom", customType: WORKFLOW_BINDING_ENTRY_TYPE, data: createWorkflowBinding(store.load(runId)) }];
+		const controller = createWorkflowController({ adapter: { async run() { return { ok: false, stage: "transport", error: "unused" }; } }, appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }), now: () => 8, resolveBranch: () => "main" });
+		const ctx = fakeContext(cwd, entries);
+		// readyToComplete is true (reviewer released gaps/conflicts), but length gate fails.
+		const before = controller.recover(ctx)!;
+		assert.equal(evaluateWorkflow(before).readyToComplete, true);
+		let stopped = false;
+		let lastError = "";
+		for (let i = 0; i < 3 && !stopped; i++) {
+			try { await controller.execute({ action: "complete", runId, nodeId: "editor", port: "document", digest: "x" }, ctx); }
+			catch (error) { lastError = String(error); if (/auto-stopped/i.test(lastError)) stopped = true; }
+		}
+		assert.equal(stopped, true, `expected auto-stop, last error: ${lastError}`);
+		const draftPath = path.join(rootDir, runId, "delivery", "final.draft.md");
+		assert.equal(fs.existsSync(draftPath), true);
+		assert.equal(fs.readFileSync(draftPath, "utf-8"), shortDoc);
+		assert.equal(store.load(runId).status, "stopped");
 	});
 
 	it("salvages valid structured output from a failed foreground completion before retrying", async () => {

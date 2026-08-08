@@ -344,6 +344,7 @@ export function reduceWorkflowEvent(run: WorkflowRun | undefined, event: Workflo
 				status: "waiting",
 				error: event.reason,
 				childRunId: event.childRunId,
+				...(event.waitDeadline !== undefined ? { waitDeadline: event.waitDeadline } : {}),
 				...(event.launchContractDigest ? { launchContractDigest: event.launchContractDigest } : {}),
 				...(event.structuredOutputPath ? { structuredOutputPath: event.structuredOutputPath } : {}),
 				...(event.metadataPath ? { metadataPath: event.metadataPath } : {}),

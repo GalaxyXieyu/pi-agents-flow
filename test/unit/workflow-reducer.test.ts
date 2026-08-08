@@ -439,6 +439,7 @@ describe("workflow reducer", () => {
 			attemptId: "research-a:1",
 			reason: "Waiting for supervisor input.",
 			childRunId: "child-1",
+			waitDeadline: 100000,
 			structuredOutputPath: "/tmp/output.json",
 			metadataPath: "/tmp/meta.json",
 		});
@@ -464,6 +465,7 @@ describe("workflow reducer", () => {
 		assert.equal(completed?.error, undefined);
 		assert.equal(completed?.structuredOutputPath, "/tmp/output.json");
 		assert.equal(completed?.metadataPath, "/tmp/meta.json");
+		assert.equal(completed?.waitDeadline, 100000);
 	});
 
 	it("enforces the cumulative work-unit budget and rejects over-budget apply_plan", () => {

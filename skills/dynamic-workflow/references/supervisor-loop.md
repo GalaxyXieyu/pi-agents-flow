@@ -20,3 +20,8 @@
 Early reconnaissance is a valid first wave only when its results determine which later nodes or dependencies are required. If the later topology is already known, include it in the initial DAG and express ordering with `dependsOn`. Replanning must preserve completed attempts, identify the runtime result that changed the topology, and explain why each new node exists. Use script-driven workflow only for bounded runtime-dynamic topology such as repeated gap repair; static DAGs stay in the declarative Supervisor path.
 
 The Workflow Store is an implementation detail. Never read, edit, or append its manifest/events directly and never import Store code from `bash`; use only the `workflow` tool for state changes.
+
+## Stuck-node and loop guards
+
+- A detached child that does not return within its wait deadline (node `agentSpec.timeoutMs` or a generous default) is failed as a retryable timeout instead of waiting forever.
+- When Deep Research quality gates fail 3 consecutive `complete` calls, the run auto-stops and preserves the best available editor draft at `delivery/final.draft.md` so you have a usable artifact.
