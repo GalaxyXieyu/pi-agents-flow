@@ -313,8 +313,10 @@ describe("activity dock collapsed summary", () => {
 		assert.equal(lines.length, 1, "inactive dock stays one line tall");
 		const line = lines[0]!;
 		assert.match(line, /工作流/);
-		assert.match(line, /2 运行/);
-		assert.match(line, /3 完成/);
+		// Task-level counts (shared with the inline card): task-recon is running,
+		// task-done is completed, task-doc is pending.
+		assert.match(line, /1 运行/);
+		assert.match(line, /1 完成/);
 		assert.match(line, /↓\/Tab 展开/);
 		assert.doesNotMatch(line, /\[任务\]/);
 	});
@@ -323,8 +325,8 @@ describe("activity dock collapsed summary", () => {
 		const snapshot = { ...buildActivitySnapshot(liveState(), run()), language: "en" as const };
 		const line = renderActivityDock(snapshot, 120, theme as never)[0]!;
 		assert.match(line, /Workflow/);
-		assert.match(line, /2 running/);
-		assert.match(line, /3 done/);
+		assert.match(line, /1 running/);
+		assert.match(line, /1 done/);
 		assert.match(line, /↓\/Tab expand/);
 	});
 
@@ -333,5 +335,21 @@ describe("activity dock collapsed summary", () => {
 		const line = renderActivityDock(snapshot, 120, theme as never)[0]!;
 		assert.doesNotMatch(line, /失败|failed/);
 		assert.match(line, /◐/);
+	});
+
+	it("falls back to independent execution counts when no workflow is bound", () => {
+		const s = state();
+		s.foregroundControls.set("solo-a", {
+			runId: "solo-a", mode: "single", startedAt: 1, updatedAt: 2,
+			currentAgent: "reviewer", description: "Review",
+		} as never);
+		s.foregroundControls.set("solo-b", {
+			runId: "solo-b", mode: "single", startedAt: 1, updatedAt: 2,
+			currentAgent: "researcher", description: "Research",
+		} as never);
+		const snapshot = buildActivitySnapshot(s, undefined);
+		const line = renderActivityDock(snapshot, 120, theme as never)[0]!;
+		assert.doesNotMatch(line, /工作流|Workflow/);
+		assert.match(line, /2 running/);
 	});
 });

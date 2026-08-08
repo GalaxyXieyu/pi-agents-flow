@@ -4,12 +4,13 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { hyperlink, isKeyRelease, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
 import { discoverAgents, resolveAgentName, type AgentConfig } from "../agents/agents.ts";
 import type { ActivityArtifact, ActivityPerspective, ActivitySelection, ActivitySnapshot, ActivityState, ActivityUsage, AgentExecutionActivity, TaskActivity, WorkUnitActivity } from "../activity/types.ts";
-import { formatDuration, formatTokens, shortenPath } from "../shared/formatters.ts";
+import { formatDuration, formatTokens, shortenPath, sumDefinedNumbers } from "../shared/formatters.ts";
 import type { SubagentState } from "../shared/types.ts";
 import { activitySelections } from "./activity-dock.ts";
 import { FleetAvatarRenderer } from "./fleet-avatar.ts";
 import { fleetIdentity, type FleetIdentity } from "./fleet-identity.ts";
 import { fleetItemIdentityKey, openSubagentFleet } from "./fleet.ts";
+import { fit, rightAlign } from "./render-helpers.ts";
 import { selectionMarker, statusBadge } from "./visual-language.ts";
 
 type Theme = ExtensionContext["ui"]["theme"];
@@ -22,17 +23,6 @@ export interface ActivityBoardOptions {
 }
 
 const PLAIN_THEME = { fg: (_name: string, text: string) => text, bold: (text: string) => text } as Theme;
-
-function fit(text: string, width: number): string {
-	const clipped = truncateToWidth(text.replace(/[\r\n]+/g, " "), Math.max(0, width));
-	return clipped + " ".repeat(Math.max(0, width - visibleWidth(clipped)));
-}
-
-function rightAligned(left: string, right: string, width: number): string {
-	const rightWidth = visibleWidth(right);
-	const leftWidth = Math.max(0, width - rightWidth - 1);
-	return fit(left, leftWidth) + " ".repeat(Math.max(1, width - leftWidth - rightWidth)) + fit(right, rightWidth);
-}
 
 function frame(theme: Theme, text: string): string {
 	return theme.fg("borderAccent", text);
@@ -91,17 +81,17 @@ function isPendingState(state: ActivityState): boolean {
 }
 
 function aggregateExecutionStats(executions: AgentExecutionActivity[]): { durationMs?: number; totalTokens?: number } {
-	const durations = executions.map((execution) => execution.durationMs).filter((value): value is number => value !== undefined);
-	const tokens = executions.map((execution) => execution.usage?.totalTokens).filter((value): value is number => value !== undefined);
+	const durationMs = sumDefinedNumbers(executions.map((execution) => execution.durationMs));
+	const totalTokens = sumDefinedNumbers(executions.map((execution) => execution.usage?.totalTokens));
 	return {
-		...(durations.length ? { durationMs: durations.reduce((sum, value) => sum + value, 0) } : {}),
-		...(tokens.length ? { totalTokens: tokens.reduce((sum, value) => sum + value, 0) } : {}),
+		...(durationMs !== undefined ? { durationMs } : {}),
+		...(totalTokens !== undefined ? { totalTokens } : {}),
 	};
 }
 
 function snapshotExecutionStats(snapshot: ActivitySnapshot): { durationMs?: number; totalTokens?: number } {
-	const workflowDuration = snapshot.workflow?.tasks.map((task) => task.durationMs).filter((value): value is number => value !== undefined).reduce((sum, value) => sum + value, 0);
-	const workflowTokens = snapshot.workflow?.tasks.map((task) => task.usage?.totalTokens).filter((value): value is number => value !== undefined).reduce((sum, value) => sum + value, 0);
+	const workflowDuration = sumDefinedNumbers(snapshot.workflow?.tasks.map((task) => task.durationMs) ?? []);
+	const workflowTokens = sumDefinedNumbers(snapshot.workflow?.tasks.map((task) => task.usage?.totalTokens) ?? []);
 	const independent = aggregateExecutionStats(snapshot.independent);
 	const durationMs = (workflowDuration ?? 0) + (independent.durationMs ?? 0);
 	const totalTokens = (workflowTokens ?? 0) + (independent.totalTokens ?? 0);
@@ -191,7 +181,7 @@ function employeeCard(execution: AgentExecutionActivity, identity: FleetIdentity
 	const contentWidth = Math.max(1, width - avatarWidth);
 	const status = `${statusBadge(execution.state, theme)} ${execution.state}`;
 	const facts = [
-		rightAligned(theme.bold(theme.fg(identity.tone, identity.name)), status, contentWidth),
+		rightAlign(theme.bold(theme.fg(identity.tone, identity.name)), status, contentWidth),
 		`${theme.fg("dim", `${localize(language, "Role", "角色")}    `)}${theme.fg("accent", execution.role ?? execution.agent)}`,
 		`${theme.fg("dim", `${localize(language, "Agent", "代理")}   `)}${theme.fg("muted", execution.agent)}`,
 		`${theme.fg("dim", `${localize(language, "Context", "上下文")} `)}${theme.fg("muted", execution.context ?? agent?.defaultContext ?? "configured at launch")}`,
@@ -503,10 +493,10 @@ export class ActivityBoardComponent implements Component {
 				? localize(snapshot.language, "Pending", "等待中")
 				: `${durationSummary(execution.durationMs)} · ${execution.usage?.totalTokens !== undefined ? `${formatTokens(execution.usage.totalTokens)} tok` : "tokens n/a"}`;
 			const attempt = execution.attempt > 0 ? ` · A${execution.attempt}` : "";
-			return rightAligned(`${selectionMarker(start + offset === selectedIndex, this.theme)} ${statusBadge(execution.state, this.theme)} ${profile.name} · ${execution.agent}${attempt}`, this.theme.fg("dim", stats), leftWidth);
+			return rightAlign(`${selectionMarker(start + offset === selectedIndex, this.theme)} ${statusBadge(execution.state, this.theme)} ${profile.name} · ${execution.agent}${attempt}`, this.theme.fg("dim", stats), leftWidth);
 		});
 		const lines = [frame(this.theme, `╭${"─".repeat(inner)}╮`)];
-		lines.push(frame(this.theme, "│") + rightAligned(` ${this.theme.bold(localize(snapshot.language, "Activity Board · Agents", "活动看板 · 代理"))}`, this.theme.fg("dim", `${compactRuntimeUsage(totalStats.durationMs, totalStats.totalTokens)} `), inner) + frame(this.theme, "│"));
+		lines.push(frame(this.theme, "│") + rightAlign(` ${this.theme.bold(localize(snapshot.language, "Activity Board · Agents", "活动看板 · 代理"))}`, this.theme.fg("dim", `${compactRuntimeUsage(totalStats.durationMs, totalStats.totalTokens)} `), inner) + frame(this.theme, "│"));
 		lines.push(frame(this.theme, "│") + fit(` ${this.theme.fg("dim", snapshot.workflow?.goal ?? "Standalone Agent activity")}`, inner) + frame(this.theme, "│"));
 		lines.push(divider(this.theme, `├${"─".repeat(leftWidth)}┬${"─".repeat(rightWidth)}┤`));
 		for (let index = 0; index < bodyRows; index++) lines.push(frame(this.theme, "│") + fit(roster[index] ?? "", leftWidth) + divider(this.theme, "│") + fit(detail[index] ?? "", rightWidth) + frame(this.theme, "│"));
@@ -529,8 +519,8 @@ export class ActivityBoardComponent implements Component {
 		const completed = snapshot.workflow?.tasks.reduce((sum, task) => sum + task.completed, 0) ?? 0;
 		const total = snapshot.workflow?.tasks.reduce((sum, task) => sum + task.total, 0) ?? 0;
 		const rootTasks = snapshot.workflow?.tasks ?? [];
-		const planDurationMs = rootTasks.map((task) => task.durationMs).filter((value): value is number => value !== undefined).reduce((sum, value) => sum + value, 0);
-		const planTotalTokens = rootTasks.map((task) => task.usage?.totalTokens).filter((value): value is number => value !== undefined).reduce((sum, value) => sum + value, 0);
+		const planDurationMs = sumDefinedNumbers(rootTasks.map((task) => task.durationMs));
+		const planTotalTokens = sumDefinedNumbers(rootTasks.map((task) => task.usage?.totalTokens));
 		const planStats = compactRuntimeUsage(planDurationMs || undefined, planTotalTokens || undefined);
 		const summary = taskCount ? `${taskCount} task${taskCount === 1 ? "" : "s"} · ${completed}/${total} complete${planStats ? ` · ${planStats}` : ""}` : localize(snapshot.language, "No task plan", "无任务计划");
 		const enterHint = selected?.kind === "task"
@@ -541,7 +531,7 @@ export class ActivityBoardComponent implements Component {
 				const depth = taskDepth(selection.task, snapshot.workflow?.tasks ?? []);
 				const disclosure = this.collapsedTasks.has(selection.task.id) ? "▸" : "▾";
 				const left = `${selectionMarker(selection.key === this.selectedKey, this.theme)} ${"  ".repeat(depth)}${disclosure} ${statusBadge(selection.task.state, this.theme)} ${this.theme.bold(selection.task.label)}`;
-				return { key: selection.key, line: rightAligned(left, this.theme.fg("dim", `${selection.task.completed}/${selection.task.total}`), treeWidth) };
+				return { key: selection.key, line: rightAlign(left, this.theme.fg("dim", `${selection.task.completed}/${selection.task.total}`), treeWidth) };
 			}
 			if (selection.kind === "work-unit") {
 				const stats = [
@@ -550,7 +540,7 @@ export class ActivityBoardComponent implements Component {
 				].filter((value): value is string => Boolean(value)).join(" · ");
 				const attempts = selection.workUnit.attempts > 1 ? ` ×${selection.workUnit.attempts}` : "";
 				const left = `${selectionMarker(selection.key === this.selectedKey, this.theme)}     ${statusBadge(selection.workUnit.state, this.theme)} ${selection.workUnit.label}${attempts}`;
-				return { key: selection.key, line: rightAligned(left, this.theme.fg("dim", stats), treeWidth) };
+				return { key: selection.key, line: rightAlign(left, this.theme.fg("dim", stats), treeWidth) };
 			}
 			return { key: selection.key, line: "" };
 		});
@@ -562,7 +552,7 @@ export class ActivityBoardComponent implements Component {
 			...selectedAgentActivityLines(selected, snapshot, this.theme),
 		];
 		const lines = [frame(this.theme, `╭${"─".repeat(inner)}╮`)];
-		lines.push(frame(this.theme, "│") + rightAligned(` ${this.theme.bold(localize(snapshot.language, "Activity Board · Tasks", "活动看板 · 任务"))}`, this.theme.fg("dim", `${summary} `), inner) + frame(this.theme, "│"));
+		lines.push(frame(this.theme, "│") + rightAlign(` ${this.theme.bold(localize(snapshot.language, "Activity Board · Tasks", "活动看板 · 任务"))}`, this.theme.fg("dim", `${summary} `), inner) + frame(this.theme, "│"));
 		lines.push(frame(this.theme, "│") + fit(` ${this.theme.fg("dim", snapshot.workflow?.goal ?? localize(snapshot.language, "No Workflow plan is bound to this session", "此会话无绑定的工作流计划"))}`, inner) + frame(this.theme, "│"));
 		if (width < 88) {
 			const treeRows = Math.max(2, Math.min(6, Math.floor(bodyRowLimit * 0.38)));

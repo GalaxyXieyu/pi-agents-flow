@@ -1,3 +1,4 @@
+import { compactText, sumDefinedNumbers } from "../shared/formatters.ts";
 import type { SubagentState } from "../shared/types.ts";
 import { collectFleetSnapshot, type FleetItem } from "../tui/fleet.ts";
 import { workflowRunLanguage } from "../workflows/language.ts";
@@ -37,9 +38,8 @@ function activityState(value: string): ActivityState {
 }
 
 function compact(value: string | undefined, max = 72): string | undefined {
-	const text = value?.replace(/\s+/g, " ").trim();
-	if (!text) return undefined;
-	return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+	const text = compactText(value, max, "…");
+	return text || undefined;
 }
 
 function compactArgs(value: string | undefined): string | undefined {
@@ -130,11 +130,6 @@ function sumUsage(values: Array<ActivityUsage | undefined>): ActivityUsage | und
 		...(sumKnown("costUsd") !== undefined ? { costUsd: sumKnown("costUsd") } : {}),
 		...(sumKnown("toolCalls") !== undefined ? { toolCalls: sumKnown("toolCalls") } : {}),
 	};
-}
-
-function sumDuration(values: Array<number | undefined>): number | undefined {
-	const present = values.filter((value): value is number => value !== undefined);
-	return present.length ? present.reduce((sum, value) => sum + value, 0) : undefined;
 }
 
 function uniqueArtifacts(artifacts: ActivityArtifact[]): ActivityArtifact[] {
@@ -330,7 +325,7 @@ function taskActivities(run: WorkflowRun, workUnits: WorkUnitActivity[]): TaskAc
 		const completed = liveUnits.filter((unit) => unit.state === "completed" || unit.state === "accepted").length
 			+ children.reduce((sum, child) => sum + child.completed, 0);
 		const total = liveUnits.length + children.reduce((sum, child) => sum + child.total, 0);
-		const durationMs = sumDuration([...ownUnits.map((unit) => unit.durationMs), ...children.map((child) => child.durationMs)]);
+		const durationMs = sumDefinedNumbers([...ownUnits.map((unit) => unit.durationMs), ...children.map((child) => child.durationMs)]);
 		const usage = sumUsage([...ownUnits.map((unit) => unit.usage), ...children.map((child) => child.usage)]);
 		const artifacts = uniqueArtifacts([...ownUnits.flatMap((unit) => unit.artifacts), ...children.flatMap((child) => child.artifacts)]);
 		const task: TaskActivity = {
@@ -355,6 +350,32 @@ function taskActivities(run: WorkflowRun, workUnits: WorkUnitActivity[]): TaskAc
 		.filter((task) => !task.parentId)
 		.sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))
 		.map((task) => build(task.id));
+}
+
+/**
+ * Pure run-only projection of the task tree (no fleet enrichment).
+ *
+ * Shared by the inline workflow card and the activity dock so both surfaces
+ * derive the exact same task state / completed / total / children from the
+ * same `taskActivities` aggregation. The card does not need per-execution
+ * usage, duration, or artifacts, so it builds work units without fleet lookup.
+ */
+export function buildTaskActivitiesFromRun(run: WorkflowRun): TaskActivity[] {
+	const workUnits = Object.values(run.nodes)
+		.sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))
+		.map((node): WorkUnitActivity => ({
+			id: node.id,
+			taskId: node.taskId,
+			label: node.label,
+			order: node.order,
+			state: activityState(node.status),
+			dependsOn: [...node.dependsOn],
+			attempts: node.attempts.length,
+			artifacts: [],
+			executions: [],
+			node,
+		}));
+	return taskActivities(run, workUnits);
 }
 
 export function buildActivitySnapshot(state: SubagentState, run?: WorkflowRun): ActivitySnapshot {
@@ -390,7 +411,7 @@ export function buildActivitySnapshot(state: SubagentState, run?: WorkflowRun): 
 					state: activityState(node.status),
 					dependsOn: [...node.dependsOn],
 					attempts: node.attempts.length,
-					...(attemptDurations.length ? { durationMs: sumDuration(attemptDurations) } : {}),
+					...(attemptDurations.length ? { durationMs: sumDefinedNumbers(attemptDurations) } : {}),
 					...(attemptUsage ? { usage: attemptUsage } : {}),
 					artifacts: workflowArtifacts(run, node),
 					executions: node.attempts.length > 0 || node.status === "running" || node.status === "waiting" ? [execution] : [],

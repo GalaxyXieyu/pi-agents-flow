@@ -1,7 +1,9 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { isKeyRelease, Key, matchesKey, truncateToWidth, visibleWidth, type Component, type EditorComponent } from "@earendil-works/pi-tui";
+import { isKeyRelease, Key, matchesKey, type Component, type EditorComponent } from "@earendil-works/pi-tui";
+import { activityLeadState, summarizeActivityStates } from "../activity/summary.ts";
 import type { ActivityPerspective, ActivitySelection, ActivitySnapshot, ActivityState, AgentExecutionActivity, TaskActivity, WorkUnitActivity } from "../activity/types.ts";
-import { formatDuration, formatTokens } from "../shared/formatters.ts";
+import { formatClockDuration, formatDuration, formatTokens } from "../shared/formatters.ts";
+import { bounded, rightAlign } from "./render-helpers.ts";
 import { selectionMarker, statusBadge } from "./visual-language.ts";
 
 export const ACTIVITY_DOCK_WIDGET_KEY = "pi-agents-flow-activity-dock";
@@ -16,27 +18,6 @@ export interface ActivityDockState {
 	selectedKey?: string;
 	expandedKey?: string;
 	spinnerFrame?: number;
-}
-
-function bounded(value: string, width: number): string {
-	return truncateToWidth(value.replace(/[\r\n]+/g, " "), Math.max(1, width));
-}
-
-function elapsed(startedAt: number, now: number): string {
-	const seconds = Math.max(0, Math.floor((now - startedAt) / 1000));
-	const hours = Math.floor(seconds / 3600);
-	const minutes = Math.floor((seconds % 3600) / 60);
-	const remainder = seconds % 60;
-	return hours > 0
-		? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`
-		: `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
-}
-
-function rightAlign(left: string, right: string, width: number): string {
-	const rightWidth = visibleWidth(right);
-	const maxLeftWidth = Math.max(0, width - rightWidth - 1);
-	const clipped = truncateToWidth(left, maxLeftWidth);
-	return truncateToWidth(`${clipped}${" ".repeat(Math.max(1, width - visibleWidth(clipped) - rightWidth))}${right}`, width);
 }
 
 function badge(state: ActivityState, theme: Theme, frame: number): string {
@@ -136,7 +117,7 @@ function renderExecution(selection: Extract<ActivitySelection, { kind: "executio
 	const stats = compactStats(execution.durationMs ?? liveDuration, execution.usage?.totalTokens);
 	const fallback = execution.state === "pending" || execution.state === "ready" || execution.state === "waiting"
 		? localize(language, "Not started", "未开始")
-		: execution.durationMs === undefined ? localize(language, "Duration unavailable", "时长不可用") : elapsed(execution.startedAt, now);
+		: execution.durationMs === undefined ? localize(language, "Duration unavailable", "时长不可用") : formatClockDuration(now - execution.startedAt);
 	return rightAlign(left, theme.fg("dim", stats || fallback), width);
 }
 
@@ -153,25 +134,20 @@ function expandedRows(selection: ActivitySelection, theme: Theme, width: number,
  * full task tree only appears once the user expands it. Counts come from the shared
  * snapshot so the collapsed and expanded surfaces never disagree. Wording follows
  * snapshot.language (zh/en).
+ *
+ * When a workflow is bound, counts are derived from the same TaskActivity tree that
+ * the inline workflow card and the expanded task view use (state / completed / total),
+ * so the collapsed summary, the expanded tree, and the card all report the same
+ * task-level progress. When no workflow is bound, counts fall back to independent
+ * agent executions (the only surface available).
  */
 function dockSummaryLine(snapshot: ActivitySnapshot, theme: Theme, width: number, frame: number): string {
-	let running = 0;
-	let done = 0;
-	let failed = 0;
-	let waiting = 0;
-	let pending = 0;
-	for (const execution of snapshot.executions) {
-		switch (execution.state) {
-			case "running": running++; break;
-			case "completed":
-			case "accepted": done++; break;
-			case "failed": failed++; break;
-			case "waiting":
-			case "paused": waiting++; break;
-			default: pending++; break;
-		}
-	}
-	const lead: ActivityState = running > 0 ? "running" : failed > 0 ? "failed" : waiting > 0 ? "waiting" : pending > 0 ? "pending" : "completed";
+	const states = snapshot.workflow
+		? snapshot.workflow.tasks.map((task) => task.state)
+		: snapshot.executions.map((execution) => execution.state);
+	const counts = summarizeActivityStates(states);
+	const { running, done, failed } = counts;
+	const lead = activityLeadState(counts);
 	const zh = snapshot.language === "zh";
 	const parts = [
 		snapshot.workflow ? (zh ? "工作流" : "Workflow") : undefined,

@@ -30,9 +30,30 @@ export function fuzzyFilter<T extends { name: string; description: string; model
 		.map((x) => x.item);
 }
 
+export function fit(text: string, width: number): string {
+	const clipped = truncateToWidth(text.replace(/[\r\n]+/g, " "), Math.max(0, width));
+	return clipped + " ".repeat(Math.max(0, width - visibleWidth(clipped)));
+}
+
 export function pad(s: string, len: number): string {
-	const vis = visibleWidth(s);
-	return s + " ".repeat(Math.max(0, len - vis));
+	return fit(s, len);
+}
+
+export function rightAlign(left: string, right: string, width: number): string {
+	const targetWidth = Math.max(0, width);
+	if (targetWidth === 0) return "";
+	const singleLineRight = right.replace(/[\r\n]+/g, " ");
+	const clippedRight = truncateToWidth(singleLineRight, targetWidth);
+	const rightWidth = visibleWidth(clippedRight);
+	if (rightWidth >= targetWidth) return clippedRight;
+	const leftWidth = Math.max(0, targetWidth - rightWidth - (rightWidth > 0 ? 1 : 0));
+	const clippedLeft = truncateToWidth(left.replace(/[\r\n]+/g, " "), leftWidth);
+	const gap = targetWidth - visibleWidth(clippedLeft) - rightWidth;
+	return `${clippedLeft}${" ".repeat(Math.max(0, gap))}${clippedRight}`;
+}
+
+export function bounded(text: string, width: number): string {
+	return truncateToWidth(text.replace(/[\r\n]+/g, " "), Math.max(0, width));
 }
 
 export function row(content: string, width: number, theme: Theme): string {

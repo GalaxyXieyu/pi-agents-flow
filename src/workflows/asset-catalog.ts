@@ -12,6 +12,7 @@
 import { canInvokeAgent, discoverAgents, effectiveAgentVisibility, type AgentSource } from "../agents/agents.ts";
 import { discoverAvailableSkills } from "../agents/skills.ts";
 import { listAvailableMcpDirectTools } from "../runs/shared/mcp-direct-tool-allowlist.ts";
+import { compactText } from "../shared/formatters.ts";
 import { DEEP_RESEARCH_BASE_AGENT_BY_KIND } from "./plan-rules.ts";
 
 export interface AssetCatalogAgent {
@@ -78,12 +79,6 @@ export function buildAssetCatalog(cwd: string): AssetCatalog {
 	return { agents, skills, mcpTools };
 }
 
-function compact(value: string | undefined, max: number): string {
-	if (!value) return "";
-	const normalized = value.replace(/\s+/g, " ").trim();
-	return normalized.length > max ? `${normalized.slice(0, max - 3)}...` : normalized;
-}
-
 function agentLine(agent: AssetCatalogAgent): string {
 	const attributes = [
 		`[${agent.source}]`,
@@ -93,7 +88,7 @@ function agentLine(agent: AssetCatalogAgent): string {
 		agent.tools ? `tools=${agent.tools.join(",")}` : undefined,
 		agent.mcpDirectTools ? `mcp=${agent.mcpDirectTools.join(",")}` : undefined,
 	].filter((entry): entry is string => entry !== undefined);
-	const description = compact(agent.description, 96);
+	const description = compactText(agent.description, 96);
 	return `- ${agent.name} ${attributes.join(" ")}${description ? ` - ${description}` : ""}`;
 }
 
@@ -108,7 +103,7 @@ export function formatAssetCatalog(catalog: AssetCatalog): string {
 		"",
 		`Skills (${catalog.skills.length}) - use as agentSpec.skills`,
 		...catalog.skills.map((skill) => {
-			const description = compact(skill.description, 96);
+			const description = compactText(skill.description, 96);
 			return `- ${skill.name} [${skill.source}]${description ? ` - ${description}` : ""}`;
 		}),
 	];

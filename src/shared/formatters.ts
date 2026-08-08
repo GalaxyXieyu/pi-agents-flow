@@ -47,9 +47,46 @@ export function formatUsage(u: Usage, model?: string): string {
  * Format duration in human-readable form
  */
 export function formatDuration(ms: number): string {
-	if (ms < 1000) return `${ms}ms`;
-	if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-	return `${Math.floor(ms / 60000)}m${Math.floor((ms % 60000) / 1000)}s`;
+	const safeMs = Math.max(0, ms);
+	if (safeMs < 1000) return `${Math.floor(safeMs)}ms`;
+	if (safeMs < 60000) {
+		const seconds = safeMs / 1000;
+		if (safeMs >= 10000) return `${Math.floor(seconds)}s`;
+		return `${Number(seconds.toFixed(1))}s`;
+	}
+	const totalSeconds = Math.floor(safeMs / 1000);
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	const seconds = totalSeconds % 60;
+	if (hours > 0) return `${hours}h${minutes > 0 ? `${minutes}m` : ""}`;
+	return `${minutes}m${seconds}s`;
+}
+
+/** Format elapsed milliseconds as a compact clock value such as 01:42 or 1:02:03. */
+export function formatClockDuration(ms: number): string {
+	const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	const seconds = totalSeconds % 60;
+	return hours > 0
+		? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+		: `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+/** Collapse whitespace and truncate plain text without allowing a negative slice. */
+export function compactText(value: string | undefined, max = 52, suffix = "..."): string {
+	if (!value) return "";
+	const normalized = value.replace(/\s+/g, " ").trim();
+	const safeMax = Math.max(0, Math.floor(max));
+	if (normalized.length <= safeMax) return normalized;
+	const safeSuffix = suffix.slice(0, safeMax);
+	if (!safeSuffix) return "";
+	return `${normalized.slice(0, Math.max(0, safeMax - safeSuffix.length))}${safeSuffix}`;
+}
+
+export function sumDefinedNumbers(values: Array<number | undefined>): number | undefined {
+	const present = values.filter((value): value is number => value !== undefined);
+	return present.length ? present.reduce((sum, value) => sum + value, 0) : undefined;
 }
 
 /**

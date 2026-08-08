@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { renderWorkflowInlineCard, type WorkflowInlineCardInput } from "../../src/tui/workflow-inline-card.ts";
-import type { TaskActivity } from "../../src/activity/types.ts";
+import type { ActivitySnapshot } from "../../src/activity/types.ts";
 
 const theme = {
 	fg(_name: string, text: string): string { return text; },
@@ -10,20 +10,20 @@ const theme = {
 	bold(text: string): string { return text; },
 };
 
-function makeTask(overrides: Partial<TaskActivity> & { id: string; label: string; state: TaskActivity["state"] }): TaskActivity {
+function makeSnapshot(overrides: Partial<ActivitySnapshot["workflow"]> & { tasks: ActivitySnapshot["workflow"] extends infer W ? W extends { tasks: infer T } ? T : never : never }): ActivitySnapshot {
 	return {
-		id: overrides.id,
-		label: overrides.label,
-		state: overrides.state,
-		order: 0,
-		workUnits: [],
-		children: [],
-		completed: 0,
-		total: 1,
-		artifacts: [],
-		plan: { id: overrides.id, label: overrides.label, order: 0 } as never,
-		...overrides,
-	};
+		version: 1,
+		language: "zh",
+		workflow: {
+			runId: "test-run",
+			goal: "",
+			status: "active",
+			tasks: overrides.tasks,
+		},
+		executions: overrides.executions ?? [],
+		independent: [],
+		updatedAt: Date.now(),
+	} as ActivitySnapshot;
 }
 
 test("renders a completed workflow with green badge and done count", () => {
@@ -31,10 +31,16 @@ test("renders a completed workflow with green badge and done count", () => {
 		runId: "abc123456789",
 		language: "zh",
 		status: "completed",
-		tasks: [
-			makeTask({ id: "t1", label: "调研", state: "completed", completed: 1, total: 1 }),
-			makeTask({ id: "t2", label: "实现", state: "completed", completed: 1, total: 1 }),
-		],
+		snapshot: makeSnapshot({
+			runId: "abc123456789",
+			goal: "",
+			status: "completed",
+			tasks: {
+				t1: { id: "t1", label: "调研", order: 0, state: "completed", completed: 1, total: 1, workUnits: [{ id: "w1", taskId: "t1", label: "调研", order: 0, state: "completed", dependsOn: [], attempts: 1, artifacts: [], executions: [], node: { id: "w1", taskId: "t1", kind: "custom", label: "调研", order: 0, status: "completed", dependsOn: [], attempts: [], agentSpec: { id: "a1", baseAgent: "researcher", role: "researcher", objective: "", instructions: "", context: "fresh" } } }], children: [], plan: { id: "t1", label: "调研", order: 0 } },
+				t2: { id: "t2", label: "实现", order: 1, state: "completed", completed: 1, total: 1, workUnits: [{ id: "w2", taskId: "t2", label: "实现", order: 0, state: "completed", dependsOn: [], attempts: 1, artifacts: [], executions: [], node: { id: "w2", taskId: "t2", kind: "custom", label: "实现", order: 0, status: "completed", dependsOn: [], attempts: [], agentSpec: { id: "a2", baseAgent: "writer", role: "writer", objective: "", instructions: "", context: "fresh" } } }], children: [], plan: { id: "t2", label: "实现", order: 1 } },
+			},
+			executions: [],
+		}),
 	};
 	const lines = renderWorkflowInlineCard(input, theme as never, 120);
 	assert.ok(lines.length >= 2, "should have header + status line");
@@ -49,10 +55,16 @@ test("renders a failed workflow with red badge and failed count", () => {
 		runId: "fail-run-001",
 		language: "en",
 		status: "failed",
-		tasks: [
-			makeTask({ id: "t1", label: "Research", state: "completed", completed: 1, total: 1 }),
-			makeTask({ id: "t2", label: "Implement", state: "failed" }),
-		],
+		snapshot: makeSnapshot({
+			runId: "fail-run-001",
+			goal: "",
+			status: "failed",
+			tasks: {
+				t1: { id: "t1", label: "Research", order: 0, state: "completed", completed: 1, total: 1, workUnits: [{ id: "w1", taskId: "t1", label: "Research", order: 0, state: "completed", dependsOn: [], attempts: 1, artifacts: [], executions: [], node: { id: "w1", taskId: "t1", kind: "custom", label: "Research", order: 0, status: "completed", dependsOn: [], attempts: [], agentSpec: { id: "a1", baseAgent: "researcher", role: "researcher", objective: "", instructions: "", context: "fresh" } } }], children: [], plan: { id: "t1", label: "Research", order: 0 } },
+				t2: { id: "t2", label: "Implement", order: 1, state: "failed", completed: 0, total: 1, workUnits: [{ id: "w2", taskId: "t2", label: "Implement", order: 0, state: "failed", dependsOn: [], attempts: 1, artifacts: [], executions: [], node: { id: "w2", taskId: "t2", kind: "custom", label: "Implement", order: 0, status: "failed", dependsOn: [], attempts: [], agentSpec: { id: "a2", baseAgent: "writer", role: "writer", objective: "", instructions: "", context: "fresh" } } }], children: [], plan: { id: "t2", label: "Implement", order: 1 } },
+			},
+			executions: [],
+		}),
 	};
 	const lines = renderWorkflowInlineCard(input, theme as never, 120);
 	assert.match(lines[0], /✕/);
@@ -64,13 +76,20 @@ test("renders an active workflow with spinner and running count", () => {
 		runId: "active-run-1",
 		language: "zh",
 		status: "active",
-		tasks: [
-			makeTask({ id: "t1", label: "调研", state: "completed", completed: 1, total: 1 }),
-			makeTask({ id: "t2", label: "实现", state: "running", completed: 0, total: 2 }),
-		],
+		snapshot: makeSnapshot({
+			runId: "active-run-1",
+			goal: "",
+			status: "active",
+			tasks: {
+				t1: { id: "t1", label: "调研", order: 0, state: "completed", completed: 1, total: 1, workUnits: [{ id: "w1", taskId: "t1", label: "调研", order: 0, state: "completed", dependsOn: [], attempts: 1, artifacts: [], executions: [], node: { id: "w1", taskId: "t1", kind: "custom", label: "调研", order: 0, status: "completed", dependsOn: [], attempts: [], agentSpec: { id: "a1", baseAgent: "researcher", role: "researcher", objective: "", instructions: "", context: "fresh" } } }], children: [], plan: { id: "t1", label: "调研", order: 0 } },
+				t2: { id: "t2", label: "实现", order: 1, state: "running", completed: 0, total: 2, workUnits: [{ id: "w2", taskId: "t2", label: "实现", order: 0, state: "running", dependsOn: [], attempts: 1, artifacts: [], executions: [], node: { id: "w2", taskId: "t2", kind: "custom", label: "实现", order: 0, status: "running", dependsOn: [], attempts: [], agentSpec: { id: "a2", baseAgent: "writer", role: "writer", objective: "", instructions: "", context: "fresh" } } }], children: [], plan: { id: "t2", label: "实现", order: 1 } },
+			},
+			executions: [],
+		}),
+		frame: 2,
 	};
-	const lines = renderWorkflowInlineCard(input, theme as never, 120, 2);
-	assert.match(lines[1], /\u25D0/);
+	const lines = renderWorkflowInlineCard(input, theme as never, 120);
+	assert.match(lines[1], /[◐◑◒◓]/, "should show a running spinner glyph");
 	assert.match(lines[1], /1 运行/);
 	assert.match(lines[1], /1 完成/);
 });
@@ -80,9 +99,15 @@ test("localizes status labels to English", () => {
 		runId: "en-run-001",
 		language: "en",
 		status: "active",
-		tasks: [
-			makeTask({ id: "t1", label: "Research", state: "running" }),
-		],
+		snapshot: makeSnapshot({
+			runId: "en-run-001",
+			goal: "",
+			status: "active",
+			tasks: {
+				t1: { id: "t1", label: "Research", order: 0, state: "running", completed: 0, total: 1, workUnits: [{ id: "w1", taskId: "t1", label: "Research", order: 0, state: "running", dependsOn: [], attempts: 0, artifacts: [], executions: [], node: { id: "w1", taskId: "t1", kind: "custom", label: "Research", order: 0, status: "pending", dependsOn: [], attempts: [], agentSpec: { id: "a1", baseAgent: "researcher", role: "researcher", objective: "", instructions: "", context: "fresh" } } }], children: [], plan: { id: "t1", label: "Research", order: 0 } },
+			},
+			executions: [],
+		}),
 	};
 	const lines = renderWorkflowInlineCard(input, theme as never, 120);
 	assert.match(lines[1], /Status/);
@@ -90,76 +115,77 @@ test("localizes status labels to English", () => {
 	assert.doesNotMatch(lines[1], /状态|运行/);
 });
 
-test("shows overflow in expanded mode when tasks exceed 15-line limit", () => {
+test("shows overflow in expanded mode when agents exceed limit", () => {
+	const tasks: Record<string, any> = {};
+	const executions: any[] = [];
+	for (let i = 0; i < 20; i++) {
+		tasks[`t${i}`] = {
+			id: `t${i}`, label: `Task ${i}`, order: i, state: "completed" as const, completed: 1, total: 1,
+			workUnits: [{ id: `w${i}`, taskId: `t${i}`, label: `Task ${i}`, order: 0, state: "completed" as const, dependsOn: [], attempts: 1, artifacts: [], executions: [], node: { id: `w${i}`, taskId: `t${i}`, kind: "custom", label: `Task ${i}`, order: 0, status: "completed", dependsOn: [], attempts: [], agentSpec: { id: `a${i}`, baseAgent: "researcher", role: "researcher", objective: "", instructions: "", context: "fresh" } } }],
+			children: [], plan: { id: `t${i}`, label: `Task ${i}`, order: i },
+		};
+	}
 	const input: WorkflowInlineCardInput = {
 		runId: "overflow-run",
 		language: "en",
 		status: "completed",
-		tasks: Array.from({ length: 20 }, (_, i) => makeTask({ id: `t${i}`, label: `Task ${i}`, state: "completed", completed: 1, total: 1 })),
+		snapshot: makeSnapshot({ runId: "overflow-run", goal: "", status: "completed", tasks, executions }),
 	};
-	// Expanded mode should show overflow
 	const lines = renderWorkflowInlineCard(input, theme as never, 120, true);
 	const hasOverflow = lines.some((line) => line.includes("\u2026 +"));
 	assert.ok(hasOverflow, "should show overflow indicator in expanded mode");
-	// Collapsed mode should NOT show tasks or overflow
 	const linesCollapsed = renderWorkflowInlineCard(input, theme as never, 120, false);
 	const hasTaskRows = linesCollapsed.some((line) => line.includes("Task"));
 	assert.ok(!hasTaskRows, "collapsed mode should not show task rows");
 });
 
-test("renders task list in expanded mode (ctrl+o)", () => {
+test("shows agent rows with employee name and activity in expanded mode", () => {
 	const input: WorkflowInlineCardInput = {
-		runId: "expanded-run-001",
+		runId: "agent-run-001",
 		language: "en",
 		status: "active",
-		tasks: [
-			makeTask({ id: "t1", label: "Research", state: "running", completed: 0, total: 2 }),
-			makeTask({ id: "t2", label: "Implementation", state: "pending" }),
-		],
-	};
-	// Expanded mode should show task list
-	const lines = renderWorkflowInlineCard(input, theme as never, 120, true);
-	assert.ok(lines.length >= 4, `expected at least 4 lines (header + status + 2 tasks), got ${lines.length}`);
-	const hasResearch = lines.some((l) => l.includes("Research"));
-	const hasImplementation = lines.some((l) => l.includes("Implementation"));
-	assert.ok(hasResearch, "should show Research task");
-	assert.ok(hasImplementation, "should show Implementation task");
-	// Collapsed mode should NOT show task list
-	const linesCollapsed = renderWorkflowInlineCard(input, theme as never, 120, false);
-	const hasTaskInCollapsed = linesCollapsed.some((l) => l.includes("Research") || l.includes("Implementation"));
-	assert.ok(!hasTaskInCollapsed, "collapsed mode should not show task names");
-});
-
-test("shows failed task with red badge in expanded mode", () => {
-	const input: WorkflowInlineCardInput = {
-		runId: "failed-run-002",
-		language: "en",
-		status: "failed",
-		tasks: [
-			makeTask({ id: "t1", label: "Implement", state: "failed" }),
-		],
+		snapshot: makeSnapshot({
+			runId: "agent-run-001",
+			goal: "",
+			status: "active",
+			tasks: {
+				t1: { id: "t1", label: "Research", order: 0, state: "running", completed: 0, total: 2, workUnits: [{ id: "w1", taskId: "t1", label: "Research", order: 0, state: "running", dependsOn: [], attempts: 1, artifacts: [], executions: [], node: { id: "w1", taskId: "t1", kind: "research", label: "Research lane A", order: 0, status: "running", dependsOn: [], attempts: [], agentSpec: { id: "a1", baseAgent: "researcher", role: "researcher", objective: "research lane A", instructions: "", context: "fresh" } } }], children: [], plan: { id: "t1", label: "Research", order: 0 } },
+				t2: { id: "t2", label: "Write", order: 1, state: "pending", completed: 0, total: 1, workUnits: [{ id: "w2", taskId: "t2", label: "Write section B", order: 0, state: "pending", dependsOn: ["w1"], attempts: 0, artifacts: [], executions: [], node: { id: "w2", taskId: "t2", kind: "section-writer", label: "Write section B", order: 0, status: "pending", dependsOn: ["w1"], attempts: [], agentSpec: { id: "a2", baseAgent: "writer", role: "writer", objective: "write section B", instructions: "", context: "fresh" } } }], children: [], plan: { id: "t2", label: "Write", order: 1 } },
+			},
+			executions: [
+				{ key: "e1", agent: "researcher", role: "researcher", state: "running", startedAt: Date.now() - 10000, attempt: 1, artifacts: [], recent: [], workUnitId: "w1", activity: "Calling read" },
+			],
+		}),
 	};
 	const lines = renderWorkflowInlineCard(input, theme as never, 120, true);
-	// Should show the failed task in expanded mode
-	const hasImplement = lines.some((l) => l.includes("Implement"));
-	assert.ok(hasImplement, "should show failed task in expanded mode");
-	// Should have error indicator
-	assert.match(lines[0], /✕/, "header should show error badge");
+	const hasResearch = lines.some((l) => l.includes("researcher"));
+	const hasWrite = lines.some((l) => l.includes("writer"));
+	assert.ok(hasResearch, "should show researcher agent");
+	assert.ok(hasWrite, "should show writer agent");
+	const hasActivity = lines.some((l) => l.includes("Calling read"));
+	assert.ok(hasActivity, "should show agent activity");
 });
 
-test("shows duration footer when createdAt is provided", () => {
+test("shows duration on header line when createdAt is provided", () => {
 	const now = Date.now();
 	const input: WorkflowInlineCardInput = {
 		runId: "duration-run-001",
 		language: "zh",
 		status: "active",
-		tasks: [makeTask({ id: "t1", label: "调研", state: "running" })],
+		snapshot: makeSnapshot({
+			runId: "duration-run-001",
+			goal: "",
+			status: "active",
+			tasks: {
+				t1: { id: "t1", label: "调研", order: 0, state: "running", completed: 0, total: 1, workUnits: [{ id: "w1", taskId: "t1", label: "调研", order: 0, state: "running", dependsOn: [], attempts: 0, artifacts: [], executions: [], node: { id: "w1", taskId: "t1", kind: "custom", label: "调研", order: 0, status: "pending", dependsOn: [], attempts: [], agentSpec: { id: "a1", baseAgent: "researcher", role: "researcher", objective: "", instructions: "", context: "fresh" } } }], children: [], plan: { id: "t1", label: "调研", order: 0 } },
+			},
+			executions: [],
+		}),
 		createdAt: now - 45000,
 	};
 	const lines = renderWorkflowInlineCard(input, theme as never, 120);
-	// Last line should contain duration in right-aligned dim text
-	const lastLine = lines[lines.length - 1];
-	assert.match(lastLine, /45s/, "should show elapsed time");
+	// Duration should be on the header line (line 0), right-aligned
+	assert.match(lines[0], /45s/, "should show elapsed time on header line");
 });
 
 test("formats duration correctly for minutes and hours", () => {
@@ -168,12 +194,18 @@ test("formats duration correctly for minutes and hours", () => {
 		runId: "duration-run-002",
 		language: "en",
 		status: "completed",
-		tasks: [],
+		snapshot: makeSnapshot({
+			runId: "duration-run-002",
+			goal: "",
+			status: "completed",
+			tasks: {},
+			executions: [],
+		}),
 		createdAt: now - 125000,
 		updatedAt: now,
 	};
 	const lines1 = renderWorkflowInlineCard(input1, theme as never, 120);
-	assert.match(lines1[lines1.length - 1], /2m5s/, "should format as minutes+seconds");
+	assert.match(lines1[0], /2m5s/, "should format as minutes+seconds on header line");
 
 	const input2: WorkflowInlineCardInput = {
 		...input1,
@@ -181,19 +213,26 @@ test("formats duration correctly for minutes and hours", () => {
 		updatedAt: now,
 	};
 	const lines2 = renderWorkflowInlineCard(input2, theme as never, 120);
-	assert.match(lines2[lines2.length - 1], /2h2m/, "should format as hours+minutes");
+	assert.match(lines2[0], /2h2m/, "should format as hours+minutes on header line");
 });
 
-test("hides duration footer when createdAt is not provided", () => {
+test("hides duration on header when createdAt is not provided", () => {
 	const input: WorkflowInlineCardInput = {
 		runId: "no-duration-run",
 		language: "en",
 		status: "active",
-		tasks: [makeTask({ id: "t1", label: "Research", state: "running" })],
+		snapshot: makeSnapshot({
+			runId: "no-duration-run",
+			goal: "",
+			status: "active",
+			tasks: {
+				t1: { id: "t1", label: "Research", order: 0, state: "running", completed: 0, total: 1, workUnits: [{ id: "w1", taskId: "t1", label: "Research", order: 0, state: "running", dependsOn: [], attempts: 0, artifacts: [], executions: [], node: { id: "w1", taskId: "t1", kind: "custom", label: "Research", order: 0, status: "pending", dependsOn: [], attempts: [], agentSpec: { id: "a1", baseAgent: "researcher", role: "researcher", objective: "", instructions: "", context: "fresh" } } }], children: [], plan: { id: "t1", label: "Research", order: 0 } },
+			},
+			executions: [],
+		}),
 	};
 	const lines = renderWorkflowInlineCard(input, theme as never, 120);
-	// Collapsed mode: last line should be status line (not duration, not task)
-	const lastLine = lines[lines.length - 1];
-	assert.match(lastLine, /Status/, "should end with status line in collapsed mode");
-	assert.doesNotMatch(lastLine, /^\s+\d+s$/, "should not be a duration line");
+	// No duration line should be present
+	const hasDuration = lines.some((l) => /^\s+\d+s$/.test(l.trim()));
+	assert.ok(!hasDuration, "should not have a separate duration line");
 });

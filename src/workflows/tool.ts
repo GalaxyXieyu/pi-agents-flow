@@ -3,6 +3,8 @@ import { keyText, type ExtensionAPI, type ToolDefinition } from "@earendil-works
 import { Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 
+import { compactText } from "../shared/formatters.ts";
+import type { ActivitySnapshot } from "../activity/types.ts";
 import { noticePrefix } from "../tui/visual-language.ts";
 import { renderWorkflowInlineCard, type WorkflowInlineCardInput } from "../tui/workflow-inline-card.ts";
 import { Container } from "@earendil-works/pi-tui";
@@ -227,12 +229,6 @@ function requiredString(value: unknown, field: string): string {
 function optionalString(value: unknown, field: string): string | undefined {
 	if (value === undefined) return undefined;
 	return requiredString(value, field);
-}
-
-function compactText(value: string | undefined, max = 52): string {
-	if (!value) return "";
-	const normalized = value.replace(/\s+/g, " ").trim();
-	return normalized.length > max ? `${normalized.slice(0, max - 3)}...` : normalized;
 }
 
 function parseAgentSpec(value: unknown, nodeId: string): EphemeralAgentSpec {
@@ -591,10 +587,10 @@ export function registerWorkflowAssetsTool(pi: ExtensionAPI): void {
 	pi.registerTool(tool);
 }
 
-function renderWorkflowInlineCardFromRun(run: WorkflowRun, theme: Theme, frame?: number, expanded = false): import("@earendil-works/pi-tui").Component {
+function renderWorkflowInlineCardFromRun(run: WorkflowRun, theme: Theme, getSnapshot?: () => ActivitySnapshot | undefined, frame?: number, expanded = false): import("@earendil-works/pi-tui").Component {
 	const c = new Container();
 	const lines = renderWorkflowInlineCard(
-		{ runId: run.id, goal: run.goal, language: run.language, status: run.status, tasks: aggregateTasksFromRun(run), frame, createdAt: run.createdAt, updatedAt: run.updatedAt } as WorkflowInlineCardInput,
+		{ runId: run.id, language: run.language, status: run.status, snapshot: getSnapshot?.(), frame, createdAt: run.createdAt, updatedAt: run.updatedAt } as WorkflowInlineCardInput,
 		theme,
 		process.stdout.columns || 120,
 		expanded,
@@ -603,55 +599,7 @@ function renderWorkflowInlineCardFromRun(run: WorkflowRun, theme: Theme, frame?:
 	return c;
 }
 
-function aggregateTasksFromRun(run: WorkflowRun): TaskActivity[] {
-	const taskMap = new Map<string, { task: typeof run.tasks[string]; units: typeof run.nodes[string][] }>();
-	for (const task of Object.values(run.tasks)) {
-		if (!taskMap.has(task.id)) taskMap.set(task.id, { task, units: [] });
-	}
-	for (const node of Object.values(run.nodes)) {
-		const entry = taskMap.get(node.taskId);
-		if (entry) entry.units.push(node);
-	}
-	return [...taskMap.values()].map(({ task, units }) => {
-		const states = units.map((u) => u.status).filter((s) => s !== "cancelled" && s !== "superseded");
-		const agg = (): "running" | "failed" | "waiting" | "completed" | "accepted" | "pending" => {
-			if (states.includes("running")) return "running";
-			if (states.includes("failed")) return "failed";
-			if (states.includes("waiting")) return "waiting";
-			if (states.length === 0 || states.every((s) => s === "pending")) return "pending";
-			if (states.every((s) => s === "completed" || s === "accepted")) return "completed";
-			return "pending";
-		};
-		const completed = units.filter((u) => u.status === "completed" || u.status === "accepted").length;
-		const workUnits = units.map((node) => ({
-			id: node.id,
-			taskId: node.taskId,
-			label: node.label,
-			order: node.order,
-			state: node.status as never,
-			dependsOn: node.dependsOn ?? [],
-			attempts: node.attempts?.length ?? 0,
-			artifacts: [],
-			executions: [],
-			node: node as never,
-		}));
-		return {
-			id: task.id,
-			label: task.label,
-			parentId: task.parentId,
-			order: task.order,
-			state: agg(),
-			workUnits,
-			children: [],
-			completed,
-			total: units.length,
-			artifacts: [],
-			plan: task as never,
-		} as TaskActivity;
-	});
-}
-
-export function registerWorkflowTool(pi: ExtensionAPI, controller: WorkflowController): void {
+export function registerWorkflowTool(pi: ExtensionAPI, controller: WorkflowController, getSnapshot?: () => ActivitySnapshot | undefined): void {
 	const tool: ToolDefinition<typeof WorkflowParams, WorkflowControllerDetails> = {
 		name: "workflow",
 		label: "Workflow",
@@ -697,7 +645,7 @@ export function registerWorkflowTool(pi: ExtensionAPI, controller: WorkflowContr
 		renderResult(result, options, theme) {
 			const text = result.content.find((entry) => entry.type === "text")?.text ?? "";
 			if (result.isError || !result.details?.run) return new Text(`${noticePrefix("error")} ${compactText(text, 96)}`, 0, 0);
-			return renderWorkflowInlineCardFromRun(result.details.run, theme, undefined, options.expanded);
+			return renderWorkflowInlineCardFromRun(result.details.run, theme, getSnapshot, undefined, options.expanded);
 		},
 	};
 	pi.registerTool(tool);

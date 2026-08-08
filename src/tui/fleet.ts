@@ -18,6 +18,7 @@ import { contextModeBadge, contextModeLabel } from "../runs/shared/context-mode.
 import { FleetAvatarRenderer, type FleetAvatarRender } from "./fleet-avatar.ts";
 import { fleetIdentity, type FleetIdentity, type FleetIdentityLanguage } from "./fleet-identity.ts";
 import { readFleetTranscript, renderFleetTranscriptView, type FleetTranscript, type FleetTranscriptEventSpan } from "./fleet-transcript.ts";
+import { fit, rightAlign } from "./render-helpers.ts";
 import { selectionMarker, statusBadge } from "./visual-language.ts";
 
 const REFRESH_MS = 750;
@@ -447,7 +448,7 @@ export function fleetItemIdentityKey(item: FleetItem): string {
 	return `${item.runId}:${item.index ?? 0}:${itemAgentName(item)}`;
 }
 
-function itemIdentity(item: FleetItem, language: FleetIdentityLanguage = "en"): FleetIdentity {
+export function itemIdentity(item: FleetItem, language: FleetIdentityLanguage = "en"): FleetIdentity {
 	return fleetIdentity(fleetItemIdentityKey(item), language);
 }
 
@@ -529,7 +530,7 @@ function structuredHeader(item: FleetItem, profile: FleetIdentity, width: number
 	const pinnedActivity = itemPinnedActivity(item);
 	const task = item.description?.replace(/\s+/g, " ").trim() || "Awaiting assignment";
 	const profileLines = [
-		rightAligned(theme.bold(profile.name), `${statusGlyph(item, theme)} ${theme.fg("dim", item.state)}`, contentWidth),
+		rightAlign(theme.bold(profile.name), `${statusGlyph(item, theme)} ${theme.fg("dim", item.state)}`, contentWidth),
 		`${theme.fg("dim", "Role    ")}${theme.fg("accent", `${itemAgentName(item)} · ${itemMode(item)}`)}`,
 		`${theme.fg("dim", "Usage   ")}${stats.length ? theme.fg("muted", stats.join(" · ")) : theme.fg("dim", "No usage reported")}`,
 		`${theme.fg("dim", "Active  ")}${pinnedActivity ? theme.fg("warning", pinnedActivity.replace(/^Current tool:\s*/, "")) : theme.fg("dim", "No active tool")}`,
@@ -544,17 +545,6 @@ function structuredHeader(item: FleetItem, profile: FleetIdentity, width: number
 		const gap = " ".repeat(Math.max(1, avatarWidth - (avatarLine ? avatar.width : 0)));
 		return truncateToWidth(`${avatarLine}${gap}${profileLines[index] ?? ""}`, width);
 	});
-}
-
-function fit(text: string, width: number): string {
-	const clipped = truncateToWidth(text, Math.max(0, width));
-	return clipped + " ".repeat(Math.max(0, width - visibleWidth(clipped)));
-}
-
-function rightAligned(left: string, right: string, width: number): string {
-	const rightWidth = visibleWidth(right);
-	const leftWidth = Math.max(0, width - rightWidth - 1);
-	return fit(left, leftWidth) + " ".repeat(Math.max(1, width - leftWidth - rightWidth)) + fit(right, rightWidth);
 }
 
 interface FleetDetailSections {
@@ -996,7 +986,7 @@ export class SubagentFleetComponent implements Component {
 			const firstVisible = detail.body.length === 0 ? 0 : this.detailScroll + 1;
 			const lastVisible = Math.min(detail.body.length, this.detailScroll + this.detailViewportHeight);
 			const followState = this.detailMode === "live" ? `${this.focus === "detail" ? "detail" : "agents"} · ${this.detailAutoFollow ? "follow" : "paused"}` : "definition";
-			const detailStatus = rightAligned(
+			const detailStatus = rightAlign(
 				` ${this.theme.bold(this.detailMode === "live" ? "Live" : "Agent")}${detail.activity ? ` ${this.theme.fg("dim", `· ${detail.activity}`)}` : ""}`,
 				this.theme.fg("dim", `${followState} · ${firstVisible}-${lastVisible}/${detail.body.length} `),
 				innerWidth,
@@ -1014,7 +1004,7 @@ export class SubagentFleetComponent implements Component {
 				? `${statusGlyph(selected, this.theme)} ${itemIdentity(selected, this.options.language).name} · ${selected.state} `
 				: this.theme.fg("dim", "no children ");
 			const lines = [this.theme.fg("border", `╭${"─".repeat(innerWidth)}╮`)];
-			lines.push(this.theme.fg("border", "│") + rightAligned(title, selectedStatus, innerWidth) + this.theme.fg("border", "│"));
+			lines.push(this.theme.fg("border", "│") + rightAlign(title, selectedStatus, innerWidth) + this.theme.fg("border", "│"));
 			lines.push(this.theme.fg("border", `├${"─".repeat(innerWidth)}┤`));
 			for (let index = 0; index < rosterHeight; index++) lines.push(this.theme.fg("border", "│") + fit(roster[index] ?? "", innerWidth) + this.theme.fg("border", "│"));
 			lines.push(this.theme.fg("border", `├${"─".repeat(innerWidth)}┤`));
@@ -1039,7 +1029,7 @@ export class SubagentFleetComponent implements Component {
 		const firstVisible = detail.body.length === 0 ? 0 : this.detailScroll + 1;
 		const lastVisible = Math.min(detail.body.length, this.detailScroll + this.detailViewportHeight);
 		const followState = this.detailMode === "live" ? `${this.focus === "detail" ? "detail" : "agents"} · ${this.detailAutoFollow ? "follow" : "paused"}` : "definition";
-		const detailStatus = rightAligned(
+		const detailStatus = rightAlign(
 			` ${this.theme.bold(this.detailMode === "live" ? "Live" : "Agent")}${detail.activity ? ` ${this.theme.fg("dim", `· ${detail.activity}`)}` : ""}`,
 			this.theme.fg("dim", `${followState} · ${firstVisible}-${lastVisible}/${detail.body.length} `),
 			detailWidth,
@@ -1057,7 +1047,7 @@ export class SubagentFleetComponent implements Component {
 		const selectedStatus = selected
 			? `${statusGlyph(selected, this.theme)} ${itemIdentity(selected, this.options.language).name} · ${selected.state} `
 			: this.theme.fg("dim", "no children ");
-		lines.push(this.theme.fg("border", "│") + rightAligned(title, selectedStatus, innerWidth) + this.theme.fg("border", "│"));
+		lines.push(this.theme.fg("border", "│") + rightAlign(title, selectedStatus, innerWidth) + this.theme.fg("border", "│"));
 		lines.push(this.theme.fg("border", `├${"─".repeat(rosterWidth)}┬${"─".repeat(detailWidth)}┤`));
 		for (let index = 0; index < this.bodyHeight; index++) {
 			lines.push(

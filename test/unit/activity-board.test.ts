@@ -146,11 +146,11 @@ describe("activity board", () => {
 		assert.doesNotMatch(text, /Activity Board · Agents/);
 		assert.match(text, /PLAN DETAILS/);
 		assert.match(text, /AGENT ACTIVITY/);
-		assert.match(text, /10\.0s runtime · 1\.5k tok/);
+		assert.match(text, /10s runtime · 1\.5k tok/);
 		assert.match(text, /in 1\.0k/);
 		assert.match(text, /out 500/);
 		assert.match(text, /3 tools/);
-		assert.match(text, /\d+\.\d+s/);
+		assert.match(text, /Duration\s+10s/);
 		assert.ok(lines.length < 30, "the board must remain bounded in a 40-row terminal");
 	});
 
@@ -203,11 +203,11 @@ describe("activity board", () => {
 		const view = board({ perspective: "agents", getSnapshot: () => failedSnapshot });
 		const hiddenText = view.component.render(120).join("\n");
 		assert.doesNotMatch(hiddenText, /✕/);
-		assert.match(hiddenText, /15\.0s runtime · 2\.3k tok/);
+		assert.match(hiddenText, /15s runtime · 2\.3k tok/);
 		view.component.handleInput("f");
 		assert.match(view.component.render(120).join("\n"), /✕/);
 		assert.match(view.component.render(120).join("\n"), /Hide failed \(1\)/);
-		assert.match(view.component.render(120).join("\n"), /15\.0s runtime · 2\.3k tok/);
+		assert.match(view.component.render(120).join("\n"), /15s runtime · 2\.3k tok/);
 
 		const failed = failedSnapshot.executions.find((execution) => execution.agent === "reviewer");
 		assert.ok(failed?.inspectKey);
@@ -295,7 +295,7 @@ describe("activity board", () => {
 		assert.equal(unit?.usage?.toolCalls, 5);
 		assert.doesNotMatch(snapshot.independent.map((execution) => execution.key).join("\n"), /old/);
 		const agents = board({ perspective: "agents", getSnapshot: () => snapshot }).component.render(120).join("\n");
-		assert.match(agents, /20\.0s runtime · 2\.8k tok/);
+		assert.match(agents, /20s runtime · 2\.8k tok/);
 	});
 
 	it("projects evidence and run files and renders clickable locations", () => {

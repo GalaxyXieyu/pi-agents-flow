@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { row } from "../../src/tui/render-helpers.ts";
+import { bounded, fit, rightAlign, row } from "../../src/tui/render-helpers.ts";
 import { renderSubagentResult, truncLine } from "../../src/tui/render.ts";
 
 const theme = {
@@ -47,6 +47,20 @@ test("row keeps styled multiline content within the available width", () => {
 	const rendered = row("\u001b[31merror line 1\nline 2\tvalue\u001b[39m", 18, theme as any);
 	assert.equal(visibleWidth(rendered), 18);
 	assert.doesNotMatch(rendered, /[\r\n\t]/);
+});
+
+test("shared fit and bounded helpers normalize and enforce display width", () => {
+	assert.equal(visibleWidth(fit("中\n文", 6)), 6);
+	assert.doesNotMatch(fit("中\n文", 6), /[\r\n]/);
+	assert.ok(visibleWidth(bounded("中文内容", 5)) <= 5);
+});
+
+test("rightAlign keeps both sides within the requested width", () => {
+	const aligned = rightAlign("left", "right", 12);
+	assert.equal(visibleWidth(aligned), 12);
+	assert.match(aligned, /^left\s+right$/);
+	assert.ok(visibleWidth(rightAlign("left", "a very long right value", 8)) <= 8);
+	assert.equal(rightAlign("left", "right", 0), "");
 });
 
 test("truncLine preserves ANSI styles and resets through the ellipsis", () => {

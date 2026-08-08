@@ -2,6 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getLanguageFromPath, highlightCode, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Markdown, truncateToWidth, visibleWidth, wrapTextWithAnsi, type MarkdownTheme } from "@earendil-works/pi-tui";
+import { formatDuration } from "../shared/formatters.ts";
+import { bounded } from "./render-helpers.ts";
 import { statusBadge } from "./visual-language.ts";
 
 const DEFAULT_MAX_RECORDS = 240;
@@ -368,7 +370,7 @@ function parseToolArgs(event: Extract<FleetTranscriptEvent, { kind: "tool" }>): 
 
 function toolDuration(event: Extract<FleetTranscriptEvent, { kind: "tool" }>): string | undefined {
 	if (event.startedAt === undefined || event.endedAt === undefined) return undefined;
-	return `${((event.endedAt - event.startedAt) / 1000).toFixed(1)}s`;
+	return formatDuration(event.endedAt - event.startedAt);
 }
 
 function renderExpandedTool(
@@ -425,10 +427,6 @@ function renderExpandedTool(
 		}
 	}
 	return lines;
-}
-
-function bounded(text: string, width: number): string {
-	return truncateToWidth(text, Math.max(0, width));
 }
 
 function railLine(content: string, width: number, theme: Theme): string {

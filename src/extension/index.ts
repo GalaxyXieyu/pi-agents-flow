@@ -508,7 +508,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	};
 
 	pi.registerTool(tool);
-	registerWorkflowTool(pi, workflowController);
+	registerWorkflowTool(pi, workflowController, () => activityDock?.getSnapshot());
 	registerWorkflowAssetsTool(pi);
 
 	registerWaitTool(pi, state, waitToolConfig.enabled);
