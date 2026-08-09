@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { reduceWorkflowEvent, reduceWorkflowEvents } from "../../src/workflows/reducer.ts";
-import type { DocumentOutline, EphemeralAgentSpec, WorkflowEvent, WorkflowWorkUnitPlan } from "../../src/workflows/types.ts";
+import { assertDeepResearchCompletionContracts, assertDeepResearchEditorLineage } from "../../src/workflows/data-contract.ts";
+import type { DocumentOutline, EphemeralAgentSpec, WorkflowEvent, WorkflowRun, WorkflowWorkUnitPlan } from "../../src/workflows/types.ts";
 
 function agentSpec(id: string, baseAgent: string): EphemeralAgentSpec {
 	return {
@@ -266,6 +267,57 @@ describe("workflow reducer", () => {
 			);
 		}
 		assert.equal(run.revision, 1);
+	});
+
+	it("rejects a Deep Research Editor that cannot supply the completion artifact", () => {
+		const run = reduceWorkflowEvents([started]);
+		const invalidEditor: WorkflowWorkUnitPlan = {
+			id: "editor",
+			taskId: "task-editor",
+			kind: "editor",
+			label: "Editor",
+			order: 0,
+			dependsOn: [],
+			agentSpec: agentSpec("agent-editor", "research-editor"),
+			dataContract: {
+				version: 1,
+				profile: "writer",
+				inputs: [],
+				outputs: { "final-draft": { mediaType: "text/markdown", description: "draft", storage: "inline", required: true, classification: "public" } },
+			},
+		};
+		assert.throws(
+			() => assertDeepResearchCompletionContracts(run.mode, [invalidEditor]),
+			/must declare required output port 'document' as text\/markdown artifact/,
+		);
+	});
+
+	it("requires Deep Research repair Editors to inherit the terminal Editor revision", () => {
+		const base = reduceWorkflowEvents([started]);
+		const acceptedEditor = {
+			...sectionWriterNode("editor-v1"),
+			kind: "editor" as const,
+			agentSpec: agentSpec("agent-editor-v1", "research-editor"),
+			dataContract: writerContract(),
+			status: "accepted" as const,
+			attempts: [],
+		};
+		const run: WorkflowRun = { ...base, nodes: { "editor-v1": acceptedEditor } };
+		const parallel: WorkflowWorkUnitPlan = {
+			id: "editor-v2",
+			taskId: "task-sections",
+			kind: "editor",
+			label: "editor-v2",
+			order: 1,
+			dependsOn: [],
+			agentSpec: agentSpec("agent-editor-v2", "research-editor"),
+			dataContract: writerContract(),
+		};
+		assert.throws(
+			() => assertDeepResearchEditorLineage(run, [parallel]),
+			/must inherit the current terminal Editor revision\(s\): editor-v1/,
+		);
+		assert.doesNotThrow(() => assertDeepResearchEditorLineage(run, [{ ...parallel, dependsOn: ["editor-v1"] }]));
 	});
 
 	it("allows the Supervisor to reject obsolete failed and pending nodes", () => {

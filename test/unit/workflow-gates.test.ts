@@ -23,6 +23,14 @@ function node(id: string, kind: WorkflowNode["kind"], status: WorkflowNode["stat
 		dependsOn,
 		status,
 		attempts: [],
+		...(kind === "reviewer" && status === "accepted" ? { result: {
+			version: 1,
+			summary: { text: "Review passed", covers: [], omissions: [], confidence: "high" as const },
+			outputs: {},
+			diagnostics: { gaps: [], conflicts: [], warnings: [] },
+			recommendations: [],
+			extensions: { release: { release: true, rationale: "Document passed review." } },
+		} } : {}),
 		agentSpec: { id: `agent-${id}`, baseAgent, role: kind, objective: id, instructions: id, context: "fresh", },
 		dataContract: { version: 1, profile: "research", inputs: [], outputs: { result: { mediaType: "application/json", description: "result", storage: "artifact", required: true, classification: "internal" } } },
 	};
@@ -112,6 +120,75 @@ describe("workflow completion gates", () => {
 		assert.equal(evaluation.nextAction, "complete");
 	});
 
+	it("recognizes an accepted reviewed Editor repair through transitive Section Writer dependencies", () => {
+		const nodes = [
+			node("research-a", "research", "accepted"),
+			node("research-b", "research", "accepted"),
+			node("research-c", "research", "accepted"),
+			node("section-a", "section-writer", "accepted"),
+			node("section-b", "section-writer", "accepted"),
+			node("editor-v1", "editor", "accepted", ["section-a", "section-b"]),
+			node("reviewer-v1", "reviewer", "accepted", ["editor-v1"]),
+			node("editor-repair", "editor", "accepted", ["editor-v1", "reviewer-v1"]),
+			node("reviewer-repair", "reviewer", "accepted", ["editor-repair"]),
+		];
+		const workflow: WorkflowRun = {
+			version: 0,
+			id: "workflow-transitive-repair",
+			mode: "deep-research",
+			goal: "Research",
+			cwd: "/repo",
+			sessionId: "session-1",
+			branch: "main",
+			status: "active",
+			revision: 1,
+			createdAt: 1,
+			updatedAt: 1,
+			researchBrief: { version: 0, audience: "Engineers", purpose: "Decision", scope: "Architecture", depth: "deep", deliverable: "research-report", targetWords: { min: 1000, max: 2000 }, requiredTopics: [], excludedTopics: [], constraints: [], assumptions: [], clarification: "confirmed" },
+			documentOutline: { version: 0, title: "Report", thesis: "Evidence.", approval: "user", sections: [
+				{ id: "a", title: "Background", objective: "Context", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeId: "section-a" },
+				{ id: "b", title: "Details", objective: "Mechanism", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeId: "section-b" },
+			] },
+			nodes: Object.fromEntries(nodes.map((entry) => [entry.id, entry])),
+			decisions: [],
+			appliedEventIds: ["started"],
+		};
+		const evaluation = evaluateWorkflow(workflow);
+		assert.equal(evaluation.finalEditorNodeId, "editor-repair");
+		assert.equal(evaluation.finalEditorCoversOutline, true);
+		assert.equal(evaluation.reviewedFinalEditor, true);
+	});
+
+	it("selects the terminal Editor revision independently of node insertion order", () => {
+		const editorV2 = node("editor-v2", "editor", "accepted", ["editor-v1"]);
+		editorV2.attempts = [{ attemptId: "editor-v2:1", requestId: "r2", number: 1, startedAt: 5, completedAt: 6, status: "completed" }];
+		const editorV1 = node("editor-v1", "editor", "accepted", ["section-a", "section-b"]);
+		editorV1.attempts = [{ attemptId: "editor-v1:1", requestId: "r1", number: 1, startedAt: 3, completedAt: 4, status: "completed" }];
+		const reviewer = node("reviewer-v2", "reviewer", "accepted", ["editor-v2"]);
+		const nodes = [
+			node("research-a", "research", "accepted"),
+			node("research-b", "research", "accepted"),
+			node("research-c", "research", "accepted"),
+			node("section-a", "section-writer", "accepted"),
+			node("section-b", "section-writer", "accepted"),
+			editorV2,
+			reviewer,
+			editorV1,
+		];
+		const workflow: WorkflowRun = {
+			version: 0, id: "workflow-order", mode: "deep-research", goal: "Research", cwd: "/repo", sessionId: "session-1", branch: "main", status: "active", revision: 1, createdAt: 1, updatedAt: 1,
+			researchBrief: { version: 0, audience: "Engineers", purpose: "Decision", scope: "Architecture", depth: "deep", deliverable: "research-report", targetWords: { min: 1000, max: 2000 }, requiredTopics: [], excludedTopics: [], constraints: [], assumptions: [], clarification: "confirmed" },
+			documentOutline: { version: 0, title: "Report", thesis: "Evidence.", approval: "user", sections: [
+				{ id: "a", title: "Background", objective: "Context", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeId: "section-a" },
+				{ id: "b", title: "Details", objective: "Mechanism", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeId: "section-b" },
+			] },
+			nodes: Object.fromEntries(nodes.map((entry) => [entry.id, entry])), decisions: [], appliedEventIds: ["started"],
+		};
+		const evaluation = evaluateWorkflow(workflow);
+		assert.equal(evaluation.finalEditorNodeId, "editor-v2");
+		assert.equal(evaluation.reviewedFinalEditor, true);
+	});
+
 	it("requires the accepted Reviewer to review the final Editor revision", () => {
 		const nodes = [
 			node("research-a", "research", "accepted"),
@@ -168,7 +245,36 @@ describe("workflow completion gates", () => {
 		assert.equal(evaluation.finalEditorNodeId, "editor-v2");
 		assert.equal(evaluation.reviewedFinalEditor, false);
 		assert.equal(evaluation.readyToComplete, false);
-		assert.equal(evaluation.nextAction, "apply_plan");
+		assert.equal(evaluation.nextAction, "resolve_gates");
+		assert.ok(evaluation.completionBlockers.some((blocker) => blocker.includes("Reviewer")));
+	});
+
+	it("accepts a valid failed review without treating the document as released", () => {
+		const nodes = [
+			node("research-a", "research", "accepted"),
+			node("research-b", "research", "accepted"),
+			node("research-c", "research", "accepted"),
+			node("section-a", "section-writer", "accepted"),
+			node("section-b", "section-writer", "accepted"),
+			node("editor", "editor", "accepted", ["section-a", "section-b"]),
+		];
+		const reviewer = node("reviewer", "reviewer", "accepted", ["editor"]);
+		delete reviewer.result?.extensions;
+		nodes.push(reviewer);
+		const workflow: WorkflowRun = {
+			version: 0, id: "workflow-failed-review", mode: "deep-research", goal: "Research", cwd: "/repo", sessionId: "session-1", branch: "main", status: "active", revision: 1, createdAt: 1, updatedAt: 1,
+			researchBrief: { version: 0, audience: "Engineers", purpose: "Decision", scope: "Architecture", depth: "deep", deliverable: "research-report", targetWords: { min: 1000, max: 2000 }, requiredTopics: [], excludedTopics: [], constraints: [], assumptions: [], clarification: "confirmed" },
+			documentOutline: { version: 0, title: "Report", thesis: "Evidence.", approval: "user", sections: [
+				{ id: "a", title: "Background", objective: "Context", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeId: "section-a" },
+				{ id: "b", title: "Details", objective: "Mechanism", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeId: "section-b" },
+			] },
+			nodes: Object.fromEntries(nodes.map((entry) => [entry.id, entry])), decisions: [], appliedEventIds: ["started"],
+		};
+		const evaluation = evaluateWorkflow(workflow);
+		assert.equal(evaluation.reviewedFinalEditor, true);
+		assert.equal(evaluation.readyToComplete, false);
+		assert.equal(evaluation.nextAction, "resolve_gates");
+		assert.ok(evaluation.completionBlockers.includes("the final Reviewer has not approved document release"));
 	});
 
 	it("releases unresolved gap/conflict gates when the final Reviewer declares acceptance", () => {

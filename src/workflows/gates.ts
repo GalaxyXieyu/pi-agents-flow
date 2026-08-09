@@ -1,8 +1,8 @@
-import { effectiveAcceptedNodes, isAdjudicatedStatus, acceptedReviewerRelease } from "./effective-nodes.ts";
+import { effectiveAcceptedNodes, isAdjudicatedStatus, acceptedReviewerRelease, finalAcceptedEditor, nodeTransitivelyDependsOn } from "./effective-nodes.ts";
 import { policyAllowsCompletion, resolveWorkflowPolicy, type WorkflowPolicy } from "./policy.ts";
 import { resolveWorkflowMaxNodeAttempts, workflowNodeAttemptsExhausted } from "./retry-policy.ts";
 import { normalizeWorkflowText } from "./text-normalize.ts";
-import type { WorkflowNodeKind, WorkflowReviewerRelease, WorkflowRun } from "./types.ts";
+import type { WorkflowNode, WorkflowNodeKind, WorkflowReviewerRelease, WorkflowRun } from "./types.ts";
 
 export interface WorkflowEvaluation {
 	totalNodes: number;
@@ -29,7 +29,8 @@ export interface WorkflowEvaluation {
 	/** Reviewer release declaration, if any, which releases specific completion gates. */
 	reviewerRelease?: WorkflowReviewerRelease;
 	policy: WorkflowPolicy;
-	nextAction: "apply_plan" | "run_ready" | "wait_for_subagents" | "evaluate_results" | "resolve_failures" | "complete";
+	completionBlockers: string[];
+	nextAction: "apply_plan" | "run_ready" | "wait_for_subagents" | "evaluate_results" | "resolve_failures" | "resolve_gates" | "complete";
 }
 
 export function evaluateWorkflow(run: WorkflowRun, policyOverride?: WorkflowPolicy): WorkflowEvaluation {
@@ -60,7 +61,6 @@ export function evaluateWorkflow(run: WorkflowRun, policyOverride?: WorkflowPoli
 	const acceptedResearchLanes = acceptedNodes.filter((node) => node.kind === "research").length;
 	const acceptedSectionWriters = acceptedNodes.filter((node) => node.kind === "section-writer").length;
 	const outlineWriterIds = new Set(run.documentOutline?.sections.map((section) => section.writerNodeId) ?? []);
-	const latestAcceptedEditor = acceptedNodes.filter((node) => node.kind === "editor").at(-1);
 	// Track replacement chains: a writer ID is considered covered if it or any node
 	// that superseded it (following the supersededBy chain) is accepted. This ensures
 	// that replacing a rejected/pending writer via `replaces` still counts toward
@@ -76,19 +76,21 @@ export function evaluateWorkflow(run: WorkflowRun, policyOverride?: WorkflowPoli
 		}
 		return false;
 	};
-	const finalEditorCoversOutline = Boolean(
-		latestAcceptedEditor
-		&& outlineWriterIds.size > 0
+	const editorCoversOutline = (editor: WorkflowNode): boolean => outlineWriterIds.size > 0
 		&& [...outlineWriterIds].every((writerId) =>
-			latestAcceptedEditor.dependsOn.includes(writerId)
-			|| latestAcceptedEditor.dependsOn.some((dep) => isWriterIdCovered(dep) && run.nodes[dep]?.kind === "section-writer"),
-		),
+			nodeTransitivelyDependsOn(run, editor.id, writerId)
+			|| editor.dependsOn.some((dep) => isWriterIdCovered(dep) && run.nodes[dep]?.kind === "section-writer"),
+		);
+	const editorReviewed = (editor: WorkflowNode): boolean => acceptedNodes.some((node) =>
+		node.kind === "reviewer" && nodeTransitivelyDependsOn(run, node.id, editor.id),
 	);
-	const finalEditorNodeId = finalEditorCoversOutline ? latestAcceptedEditor?.id : undefined;
-	const reviewedFinalEditor = Boolean(
-		finalEditorNodeId
-		&& acceptedNodes.some((node) => node.kind === "reviewer" && node.dependsOn.includes(finalEditorNodeId)),
-	);
+	// The newest accepted Editor is the candidate final revision. Its complete
+	// revision chain may cover Section Writers transitively, but that exact revision
+	// still needs an accepted downstream review.
+	const finalEditor = finalAcceptedEditor(run);
+	const finalEditorCoversOutline = Boolean(finalEditor && editorCoversOutline(finalEditor));
+	const finalEditorNodeId = finalEditorCoversOutline ? finalEditor?.id : undefined;
+	const reviewedFinalEditor = Boolean(finalEditor && editorReviewed(finalEditor));
 	const allAdjudicated = nodes.length > 0 && nodes.every((node) => isAdjudicatedStatus(node.status));
 	const policyReady = policyAllowsCompletion({
 		mode: run.mode,
@@ -102,9 +104,9 @@ export function evaluateWorkflow(run: WorkflowRun, policyOverride?: WorkflowPoli
 		unresolvedConflicts: conflicts,
 		allAdjudicated,
 	});
-	const editorialChainReady = (!policy.gates.requireEditor || finalEditorCoversOutline)
-		&& (!policy.gates.requireReviewer || (policy.gates.requireEditor ? reviewedFinalEditor : acceptedKinds.includes("reviewer")));
 	const reviewerRelease = acceptedReviewerRelease(run);
+	const editorialChainReady = (!policy.gates.requireEditor || finalEditorCoversOutline)
+		&& (!policy.gates.requireReviewer || (policy.gates.requireEditor ? reviewedFinalEditor && reviewerRelease?.release === true : reviewerRelease?.release === true));
 	const readyToComplete = policyAllowsCompletion({
 		mode: run.mode,
 		policy,
@@ -118,6 +120,18 @@ export function evaluateWorkflow(run: WorkflowRun, policyOverride?: WorkflowPoli
 		allAdjudicated,
 		reviewerRelease,
 	}) && editorialChainReady;
+	const completionBlockers = [
+		policy.gates.requireBrief && !run.researchBrief ? "research brief is missing" : undefined,
+		policy.gates.requireOutline && !run.documentOutline ? "approved outline is missing" : undefined,
+		acceptedResearchLanes < policy.gates.minAcceptedResearchLanes ? `accepted research lanes ${acceptedResearchLanes}/${policy.gates.minAcceptedResearchLanes}` : undefined,
+		acceptedSectionWriters < policy.gates.minAcceptedSectionWriters ? `accepted Section Writers ${acceptedSectionWriters}/${policy.gates.minAcceptedSectionWriters}` : undefined,
+		gaps > policy.gates.maxUnresolvedGaps && reviewerRelease?.gapsAccepted !== true ? `${gaps} unresolved evidence gap(s)` : undefined,
+		conflicts > policy.gates.maxUnresolvedConflicts && reviewerRelease?.conflictsAccepted !== true ? `${conflicts} unresolved evidence conflict(s)` : undefined,
+		!allAdjudicated ? `${nodes.filter((node) => !isAdjudicatedStatus(node.status)).length} node(s) are not adjudicated` : undefined,
+		policy.gates.requireEditor && !finalEditorCoversOutline ? "no accepted final Editor covers every outline Section Writer" : undefined,
+		policy.gates.requireReviewer && !reviewedFinalEditor ? "no accepted Reviewer reviewed the final Editor revision" : undefined,
+		policy.gates.requireReviewer && reviewedFinalEditor && reviewerRelease?.release !== true ? "the final Reviewer has not approved document release" : undefined,
+	].filter((value): value is string => Boolean(value));
 	const nextAction = ready > 0
 		? "run_ready" as const
 		: completedAwaitingDecision > 0
@@ -128,7 +142,9 @@ export function evaluateWorkflow(run: WorkflowRun, policyOverride?: WorkflowPoli
 					? "wait_for_subagents" as const
 				: readyToComplete
 					? "complete" as const
-					: "apply_plan" as const;
+					: nodes.length === 0
+						? "apply_plan" as const
+						: "resolve_gates" as const;
 	return {
 		totalNodes: nodes.length,
 		ready,
@@ -153,6 +169,7 @@ export function evaluateWorkflow(run: WorkflowRun, policyOverride?: WorkflowPoli
 		...(reviewerRelease ? { reviewerRelease } : {}),
 		readyToComplete,
 		policy,
+		completionBlockers,
 		nextAction,
 	};
 }

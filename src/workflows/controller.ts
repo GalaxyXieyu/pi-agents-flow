@@ -18,11 +18,12 @@ import {
 	buildCodingContract,
 	type CodingWorkflowContract,
 } from "./coding-preset.ts";
-import { dependencyIsAccepted, effectiveAcceptedResultNodes } from "./effective-nodes.ts";
+import { dependencyIsAccepted, finalAcceptedEditor } from "./effective-nodes.ts";
 import { evaluateWorkflow, type WorkflowEvaluation } from "./gates.ts";
 import { resolveWorkflowLanguage, workflowLanguageInstruction, workflowRunLanguage, type WorkflowLanguageMode } from "./language.ts";
 import { buildWorkflowRepairGuidance, formatWorkflowRepairGuidance, type WorkflowRepairGuidance } from "./guidance.ts";
 import { registerWorkflowOutputs } from "./output-ports.ts";
+import { assertDeepResearchCompletionContracts, assertDeepResearchEditorLineage } from "./data-contract.ts";
 import { parseWorkflowResult } from "./result-contract.ts";
 import { DEFAULT_WORKFLOW_MAX_NODE_ATTEMPTS, resolveWorkflowMaxNodeAttempts, workflowNodeAttemptsExhausted } from "./retry-policy.ts";
 import { createWorkflowScheduler, type WorkflowScheduler } from "./scheduler.ts";
@@ -217,6 +218,7 @@ function statusText(run: WorkflowRun, evaluation: WorkflowEvaluation, includeRes
 		`Nodes: ${evaluation.accepted} accepted, ${evaluation.superseded} superseded, ${evaluation.rejected} rejected, ${evaluation.completedAwaitingDecision} awaiting decision, ${evaluation.ready} ready, ${evaluation.running} running, ${evaluation.waiting} waiting, ${evaluation.pending} pending, ${evaluation.failed} failed, ${evaluation.cancelled} cancelled, ${evaluation.exhausted} attempt-exhausted.`,
 		`Node attempt ceiling: ${resolveWorkflowMaxNodeAttempts(run.maxNodeAttempts)}.`,
 		`Gaps: ${evaluation.gaps}; conflicts: ${evaluation.conflicts}; next action: ${evaluation.nextAction}.`,
+		...(evaluation.completionBlockers.length > 0 ? [`Completion blockers: ${evaluation.completionBlockers.join("; ")}.`] : []),
 	];
 	if (Object.keys(run.nodes).length > 0) {
 		lines.push("", "Node status:");
@@ -486,7 +488,7 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 	};
 	/** Persist the best available final draft so an auto-stopped run leaves a usable artifact. */
 	const preserveDraft = (store: WorkflowStore, run: WorkflowRun): string | undefined => {
-		const editor = effectiveAcceptedResultNodes(run).filter((node) => node.kind === "editor").at(-1)
+		const editor = finalAcceptedEditor(run)
 			?? Object.values(run.nodes).filter((node) => node.kind === "editor").at(-1);
 		if (!editor) return undefined;
 		const resolved = editor.outputs?.document ?? editor.attempts.at(-1)?.outputs?.document;
@@ -718,6 +720,8 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 					return resultFor(ctx, next, evaluateWorkflow(next), `Document outline recorded for ${next.id}: ${params.outline.sections.length} sections across ${new Set(params.outline.sections.map((section) => section.writerNodeId)).size} Writer nodes.`);
 				}
 				case "apply_plan": {
+					assertDeepResearchCompletionContracts(run.mode, params.workUnits);
+					assertDeepResearchEditorLineage(run, params.workUnits);
 					const persistedCodingContract = codingWorkflowContract(run);
 					const codingContract = persistedCodingContract
 						?? params.workUnits.map((node) => ({ ...run, nodes: { ...run.nodes, [node.id]: { ...node, status: "pending" as const, attempts: [] } } })).map(codingWorkflowContract).find((value) => value !== undefined);
@@ -1025,7 +1029,9 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 					if (run.mode === "deep-research" && (!evaluation.acceptedKinds.includes("editor") || !evaluation.acceptedKinds.includes("reviewer"))) {
 						throw new Error("Deep Research requires accepted editor and reviewer nodes before completion.");
 					}
-					if (!evaluation.readyToComplete) throw new Error(`Workflow cannot complete; next action is '${evaluation.nextAction}'.`);
+					if (!evaluation.readyToComplete) {
+						throw new Error(`Workflow cannot complete; next action is '${evaluation.nextAction}'. Blockers: ${evaluation.completionBlockers.join("; ") || "completion policy is not satisfied"}.`);
+					}
 					const quality = qualityDetails(store, run);
 					if (run.mode === "deep-research" && !quality.qualityReport?.releaseReady) {
 						const failureMarker = path.join(store.paths(run.id).bundles, "quality-gate-failures.json");

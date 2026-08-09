@@ -18,6 +18,33 @@ export function dependencyIsAccepted(nodes: Record<string, WorkflowNode>, nodeId
 	return current?.status === "accepted";
 }
 
+export function nodeTransitivelyDependsOn(run: WorkflowRun, nodeId: string, dependencyId: string, visited = new Set<string>()): boolean {
+	if (nodeId === dependencyId) return true;
+	if (visited.has(nodeId)) return false;
+	visited.add(nodeId);
+	const node = run.nodes[nodeId];
+	if (!node) return false;
+	return node.dependsOn.some((candidate) => nodeTransitivelyDependsOn(run, candidate, dependencyId, visited));
+}
+
+function completionOrder(node: WorkflowNode): number {
+	const attempt = node.attempts.at(-1);
+	return attempt?.completedAt ?? attempt?.startedAt ?? node.order;
+}
+
+export function terminalAcceptedEditors(run: WorkflowRun): WorkflowNode[] {
+	const editors = effectiveAcceptedNodes(run).filter((node) => node.kind === "editor");
+	return editors.filter((editor) => !editors.some((candidate) =>
+		candidate.id !== editor.id && nodeTransitivelyDependsOn(run, candidate.id, editor.id),
+	));
+}
+
+export function finalAcceptedEditor(run: WorkflowRun): WorkflowNode | undefined {
+	return terminalAcceptedEditors(run)
+		.sort((left, right) => completionOrder(left) - completionOrder(right) || left.id.localeCompare(right.id))
+		.at(-1);
+}
+
 export function isAdjudicatedStatus(status: WorkflowNode["status"]): boolean {
 	return status === "accepted" || status === "superseded" || status === "rejected";
 }
@@ -47,10 +74,11 @@ function parseReviewerRelease(value: unknown): WorkflowReviewerRelease | undefin
 export function acceptedReviewerRelease(run: WorkflowRun): WorkflowReviewerRelease | undefined {
 	const acceptedReviewers = effectiveAcceptedNodes(run).filter((node) => node.kind === "reviewer" && node.result);
 	if (acceptedReviewers.length === 0) return undefined;
-	const finalEditor = effectiveAcceptedNodes(run).filter((node) => node.kind === "editor").at(-1);
-	const reviewer = finalEditor
-		? acceptedReviewers.filter((node) => node.dependsOn.includes(finalEditor.id)).at(-1) ?? acceptedReviewers.at(-1)
-		: acceptedReviewers.at(-1);
+	const finalEditor = finalAcceptedEditor(run);
+	const candidates = finalEditor
+		? acceptedReviewers.filter((node) => nodeTransitivelyDependsOn(run, node.id, finalEditor.id))
+		: acceptedReviewers;
+	const reviewer = candidates.sort((left, right) => completionOrder(left) - completionOrder(right) || left.id.localeCompare(right.id)).at(-1);
 	if (!reviewer?.result?.extensions) return undefined;
 	return parseReviewerRelease(reviewer.result.extensions.release);
 }

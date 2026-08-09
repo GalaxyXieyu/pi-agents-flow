@@ -146,11 +146,11 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 	const legacyWriterNode = accepted.filter((node) => node.kind === "writer").at(-1);
 	const editorResolvedOutput = editorNode?.outputs?.document;
 	const editorRawOutput = editorNode?.result?.outputs?.document;
-	// The deliverable is the editor's `document` output, not summary.text (a bounded abstract capped at
-	// MAX_WORKFLOW_SUMMARY_BYTES). Prefer the registered artifact/inline value; only fall back to summary
-	// when no resolved document is available.
-	const finalMarkdown = editorResolvedOutput?.kind === "inline" ? String(editorResolvedOutput.value)
-		: editorResolvedOutput?.kind === "artifact" && context?.readArtifact ? context.readArtifact(editorResolvedOutput.artifact)
+	// Deep Research plans are preflighted to expose `document` as an artifact. Keep
+	// the raw-value fallback for pure unit fixtures and legacy event hydration, but
+	// never inspect arbitrary output names: completion and quality must agree.
+	const finalMarkdown = editorResolvedOutput?.kind === "artifact" && context?.readArtifact ? context.readArtifact(editorResolvedOutput.artifact)
+		: editorResolvedOutput?.kind === "inline" ? String(editorResolvedOutput.value)
 		: editorRawOutput?.kind === "value" && typeof editorRawOutput.value === "string" ? String(editorRawOutput.value)
 		: editorNode?.result?.summary.text ?? "";
 	const sourceNodes = accepted.filter((node) => node.kind === "research" || node.kind === "verification");

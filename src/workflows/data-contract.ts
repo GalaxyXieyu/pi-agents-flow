@@ -1,8 +1,11 @@
+import { terminalAcceptedEditors } from "./effective-nodes.ts";
 import { WORKFLOW_PORT_NAME, workflowProfileForKind } from "./plan-rules.ts";
 import type {
 	WorkflowDataContract,
 	WorkflowInputBinding,
 	WorkflowJsonValue,
+	WorkflowMode,
+	WorkflowRun,
 	WorkflowWorkUnitPlan,
 } from "./types.ts";
 
@@ -94,6 +97,35 @@ export function assertWorkflowDataContract(plan: WorkflowWorkUnitPlan): void {
 			assertJsonValue(value, `Work unit '${plan.id}' dataContract.extensions.${name}`);
 		}
 		if (jsonBytes(contract.extensions) > MAX_WORKFLOW_EXTENSION_BYTES) throw new Error(`Work unit '${plan.id}' dataContract.extensions exceeds ${MAX_WORKFLOW_EXTENSION_BYTES} bytes.`);
+	}
+}
+
+export function assertDeepResearchCompletionContracts(mode: WorkflowMode, plans: WorkflowWorkUnitPlan[]): void {
+	if (mode !== "deep-research") return;
+	for (const plan of plans.filter((candidate) => candidate.kind === "editor")) {
+		const document = plan.dataContract.outputs.document;
+		if (!document || !document.required || document.storage !== "artifact" || document.mediaType !== "text/markdown") {
+			throw new Error(`Deep Research Editor '${plan.id}' must declare required output port 'document' as text/markdown artifact; workflow completion reads that exact port.`);
+		}
+	}
+}
+
+export function assertDeepResearchEditorLineage(run: WorkflowRun, plans: WorkflowWorkUnitPlan[]): void {
+	if (run.mode !== "deep-research") return;
+	const currentEditors = terminalAcceptedEditors(run);
+	if (currentEditors.length === 0) return;
+	const combined = new Map([...Object.values(run.nodes), ...plans].map((node) => [node.id, node]));
+	const dependsOn = (nodeId: string, targetId: string, visited = new Set<string>()): boolean => {
+		if (nodeId === targetId) return true;
+		if (visited.has(nodeId)) return false;
+		visited.add(nodeId);
+		return (combined.get(nodeId)?.dependsOn ?? []).some((dependency) => dependsOn(dependency, targetId, visited));
+	};
+	for (const plan of plans.filter((candidate) => candidate.kind === "editor")) {
+		const missing = currentEditors.filter((editor) => !dependsOn(plan.id, editor.id));
+		if (missing.length > 0) {
+			throw new Error(`Deep Research repair Editor '${plan.id}' must inherit the current terminal Editor revision(s): ${missing.map((editor) => editor.id).join(", ")}. Parallel final Editor branches cannot be completed safely.`);
+		}
 	}
 }
 

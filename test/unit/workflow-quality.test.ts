@@ -152,7 +152,7 @@ function documentNodes(researchNodes: WorkflowNode[]): WorkflowNode[] {
 		acceptedNode("section-a", "section-writer", { ...envelope(findings), summary: { text: background, covers: [], omissions: [], confidence: "high" }, outputs: { document: { kind: "value", value: background } } }),
 		acceptedNode("section-b", "section-writer", { ...envelope(findings), summary: { text: technical, covers: [], omissions: [], confidence: "high" }, outputs: { document: { kind: "value", value: technical } } }),
 		acceptedNode("editor", "editor", { ...envelope(findings), summary: { text: `# Research report\n\n${background}\n\n${technical}`, covers: [], omissions: [], confidence: "high" }, outputs: { document: { kind: "value", value: `# Research report\n\n${background}\n\n${technical}` } } }, ["section-a", "section-b"]),
-		acceptedNode("reviewer", "reviewer", envelope([]), ["editor"]),
+		acceptedNode("reviewer", "reviewer", { ...envelope([]), extensions: { release: { release: true, rationale: "Document passed review." } } }, ["editor"]),
 	];
 }
 

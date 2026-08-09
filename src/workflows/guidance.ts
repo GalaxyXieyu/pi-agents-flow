@@ -141,6 +141,19 @@ export function buildWorkflowRepairGuidance(
 		conflicts: unresolved.conflicts,
 	});
 	const actions: WorkflowRepairAction[] = [];
+	if (evaluation.nextAction === "resolve_gates" && evaluation.completionBlockers.length > 0) {
+		actions.push({
+			kind: "supervisor_intervention",
+			priority: 105,
+			reason: `Completion gates are blocked: ${evaluation.completionBlockers.join("; ")}.`,
+			target: run.id,
+			promptHints: [
+				"Adjudicate obsolete pending/rejected branches instead of adding a parallel final chain.",
+				"For Deep Research, the accepted final Editor must expose document as a text/markdown artifact and an accepted Reviewer must review that revision.",
+				"Use one targeted repair node only when a named blocker requires new work; record accepted uncertainty for residual non-public gaps.",
+			],
+		});
+	}
 	const maxNodeAttempts = resolveWorkflowMaxNodeAttempts(run.maxNodeAttempts);
 	const exhausted = Object.values(run.nodes).filter((node) => workflowNodeAttemptsExhausted(node, maxNodeAttempts));
 	for (const node of exhausted) {

@@ -5,7 +5,9 @@ import * as path from "node:path";
 import { afterEach, describe, it } from "node:test";
 
 import { createWorkflowStore } from "../../src/workflows/store.ts";
-import type { WorkflowEvent } from "../../src/workflows/types.ts";
+import { registerWorkflowOutputs } from "../../src/workflows/output-ports.ts";
+import { createLocalWorkflowArtifactStore } from "../../src/workflows/artifact-store.ts";
+import type { WorkflowEvent, WorkflowResult } from "../../src/workflows/types.ts";
 
 const tempDirs: string[] = [];
 
@@ -78,6 +80,28 @@ describe("workflow store", () => {
 		const replayed = store.append("workflow-1", plan);
 		assert.equal(replayed.revision, 2);
 		assert.equal(fs.readFileSync(paths.events, "utf-8").trim().split("\n").length, 2);
+	});
+
+	it("keeps reviewer release extensions in the compact event result", () => {
+		const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-output-release-"));
+		tempDirs.push(rootDir);
+		const result: WorkflowResult = {
+			version: 1,
+			summary: { text: "approved", covers: [], omissions: [], confidence: "high" },
+			outputs: { review: { kind: "value", value: "approved" } },
+			diagnostics: { gaps: [], conflicts: [], warnings: [] },
+			recommendations: [],
+			extensions: { release: { release: true, gapsAccepted: true, rationale: "Quick report gaps are acceptable." } },
+		};
+		const registered = registerWorkflowOutputs({
+			run: { id: "workflow-release" } as never,
+			node: { id: "reviewer" } as never,
+			attemptId: "reviewer:1",
+			result,
+			contract: { version: 1, profile: "reviewer", inputs: [], outputs: { review: { mediaType: "text/plain", description: "review", storage: "inline", required: true, classification: "internal" } } },
+			artifactStore: createLocalWorkflowArtifactStore(rootDir),
+		});
+		assert.deepEqual(registered.eventResult.extensions, result.extensions);
 	});
 
 	it("fails closed when an event log is missing its workflow.started event", () => {

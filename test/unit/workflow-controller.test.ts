@@ -38,6 +38,7 @@ function completedResponse(requestId: string, ownerRunId: string, nodeId: string
 function planNode(id: string, kind: WorkflowWorkUnitPlan["kind"] = "research", dependsOn: string[] = []): WorkflowWorkUnitPlan {
 	const profile = workflowProfileForKind(kind);
 	const outputName = profile === "writer" ? "document" : profile === "reviewer" ? "review" : "result";
+	const mediaType = kind === "editor" || kind === "section-writer" || kind === "writer" ? "text/markdown" : "application/json";
 	const baseAgent = kind === "verification"
 		? "research-verifier"
 		: kind === "outline"
@@ -66,7 +67,7 @@ function planNode(id: string, kind: WorkflowWorkUnitPlan["kind"] = "research", d
 			instructions: "Return structured evidence.",
 			context: "fresh",
 		},
-		dataContract: { version: 1, profile, inputs: [], outputs: { [outputName]: { mediaType: "application/json", description: outputName, storage: "artifact", required: true, classification: "internal" } } },
+		dataContract: { version: 1, profile, inputs: [], outputs: { [outputName]: { mediaType, description: outputName, storage: "artifact", required: true, classification: "internal" } } },
 	};
 }
 
@@ -82,6 +83,30 @@ function fakeContext(cwd: string, entries: unknown[]): ExtensionContext {
 }
 
 describe("workflow controller", () => {
+	it("rejects an impossible Deep Research Editor contract before applying the plan", async () => {
+		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-controller-editor-contract-"));
+		tempDirs.push(cwd);
+		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
+		const controller = createWorkflowController({
+			adapter: { async run() { throw new Error("must not execute"); } },
+			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
+			createRunId: () => "workflow-editor-contract",
+			now: () => 1,
+			resolveBranch: () => "main",
+		});
+		const ctx = fakeContext(cwd, entries);
+		await controller.execute({ action: "start", mode: "deep-research", goal: "Research" }, ctx);
+		const invalidEditor = planNode("editor", "editor");
+		invalidEditor.dataContract.outputs = {
+			"final-draft": { mediaType: "text/markdown", description: "draft", storage: "inline", required: true, classification: "public" },
+		};
+		await assert.rejects(
+			controller.execute({ action: "apply_plan", tasks: [{ id: "task-main", label: "Main", order: 0 }], workUnits: [invalidEditor] }, ctx),
+			/must declare required output port 'document' as text\/markdown artifact/,
+		);
+		assert.deepEqual(controller.current(ctx)?.nodes, {});
+	});
+
 	it("resolves and persists workflow language from the goal or explicit override", async () => {
 		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-controller-language-"));
 		tempDirs.push(cwd);

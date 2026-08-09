@@ -33,7 +33,9 @@ The Reviewer may fetch a registered citation to validate it but cannot introduce
 
 ### Reviewer release
 
-The Reviewer may declare residual gaps, conflicts, or citation/length shortfalls acceptable for the target deliverable by returning `extensions.release = { release: true, gapsAccepted?, conflictsAccepted?, citationShortfallAccepted?, lengthShortfallAccepted?, rationale }`. When present, the corresponding completion gates release so the supervisor is not forced to manually record a decision per outstanding item. Be conservative: only release a gate you have independently concluded does not undermine the deliverable. Do not use release to bypass a blocker that actually requires repair.
+Reviewer node acceptance means the review result is valid; it does not mean the document passed. Accept a sound Reviewer result even when its verdict is fail, then repair or supersede the Editor draft from the named blockers. Reject the Reviewer node only when the review result itself is malformed, unsupported, or out of scope.
+
+A passing Reviewer must return `extensions.release = { release: true, gapsAccepted?, conflictsAccepted?, citationShortfallAccepted?, lengthShortfallAccepted?, rationale }`. Omit `extensions.release` when the document verdict is fail. The release declaration approves that exact final Editor revision; the optional fields additionally release the corresponding residual gap, conflict, citation, or length gates so the supervisor is not forced to record each one manually. Be conservative: only release a gate when you have independently concluded the residual issue does not undermine the deliverable. Do not use release to bypass a blocker that actually requires repair.
 
 ## Do not damage prose to satisfy a gate
 

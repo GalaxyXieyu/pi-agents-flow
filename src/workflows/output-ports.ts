@@ -29,6 +29,10 @@ function boundedEventResult(result: WorkflowResult): WorkflowResult {
 		diagnostics: structuredClone(result.diagnostics),
 		recommendations: result.recommendations.slice(0, 20),
 		...(result.evidence ? { evidence: { findings: [], ...(result.evidence.search ? { search: structuredClone(result.evidence.search) } : {}) } } : {}),
+		// Extensions are bounded by WorkflowResult validation and may contain release
+		// decisions used by evaluation. Dropping them makes event/manifest gates disagree
+		// with hydrated quality checks until the store is reloaded.
+		...(result.extensions ? { extensions: structuredClone(result.extensions) } : {}),
 	};
 }
 
