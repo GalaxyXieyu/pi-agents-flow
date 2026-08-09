@@ -243,4 +243,55 @@ describe("workflow repair guidance and search benchmark fixtures", () => {
 		assert.deepEqual(guidance.followUpQueries, []);
 		assert.match(guidance.summary, /terminal=completed/);
 	});
+
+	it("exposes a machine-readable recommendedAction consistent with nextAction", () => {
+		const workflow = run([
+			accepted("research-a", "research", envelope({
+				findings: [{ claim: "claim a", confidence: "high", evidence: [{ url: "https://docs.example/a", kind: "primary", quote: "a" }] }],
+				search: { queries: ["claim a"], fetchedUrls: ["https://docs.example/a"], droppedSources: [] },
+			})),
+			accepted("completed-research", "research", envelope({
+				findings: [{ claim: "ready claim", confidence: "high", evidence: [{ url: "https://docs.example/ready", kind: "primary", quote: "ready" }] }],
+			}), "completed"),
+		]);
+		const evaluation = evaluateWorkflow(workflow);
+		const guidance = buildWorkflowRepairGuidance(workflow, evaluation);
+		assert.ok(guidance.recommendedAction, "recommendedAction must be present when actions exist");
+		assert.ok(guidance.recommendedAction!.kind);
+		assert.ok(guidance.recommendedAction!.target);
+		assert.ok(guidance.recommendedAction!.reason);
+		// nextAction is evaluate_results because a completed node awaits adjudication.
+		assert.equal(evaluation.nextAction, "evaluate_results");
+		assert.equal(guidance.recommendedAction!.kind, "adjudicate_node");
+		assert.equal(guidance.recommendedAction!.target, "completed-research");
+	});
+
+	it("recommends complete when all gates are satisfied", () => {
+		const editor = accepted("editor", "editor", envelope({
+			findings: [{ claim: "doc", confidence: "high", evidence: [{ url: "https://docs.example/d", kind: "primary", quote: "d" }] }],
+		}));
+		editor.dependsOn = [];
+		const reviewer = accepted("reviewer", "reviewer", envelope({
+			findings: [],
+		}));
+		reviewer.dependsOn = ["editor"];
+		reviewer.result = {
+			version: 1,
+			summary: { text: "Review PASS", covers: [], omissions: [], confidence: "high" },
+			outputs: {},
+			diagnostics: { gaps: [], conflicts: [], warnings: [] },
+			recommendations: [],
+			evidence: { findings: [] },
+			extensions: { release: { release: true, rationale: "Document passed review." } },
+		};
+		const workflow = run([editor, reviewer]);
+		workflow.policy = resolveWorkflowPolicy("deep-research", {
+			gates: { minAcceptedResearchLanes: 0, minAcceptedSectionWriters: 0, maxUnresolvedGaps: 0, maxUnresolvedConflicts: 0, requireBrief: false, requireOutline: false, requireWriter: false, requireEditor: false, requireReviewer: false },
+		});
+		const evaluation = evaluateWorkflow(workflow);
+		assert.equal(evaluation.nextAction, "complete");
+		const guidance = buildWorkflowRepairGuidance(workflow, evaluation);
+		assert.equal(guidance.recommendedAction?.kind, "complete");
+		assert.equal(guidance.recommendedAction?.target, workflow.id);
+	});
 });

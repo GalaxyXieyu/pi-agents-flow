@@ -41,6 +41,8 @@ export interface WorkflowQualityReport {
 	warnings: string[];
 	searchBenchmark?: SearchQualityBenchmarkResult;
 	recommendedFollowUpQueries?: string[];
+	/** Deterministic first repair action so a Supervisor need not parse prose guidance. */
+	recommendedAction?: { kind: string; target: string; reason: string };
 	/** Present when an accepted reviewer declared a release that relaxed specific gates. */
 	reviewerRelease?: WorkflowReviewerRelease;
 }
@@ -408,5 +410,6 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 		...(reviewerRelease ? { reviewerRelease } : {}),
 		...(searchBenchmark ? { searchBenchmark } : {}),
 		...(followUps.length > 0 ? { recommendedFollowUpQueries: followUps } : {}),
+		...(guidance.recommendedAction ? { recommendedAction: guidance.recommendedAction } : {}),
 	};
 }

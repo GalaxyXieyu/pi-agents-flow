@@ -922,7 +922,8 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 				case "quality": {
 					const evaluation = evaluateWorkflow(run);
 					const quality = qualityDetails(store, run);
-					return resultFor(ctx, run, evaluation, formatWorkflowQualityReport(quality.qualityReport!, quality.qualityReportPath), quality);
+					const guidance = guidanceDetails(run, evaluation);
+					return resultFor(ctx, run, evaluation, `${formatWorkflowQualityReport(quality.qualityReport!, quality.qualityReportPath)}\n\n${guidance.guidanceText}`, { ...quality, repairGuidance: guidance.repairGuidance });
 				}
 				case "get_result": {
 					const node = run.nodes[params.nodeId];

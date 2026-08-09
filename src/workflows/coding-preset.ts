@@ -89,7 +89,7 @@ function spec(
 			instructions,
 			"Treat the Workflow goal and authorized input bindings as the task contract.",
 			"Read PM/GSD planning files only when they exist and are relevant; their absence must not block an ordinary repository task.",
-			"Return the complete stage artifact through the required 'result' output port as a Markdown file submission.",
+			"Return the complete stage artifact through the required 'result' output port. If you have write access, write the Markdown to the preallocated output slot path and submit kind:file with that exact path and its sha256. If you lack write access, submit kind:value with the full Markdown content inline; the harness materializes it as the required artifact. Never submit kind:file pointing at a path you did not actually write.",
 		].join("\n\n"),
 		context: "fork",
 	};
