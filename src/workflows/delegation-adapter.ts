@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+
 import {
 	SUBAGENT_DELEGATION_CANCEL_EVENT,
 	SUBAGENT_DELEGATION_REQUEST_EVENT,
@@ -14,9 +16,9 @@ import {
 } from "../api/preflight.ts";
 import { DEFAULT_TURN_BUDGET_GRACE_TURNS } from "../runs/shared/turn-budget.ts";
 import { CODING_PREAPPROVAL_READONLY_ANNOTATION } from "./coding-preset.ts";
-import { workflowResultSchema, WORKFLOW_RESULT_SUBMISSION_GUIDE } from "./result-contract.ts";
+import { workflowResultSchema, parseWorkflowResult, WORKFLOW_RESULT_SUBMISSION_GUIDE } from "./result-contract.ts";
 import type { AvailableModelInfo, ParentModel } from "../runs/shared/model-fallback.ts";
-import type { WorkflowAttempt, WorkflowNode, WorkflowRun } from "./types.ts";
+import type { WorkflowAttempt, WorkflowDataContract, WorkflowNode, WorkflowRun } from "./types.ts";
 
 export interface WorkflowDelegationEvents {
 	on(event: string, handler: (data: unknown) => void): () => void;
@@ -69,11 +71,40 @@ const thinkingLevels = new Set<SubagentDelegationThinking>([
 	"max",
 ]);
 
-function taskFor(node: WorkflowNode): string {
+/**
+ * Generate a per-node output contract guide from the data contract.
+ * Injected into the task prompt so the agent sees its exact output ports,
+ * media types, and required fields before it starts working.
+ */
+function buildOutputContractGuide(contract: WorkflowDataContract, formatError?: string): string {
+	const ports = Object.entries(contract.outputs);
+	if (ports.length === 0) return "";
+	const lines = [
+		"## Output contract — you MUST submit via structured_output",
+	];
+	if (formatError) {
+		lines.push("", `⚠️ PREVIOUS SUBMISSION FAILED FORMAT VALIDATION: ${formatError}`, "" ,"Fix the issues above and re-submit. Do NOT change the overall structure.");
+	}
+	for (const [name, port] of ports) {
+		const req = port.required ? "REQUIRED" : "optional";
+		const storageNote = port.storage === "artifact" ? ", write large content to the output slot file" : "";
+		const typeHint = port.mediaType.toLowerCase().startsWith("text/") ? " (value must be a string)" : "";
+		lines.push(`- **${name}** [${req}] ${port.mediaType}${typeHint}${storageNote}${port.description ? ` — ${port.description}` : ""}`);
+	}
+	if (contract.profile === "research" || contract.profile === "writer") {
+		lines.push("", "evidence.findings array is REQUIRED for this profile.");
+	}
+	lines.push("", "Do NOT return prose or raw text outside of structured_output. Every output port must appear in the outputs object.");
+	return lines.join("\n");
+}
+
+function taskFor(node: WorkflowNode, formatError?: string): string {
+	const contractGuide = buildOutputContractGuide(node.dataContract, formatError);
 	return [
 		`Role: ${node.agentSpec.role}`,
 		`Objective: ${node.agentSpec.objective}`,
 		`Instructions: ${node.agentSpec.instructions}`,
+		...(contractGuide ? [contractGuide] : []),
 		WORKFLOW_RESULT_SUBMISSION_GUIDE,
 	].join("\n\n");
 }
@@ -88,6 +119,7 @@ export function buildWorkflowDelegationRequest(
 	node: WorkflowNode,
 	attempt: WorkflowAttempt,
 	resolved: Extract<WorkflowPreflightResult, { ok: true }>,
+	formatError?: string,
 ): SubagentDelegationRequest {
 	const resultSchema = workflowResultSchema(node.dataContract);
 	return {
@@ -96,7 +128,7 @@ export function buildWorkflowDelegationRequest(
 		ownerRunId: run.id,
 		nodeId: node.id,
 		agent: resolved.agent,
-		task: taskFor(node),
+		task: taskFor(node, formatError),
 		context: node.agentSpec.context,
 		cwd: run.cwd,
 		...(resolved.model ?? node.agentSpec.model ? { model: resolved.model ?? node.agentSpec.model } : {}),
@@ -186,6 +218,8 @@ export function createWorkflowDelegationAdapter(
 	const preflight = options.preflight ?? defaultPreflight;
 	const responseTimeoutMs = options.responseTimeoutMs ?? 30 * 60 * 1_000;
 	return {
+const MAX_FORMAT_STEER_ATTEMPTS = 2;
+
 		async run(run, node, attempt, signal, runtime) {
 			const resultSchema = workflowResultSchema(node.dataContract);
 			const turnBudget = node.agentSpec.turnBudget
@@ -194,52 +228,89 @@ export function createWorkflowDelegationAdapter(
 					graceTurns: node.agentSpec.turnBudget.graceTurns ?? DEFAULT_TURN_BUDGET_GRACE_TURNS,
 				}
 				: undefined;
-			const preflightResult = await preflight({
-				agent: node.agentSpec.baseAgent,
-				cwd: run.cwd,
-				task: taskFor(node),
-				context: node.agentSpec.context,
-				...(node.agentSpec.model ? { model: node.agentSpec.model } : {}),
-				...(options.fallbackModels?.length ? { fallbackModels: [...options.fallbackModels] } : {}),
-				...(runtime?.parentModel ? { parentModel: runtime.parentModel } : {}),
-				...(runtime?.availableModels ? { availableModels: runtime.availableModels } : {}),
-				...(runtime?.parentModel?.provider ? { preferredProvider: runtime.parentModel.provider } : {}),
-				...(node.agentSpec.thinking ? { thinking: node.agentSpec.thinking } : {}),
-				...(node.agentSpec.skills ? { skill: node.agentSpec.skills } : {}),
-				...(node.agentSpec.extraTools?.length ? { extraTools: [...node.agentSpec.extraTools] } : {}),
-				...(node.agentSpec.denyTools?.length ? { denyTools: [...node.agentSpec.denyTools] } : {}),
-				outputSchema: resultSchema,
-				...(turnBudget ? { turnBudget } : {}),
-				artifacts: true,
-				runId: attempt.requestId,
-			});
-			if (preflightResult.ok === false) return { ok: false, stage: "preflight", error: preflightResult.error };
-			if (node.dataContract.annotations?.[CODING_PREAPPROVAL_READONLY_ANNOTATION]) {
-				const allowedReadOnlyTools = new Set(["read", "grep", "find", "ls", "contact_supervisor", "intercom", "structured_output"]);
-				const disallowedTools = (preflightResult.effectiveTools ?? []).filter((tool) => !allowedReadOnlyTools.has(tool));
-				const mcpTools = preflightResult.effectiveMcpTools ?? [];
-				if (preflightResult.effectiveTools === undefined || preflightResult.effectiveMcpTools === undefined) {
-					return { ok: false, stage: "preflight", error: `Coding pre-approval node '${node.id}' could not prove its effective read-only capability set.` };
-				}
-				if (disallowedTools.length > 0 || mcpTools.length > 0) {
-					return {
-						ok: false,
-						stage: "preflight",
-						error: `Coding pre-approval node '${node.id}' has non-read-only effective tools: ${[...disallowedTools, ...mcpTools].join(", ")}.`,
-					};
-				}
+
+			function buildTask(formatErr?: string): string {
+				return taskFor(node, formatErr);
 			}
-			const request = buildWorkflowDelegationRequest(run, node, attempt, preflightResult);
-			try {
-				const response = await waitForResponse(options.events, request, signal, responseTimeoutMs);
+
+			let formatError: string | undefined;
+			for (let steer = 0; steer <= MAX_FORMAT_STEER_ATTEMPTS; steer++) {
+				const task = buildTask(formatError);
+				const preflightResult = await preflight({
+					agent: node.agentSpec.baseAgent,
+					cwd: run.cwd,
+					task,
+					context: node.agentSpec.context,
+					...(node.agentSpec.model ? { model: node.agentSpec.model } : {}),
+					...(options.fallbackModels?.length ? { fallbackModels: [...options.fallbackModels] } : {}),
+					...(runtime?.parentModel ? { parentModel: runtime.parentModel } : {}),
+					...(runtime?.availableModels ? { availableModels: runtime.availableModels } : {}),
+					...(runtime?.parentModel?.provider ? { preferredProvider: runtime.parentModel.provider } : {}),
+					...(node.agentSpec.thinking ? { thinking: node.agentSpec.thinking } : {}),
+					...(node.agentSpec.skills ? { skill: node.agentSpec.skills } : {}),
+					...(node.agentSpec.extraTools?.length ? { extraTools: [...node.agentSpec.extraTools] } : {}),
+					...(node.agentSpec.denyTools?.length ? { denyTools: [...node.agentSpec.denyTools] } : {}),
+					outputSchema: resultSchema,
+					...(turnBudget ? { turnBudget } : {}),
+					artifacts: true,
+					runId: attempt.requestId,
+				});
+				if (preflightResult.ok === false) return { ok: false, stage: "preflight", error: preflightResult.error };
+				if (node.dataContract.annotations?.[CODING_PREAPPROVAL_READONLY_ANNOTATION]) {
+					const allowedReadOnlyTools = new Set(["read", "grep", "find", "ls", "contact_supervisor", "intercom", "structured_output"]);
+					const disallowedTools = (preflightResult.effectiveTools ?? []).filter((tool) => !allowedReadOnlyTools.has(tool));
+					const mcpTools = preflightResult.effectiveMcpTools ?? [];
+					if (preflightResult.effectiveTools === undefined || preflightResult.effectiveMcpTools === undefined) {
+						return { ok: false, stage: "preflight", error: `Coding pre-approval node '${node.id}' could not prove its effective read-only capability set.` };
+					}
+					if (disallowedTools.length > 0 || mcpTools.length > 0) {
+						return {
+							ok: false,
+							stage: "preflight",
+							error: `Coding pre-approval node '${node.id}' has non-read-only effective tools: ${[...disallowedTools, ...mcpTools].join(", ")}.`,
+						};
+					}
+				}
+				const request = buildWorkflowDelegationRequest(run, node, attempt, preflightResult, formatError);
+				let response: SubagentDelegationResponse;
+				try {
+					response = await waitForResponse(options.events, request, signal, responseTimeoutMs);
+				} catch (error) {
+					return { ok: false, stage: "transport", error: error instanceof Error ? error.message : String(error) };
+				}
+
+				// Auto-steer on format validation failure: validate structured output
+				// before returning to the controller. If the format is wrong, inject the
+				// specific error into the task and re-dispatch (up to MAX_FORMAT_STEER_ATTEMPTS).
+				if (
+					steer < MAX_FORMAT_STEER_ATTEMPTS
+					&& response.status === "completed"
+					&& response.result?.kind === "structured"
+				) {
+					try {
+						parseWorkflowResult(response.result.value, node.dataContract);
+						// Format is valid — return the response to the controller.
+						return {
+							ok: true,
+							response,
+							...(preflightResult.launchContractDigest ? { launchContractDigest: preflightResult.launchContractDigest } : {}),
+						};
+					} catch (parseErr) {
+						formatError = parseErr instanceof Error ? parseErr.message : String(parseErr);
+						// Loop back: re-dispatch with the format error injected into the task.
+						continue;
+					}
+				}
+
+				// Non-completed response or format validation not applicable — return as-is.
 				return {
 					ok: true,
 					response,
 					...(preflightResult.launchContractDigest ? { launchContractDigest: preflightResult.launchContractDigest } : {}),
 				};
-			} catch (error) {
-				return { ok: false, stage: "transport", error: error instanceof Error ? error.message : String(error) };
 			}
+			// Should not reach here (loop always returns), but satisfy the type checker.
+			return { ok: false, stage: "transport", error: "Format steer loop exited without a response." };
 		},
 	};
 }
