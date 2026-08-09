@@ -486,6 +486,23 @@ export function parseWorkflowActionParams(value: unknown): WorkflowActionParams 
 			return { action: "get_result", ...(runId ? { runId } : {}), nodeId: requiredString(value.nodeId, "nodeId") };
 		case "cancel_node":
 			return { action: "cancel_node", ...(runId ? { runId } : {}), nodeId: requiredString(value.nodeId, "nodeId") };
+		case "update_node": {
+			const nodeId = requiredString(value.nodeId, "nodeId");
+			const label = optionalString(value.label, "label");
+			const objective = optionalString(value.objective, "objective");
+			const instructions = optionalString(value.instructions, "instructions");
+			const acceptance = optionalString(value.acceptance, "acceptance");
+			if (!label && !objective && !instructions && !acceptance) throw new Error("update_node requires at least one of: label, objective, instructions, acceptance.");
+			return {
+				action: "update_node",
+				...(runId ? { runId } : {}),
+				nodeId,
+				...(label ? { label } : {}),
+				...(objective ? { objective } : {}),
+				...(instructions ? { instructions } : {}),
+				...(acceptance ? { acceptance } : {}),
+			};
+		}
 		case "accept":
 		case "reject":
 			return {

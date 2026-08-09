@@ -58,7 +58,8 @@ export type WorkflowActionParams =
 	| { action: "pause"; runId?: string; reason?: string }
 	| { action: "resume"; runId?: string }
 	| { action: "stop"; runId?: string }
-	| { action: "cancel_node"; runId?: string; nodeId: string };
+	| { action: "cancel_node"; runId?: string; nodeId: string }
+	| { action: "update_node"; runId?: string; nodeId: string; label?: string; objective?: string; instructions?: string; acceptance?: string };
 
 export interface WorkflowControllerDetails {
 	run: WorkflowRun;
@@ -988,6 +989,23 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 						return resultFor(ctx, next, evaluation, statusText(next, evaluation));
 					}
 					throw new Error(`Workflow node '${node.id}' is ${node.status}; cannot cancel.`);
+				}
+				case "update_node": {
+					if (run.status !== "active" && run.status !== "paused") throw new Error(`Workflow '${run.id}' is ${run.status}; node updates require an active or paused workflow.`);
+					const node = run.nodes[params.nodeId];
+					if (!node) throw new Error(`Unknown workflow node '${params.nodeId}'.`);
+					if (node.status !== "pending" && node.status !== "ready") {
+						throw new Error(`Workflow node '${node.id}' is ${node.status}; only pending or ready nodes can be updated.`);
+					}
+					const patch: Partial<{ label: string; objective: string; instructions: string; acceptance: string }> = {};
+					if (params.label !== undefined) patch.label = params.label;
+					if (params.objective !== undefined) patch.objective = params.objective;
+					if (params.instructions !== undefined) patch.instructions = params.instructions;
+					if (params.acceptance !== undefined) patch.acceptance = params.acceptance;
+					if (Object.keys(patch).length === 0) throw new Error("update_node requires at least one of: label, objective, instructions, acceptance.");
+					const next = store.append(run.id, { id: createEventId(), type: "workflow.node_updated", at: now(), nodeId: node.id, patch });
+					const evaluation = evaluateWorkflow(next);
+					return resultFor(ctx, next, evaluation, `Node '${node.id}' updated: ${Object.keys(patch).join(", ")}.`);
 				}
 				case "accept":
 				case "reject": {

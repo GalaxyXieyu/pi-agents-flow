@@ -312,6 +312,24 @@ export function reduceWorkflowEvent(run: WorkflowRun | undefined, event: Workflo
 			assertOutline(event.outline);
 			assertOutlineMutable(run, event.outline);
 			return { ...withEvent(run, event), documentOutline: structuredClone(event.outline) };
+		case "workflow.node_updated": {
+			const node = nodeFor(run, event.nodeId);
+			if (node.status !== "pending") {
+				throw new Error(`Workflow node '${event.nodeId}' is ${node.status}; only pending nodes can be updated.`);
+			}
+			const patch = event.patch;
+			const updatedNode: WorkflowNode = {
+				...node,
+				...(patch.label !== undefined ? { label: patch.label } : {}),
+				agentSpec: {
+					...node.agentSpec,
+					...(patch.objective !== undefined ? { objective: patch.objective } : {}),
+					...(patch.instructions !== undefined ? { instructions: patch.instructions } : {}),
+				},
+				...(patch.acceptance !== undefined ? { acceptance: patch.acceptance } : {}),
+			};
+			return withEvent(run, event, { ...run.nodes, [node.id]: updatedNode });
+		}
 		case "workflow.plan_applied": {
 			const tasks = applyTasks(run, event.tasks);
 			const next = { ...withEvent(run, event, applyPlan(run, tasks, event.workUnits)), tasks };

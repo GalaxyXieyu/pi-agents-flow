@@ -421,6 +421,7 @@ export type WorkflowEvent =
 	| (WorkflowEventBase & { type: "workflow.clarification_recorded"; round: WorkflowClarificationRound })
 	| (WorkflowEventBase & { type: "workflow.brief_set"; brief: ResearchBrief })
 	| (WorkflowEventBase & { type: "workflow.outline_set"; outline: DocumentOutline })
+	| (WorkflowEventBase & { type: "workflow.node_updated"; nodeId: string; patch: Partial<{ label: string; objective: string; instructions: string; acceptance: string }> })
 	| (WorkflowEventBase & {
 		type: "node.started";
 		nodeId: string;
