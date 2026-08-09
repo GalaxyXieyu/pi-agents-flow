@@ -163,6 +163,26 @@ describe("workflow tool and commands", () => {
 		assert.equal(compacted, 1);
 	});
 
+	it("renders the compact workflow card when the live snapshot provider throws", () => {
+		const pi = new FakePi();
+		const controller: WorkflowController = {
+			current: () => undefined,
+			async execute() { return result("unused"); },
+		};
+		registerWorkflowTool(pi as unknown as ExtensionAPI, controller, () => {
+			throw new TypeError("dock snapshot unavailable");
+		});
+		const tool = pi.tools[0]!;
+		const component = tool.renderResult?.(
+			{ content: [{ type: "text", text: "RAW STATUS SHOULD NOT LEAK" }], details: { run: run() } },
+			{ expanded: false, isPartial: false },
+			{ fg: (_name: string, text: string) => text, bg: (_name: string, text: string) => text, bold: (text: string) => text } as never,
+		);
+		const rendered = component?.render(120).join("\n") ?? "";
+		assert.match(rendered, /Workflow workflow/);
+		assert.doesNotMatch(rendered, /RAW STATUS SHOULD NOT LEAK/);
+	});
+
 	it("keeps WorkflowDataContract V1 in model-supplied apply_plan work units", () => {
 		const dataContract = {
 			version: 1 as const,

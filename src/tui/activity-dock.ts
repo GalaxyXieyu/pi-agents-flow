@@ -219,6 +219,8 @@ export interface ActivityDockControllerOptions {
 
 export interface ActivityDockController {
 	setContext(ctx: ExtensionContext): void;
+	/** Last coherent snapshot used by the dock. Lazily initializes when possible. */
+	getSnapshot(): ActivitySnapshot | undefined;
 	refresh(): void;
 	dispose(): void;
 }
@@ -338,6 +340,15 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 				animation.unref?.();
 			}
 			controller.refresh();
+		},
+		getSnapshot() {
+			if (snapshot) return snapshot;
+			try {
+				snapshot = options.getSnapshot();
+				return snapshot;
+			} catch {
+				return undefined;
+			}
 		},
 		refresh() {
 			if (!ctx || !ui) return;

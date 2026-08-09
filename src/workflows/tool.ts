@@ -4,6 +4,7 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 
 import { compactText } from "../shared/formatters.ts";
+import { buildTaskActivitiesFromRun } from "../activity/projection.ts";
 import type { ActivitySnapshot } from "../activity/types.ts";
 import { noticePrefix } from "../tui/visual-language.ts";
 import { renderWorkflowInlineCard, type WorkflowInlineCardInput } from "../tui/workflow-inline-card.ts";
@@ -19,6 +20,7 @@ import type {
 import { assertWorkflowDataContract } from "./data-contract.ts";
 import { WORKFLOW_PORT_NAME_PATTERN, workflowProfileForKind } from "./plan-rules.ts";
 import { resolveWorkflowPolicy, type WorkflowPolicy } from "./policy.ts";
+import { workflowRunLanguage } from "./language.ts";
 import { MAX_WORKFLOW_MAX_NODE_ATTEMPTS, MAX_WORKFLOW_MAX_NODES } from "./retry-policy.ts";
 import type { DocumentOutline, EphemeralAgentSpec, ResearchBrief, WorkflowClarificationOption, WorkflowClarificationQuestion, WorkflowDataContract, WorkflowNodeKind, WorkflowTaskPlan, WorkflowWorkUnitPlan } from "./types.ts";
 
@@ -592,10 +594,34 @@ export function registerWorkflowAssetsTool(pi: ExtensionAPI): void {
 	pi.registerTool(tool);
 }
 
+function snapshotForWorkflowCard(run: WorkflowRun, getSnapshot?: () => ActivitySnapshot | undefined): ActivitySnapshot {
+	let live: ActivitySnapshot | undefined;
+	try {
+		live = getSnapshot?.();
+	} catch {
+		// Rendering must never fall through to Pi's raw tool output merely because
+		// the dock is between refreshes or its snapshot provider is unavailable.
+	}
+	if (live?.workflow?.runId === run.id) return live;
+	return {
+		version: 1,
+		language: workflowRunLanguage(run),
+		workflow: {
+			runId: run.id,
+			goal: run.goal,
+			status: run.status,
+			tasks: buildTaskActivitiesFromRun(run),
+		},
+		executions: [],
+		independent: [],
+		updatedAt: Date.now(),
+	};
+}
+
 function renderWorkflowInlineCardFromRun(run: WorkflowRun, theme: Theme, getSnapshot?: () => ActivitySnapshot | undefined, frame?: number, expanded = false): import("@earendil-works/pi-tui").Component {
 	const c = new Container();
 	const lines = renderWorkflowInlineCard(
-		{ runId: run.id, language: run.language, status: run.status, snapshot: getSnapshot?.(), frame, createdAt: run.createdAt, updatedAt: run.updatedAt } as WorkflowInlineCardInput,
+		{ runId: run.id, language: workflowRunLanguage(run), status: run.status, snapshot: snapshotForWorkflowCard(run, getSnapshot), frame, createdAt: run.createdAt, updatedAt: run.updatedAt } as WorkflowInlineCardInput,
 		theme,
 		process.stdout.columns || 120,
 		expanded,
