@@ -260,18 +260,22 @@ export function buildWorkflowRepairGuidance(
 		}
 	}
 	const reviewerRelease = acceptedReviewerRelease(run);
-	if (reviewerRelease) {
-		const released = [
-			reviewerRelease.gapsAccepted ? "gaps" : undefined,
-			reviewerRelease.conflictsAccepted ? "conflicts" : undefined,
-			reviewerRelease.citationShortfallAccepted ? "citation-shortfall" : undefined,
-			reviewerRelease.lengthShortfallAccepted ? "length-shortfall" : undefined,
+	if (reviewerRelease && !evaluation.readyToComplete) {
+		const unresolvedGates = [
+			evaluation.gaps > policy.gates.maxUnresolvedGaps && !reviewerRelease.gapsAccepted ? "evidence gaps" : undefined,
+			evaluation.conflicts > policy.gates.maxUnresolvedConflicts && !reviewerRelease.conflictsAccepted ? "evidence conflicts" : undefined,
+			...evaluation.completionBlockers.filter((blocker) => blocker.includes("Reviewer") || blocker.includes("Editor")),
 		].filter((value): value is string => Boolean(value));
 		actions.push({
-			kind: "complete",
-			priority: 20,
-			reason: `Accepted Reviewer declared release${released.length ? ` of ${released.join(", ")}` : ""}; the corresponding gates are relaxed.`,
+			kind: "supervisor_intervention",
+			priority: 105,
+			reason: `Accepted Reviewer release is insufficient for completion: ${unresolvedGates.join("; ") || "other completion gates remain blocked"}.`,
 			target: run.id,
+			promptHints: [
+				"Do not call complete until evaluation.readyToComplete is true.",
+				"If the review identifies document defects, add a new editor revision that depends on the accepted editor and review; then add a new reviewer that depends on that editor. Neither node uses replaces because accepted nodes are immutable audit history.",
+				"If residual gaps/conflicts are deliberately acceptable, add a new reviewer of the final editor with extensions.release.release=true and the specific gapsAccepted/conflictsAccepted flags. Do not replace the accepted reviewer.",
+			],
 		});
 	}
 	if (evaluation.readyToComplete) {

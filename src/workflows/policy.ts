@@ -12,6 +12,9 @@ export interface WorkflowGatePolicy {
 	requireReviewer: boolean;
 }
 
+export type WorkflowEvidenceMode = "auto" | "web" | "local" | "mixed";
+export type WorkflowQualityEnforcement = "advisory" | "strict";
+
 export interface WorkflowEvidencePolicy {
 	/** Drop accepted claims that have neither URL nor artifact evidence. */
 	dropUncitedClaims: boolean;
@@ -47,6 +50,10 @@ export interface WorkflowPolicy {
 	gates: WorkflowGatePolicy;
 	evidence: WorkflowEvidencePolicy;
 	quality: WorkflowQualityThresholds;
+	/** auto infers evidence mode from accepted web/local traces. */
+	evidenceMode: WorkflowEvidenceMode;
+	/** Advisory metrics inform review; strict metrics can block release. */
+	qualityEnforcement: WorkflowQualityEnforcement;
 }
 
 const DEEP_RESEARCH_POLICY: WorkflowPolicy = {
@@ -69,7 +76,11 @@ const DEEP_RESEARCH_POLICY: WorkflowPolicy = {
 		maxEvidencePerClaim: 8,
 		preferPrimaryEvidence: true,
 	},
+	evidenceMode: "auto",
+	qualityEnforcement: "advisory",
 	quality: {
+		// Advisory by default. These become release gates only when callers opt
+		// into qualityEnforcement="strict" with the appropriate evidenceMode.
 		minClaimCitationCoverage: 1,
 		minSearchFetchCoverage: 1,
 		minResearchTraceCoverage: 1,
@@ -107,6 +118,8 @@ const GENERAL_POLICY: WorkflowPolicy = {
 		maxEvidencePerClaim: 12,
 		preferPrimaryEvidence: true,
 	},
+	evidenceMode: "auto",
+	qualityEnforcement: "advisory",
 	quality: {
 		minClaimCitationCoverage: 0,
 		minSearchFetchCoverage: 0,
@@ -158,6 +171,14 @@ function mergeEvidencePolicy(base: WorkflowEvidencePolicy, overrides?: Partial<W
 	};
 }
 
+function evidenceMode(value: WorkflowEvidenceMode | undefined, fallback: WorkflowEvidenceMode): WorkflowEvidenceMode {
+	return value === "auto" || value === "web" || value === "local" || value === "mixed" ? value : fallback;
+}
+
+function qualityEnforcement(value: WorkflowQualityEnforcement | undefined, fallback: WorkflowQualityEnforcement): WorkflowQualityEnforcement {
+	return value === "advisory" || value === "strict" ? value : fallback;
+}
+
 function mergeQualityThresholds(base: WorkflowQualityThresholds, overrides?: Partial<WorkflowQualityThresholds>): WorkflowQualityThresholds {
 	return {
 		minClaimCitationCoverage: clamp01(overrides?.minClaimCitationCoverage ?? base.minClaimCitationCoverage),
@@ -189,6 +210,8 @@ export function resolveWorkflowPolicy(mode: WorkflowMode, overrides?: Partial<Wo
 		gates: mergeGatePolicy(base.gates, overrides.gates),
 		evidence: mergeEvidencePolicy(base.evidence, overrides.evidence),
 		quality: mergeQualityThresholds(base.quality, overrides.quality),
+		evidenceMode: evidenceMode(overrides.evidenceMode, base.evidenceMode),
+		qualityEnforcement: qualityEnforcement(overrides.qualityEnforcement, base.qualityEnforcement),
 	};
 }
 

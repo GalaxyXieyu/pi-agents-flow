@@ -16,7 +16,7 @@ test("summarizeActivityStates applies the shared task and execution buckets", ()
 		"cancelled",
 		"superseded",
 	]);
-	assert.deepEqual(counts, { running: 1, done: 2, failed: 1, waiting: 2, pending: 4 });
+	assert.deepEqual(counts, { running: 1, done: 2, failed: 1, waiting: 2, pending: 3 });
 });
 
 test("activityLeadState uses the shared display priority", () => {

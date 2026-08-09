@@ -18,6 +18,7 @@ export function summarizeActivityStates(states: ActivityState[]): ActivitySummar
 			case "failed": counts.failed++; break;
 			case "waiting":
 			case "paused": counts.waiting++; break;
+			case "superseded": break;
 			default: counts.pending++; break;
 		}
 	}

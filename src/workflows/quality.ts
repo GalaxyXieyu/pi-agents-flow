@@ -1,9 +1,9 @@
 import { benchmarkResearchLanes, type SearchQualityBenchmarkResult } from "./benchmark.ts";
 import { evaluateWorkflow } from "./gates.ts";
 import { effectiveAcceptedResultNodes, acceptedReviewerRelease } from "./effective-nodes.ts";
-import { canonicalEvidenceUrl, canonicalFetchedUrl, claimSimilarity, evidenceHasLocalReference, evidenceRequiresWebFetch, findingHasCitation } from "./evidence.ts";
+import { canonicalEvidenceUrl, canonicalFetchedUrl, claimSimilarity, evidenceHasLocalReference, evidenceRequiresWebFetch, findingHasCitation, type EvidenceRecord } from "./evidence.ts";
 import { buildWorkflowRepairGuidance } from "./guidance.ts";
-import { resolveWorkflowPolicy, type WorkflowPolicy } from "./policy.ts";
+import { resolveWorkflowPolicy, type WorkflowEvidenceMode, type WorkflowPolicy } from "./policy.ts";
 import { normalizeWorkflowText } from "./text-normalize.ts";
 import type { WorkflowArtifactDescriptor, WorkflowNode, WorkflowReviewerRelease, WorkflowRun } from "./types.ts";
 
@@ -34,6 +34,8 @@ export interface WorkflowQualityReport {
 	score: number;
 	releaseReady: boolean;
 	policy: WorkflowPolicy;
+	/** Actual evidence mode used for this report after auto-detection. */
+	evidenceMode: Exclude<WorkflowEvidenceMode, "auto">;
 	metrics: WorkflowQualityMetrics;
 	blockers: string[];
 	warnings: string[];
@@ -51,6 +53,7 @@ export function formatWorkflowQualityReport(report: WorkflowQualityReport, repor
 	const lines = [
 		`Quality ${report.score}/100  ${report.releaseReady ? "READY" : "BLOCKED"}`,
 		`Workflow ${report.workflowId} revision ${report.revision}`,
+		`Evidence mode ${report.evidenceMode} (${report.policy.qualityEnforcement})`,
 	];
 	if (report.blockers.length > 0) lines.push("", "Blockers:", ...report.blockers.map((blocker) => `- ${blocker}`));
 	if (report.warnings.length > 0) lines.push("", "Warnings:", ...report.warnings.map((warning) => `- ${warning}`));
@@ -133,12 +136,32 @@ export interface WorkflowQualityContext {
 	validateLocalEvidence?: (reference: string) => boolean;
 }
 
+function isLocalFetchedReference(reference: string): boolean {
+	try {
+		return new URL(reference).protocol.toLowerCase() === "file:";
+	} catch {
+		return false;
+	}
+}
+
 function nodeHasLocalTrace(node: WorkflowNode, context?: WorkflowQualityContext): boolean {
-	return Boolean(node.result?.evidence?.findings.some((finding) => finding.evidence.some((evidence) => {
+	const localFinding = node.result?.evidence?.findings.some((finding) => finding.evidence.some((evidence) => {
 		if (!evidenceHasLocalReference(evidence)) return false;
 		const reference = evidence.artifactPath?.trim() || evidence.url?.trim();
 		return Boolean(reference && (context?.validateLocalEvidence?.(reference) ?? true));
-	})));
+	}));
+	return Boolean(localFinding || node.result?.evidence?.search?.fetchedUrls.some(isLocalFetchedReference));
+}
+
+function resolvedEvidenceMode(policy: WorkflowPolicy, sourceEvidence: EvidenceRecord[], sourceNodes: WorkflowNode[]): Exclude<WorkflowEvidenceMode, "auto"> {
+	if (policy.evidenceMode !== "auto") return policy.evidenceMode;
+	const hasWeb = sourceEvidence.some((evidence) => evidenceRequiresWebFetch(evidence))
+		|| sourceNodes.some((node) => node.result?.evidence?.search?.fetchedUrls.some((url) => Boolean(canonicalFetchedUrl(url))));
+	const hasLocal = sourceEvidence.some((evidence) => evidenceHasLocalReference(evidence))
+		|| sourceNodes.some((node) => nodeHasLocalTrace(node));
+	if (hasWeb && hasLocal) return "mixed";
+	if (hasLocal) return "local";
+	return "web";
 }
 
 export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: WorkflowPolicy, context?: WorkflowQualityContext): WorkflowQualityReport {
@@ -150,8 +173,6 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 	const reviewerRelease = acceptedReviewerRelease(run);
 	const gapsReleased = reviewerRelease?.gapsAccepted === true;
 	const conflictsReleased = reviewerRelease?.conflictsAccepted === true;
-	const citationReleased = reviewerRelease?.citationShortfallAccepted === true;
-	const lengthReleased = reviewerRelease?.lengthShortfallAccepted === true;
 	const editorNode = evaluation.finalEditorNodeId ? accepted.find((node) => node.id === evaluation.finalEditorNodeId) : undefined;
 	const legacyWriterNode = accepted.filter((node) => node.kind === "writer").at(-1);
 	const editorResolvedOutput = editorNode?.outputs?.document;
@@ -166,6 +187,7 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 	const sourceNodes = accepted.filter((node) => node.kind === "research" || node.kind === "verification");
 	const sourceFindings = sourceNodes.flatMap((node) => node.result?.evidence?.findings ?? []);
 	const sourceEvidence = sourceFindings.flatMap((finding) => finding.evidence);
+	const evidenceMode = resolvedEvidenceMode(policy, sourceEvidence, sourceNodes);
 	const researchLanes = researchNodes.map((node) => ({
 		id: node.id,
 		findings: node.result?.evidence?.findings ?? [],
@@ -259,21 +281,33 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 		unresolvedConflicts: evaluation.conflicts,
 	};
 	const blockers: string[] = [];
+	const strictQuality = policy.qualityEnforcement === "strict";
+	const requiresWebEvidence = evidenceMode === "web" || evidenceMode === "mixed";
+	const requiresLocalEvidence = evidenceMode === "local" || evidenceMode === "mixed";
+	const hasWebEvidence = sourceEvidence.some((evidence) => evidenceRequiresWebFetch(evidence))
+		|| sourceNodes.some((node) => node.result?.evidence?.search?.fetchedUrls.some((url) => Boolean(canonicalFetchedUrl(url))));
+	const hasLocalEvidence = sourceEvidence.some((evidence) => evidenceHasLocalReference(evidence))
+		|| sourceNodes.some((node) => nodeHasLocalTrace(node, context));
+	if (strictQuality && requiresWebEvidence && !hasWebEvidence) {
+		blockers.push("Strict web evidence mode requires at least one accepted HTTP(S) source.");
+	}
+	if (strictQuality && requiresLocalEvidence && !hasLocalEvidence) {
+		blockers.push("Strict local evidence mode requires at least one accepted local artifact or file source.");
+	}
+	if (strictQuality && (requiresWebEvidence || requiresLocalEvidence) && metrics.claimCitationCoverage < policy.quality.minClaimCitationCoverage) {
+		blockers.push(`Claim citation coverage ${metrics.claimCitationCoverage.toFixed(2)} is below strict ${evidenceMode} evidence minimum ${policy.quality.minClaimCitationCoverage}.`);
+	}
+	if (strictQuality && (requiresWebEvidence || requiresLocalEvidence) && researchNodes.length > 0 && metrics.researchTraceCoverage < policy.quality.minResearchTraceCoverage) {
+		blockers.push(`Research trace coverage ${metrics.researchTraceCoverage.toFixed(2)} is below strict ${evidenceMode} evidence minimum ${policy.quality.minResearchTraceCoverage}.`);
+	}
+	if (strictQuality && requiresWebEvidence && metrics.searchFetchCoverage < policy.quality.minSearchFetchCoverage) {
+		blockers.push(`Search fetch coverage ${metrics.searchFetchCoverage.toFixed(2)} is below strict web evidence minimum ${policy.quality.minSearchFetchCoverage}.`);
+	}
+	if (strictQuality && metrics.unsupportedWriterClaimRate > policy.quality.maxUnsupportedWriterClaimRate) {
+		blockers.push(`Unsupported writer claim rate ${metrics.unsupportedWriterClaimRate.toFixed(2)} exceeds strict policy maximum ${policy.quality.maxUnsupportedWriterClaimRate}.`);
+	}
 	if (researchNodes.length < policy.gates.minAcceptedResearchLanes) {
 		blockers.push(`Policy requires at least ${policy.gates.minAcceptedResearchLanes} accepted research lanes.`);
-	}
-	if (run.mode === "deep-research" && sourceFindings.length === 0) blockers.push("Deep Research has no accepted source findings.");
-	if (metrics.claimCitationCoverage < policy.quality.minClaimCitationCoverage) {
-		blockers.push(`Claim citation coverage ${metrics.claimCitationCoverage.toFixed(2)} is below policy minimum ${policy.quality.minClaimCitationCoverage}.`);
-	}
-	if (researchNodes.length > 0 && metrics.researchTraceCoverage < policy.quality.minResearchTraceCoverage) {
-		blockers.push(`Research trace coverage ${metrics.researchTraceCoverage.toFixed(2)} is below policy minimum ${policy.quality.minResearchTraceCoverage}.`);
-	}
-	if (metrics.searchFetchCoverage < policy.quality.minSearchFetchCoverage) {
-		blockers.push(`Search fetch coverage ${metrics.searchFetchCoverage.toFixed(2)} is below policy minimum ${policy.quality.minSearchFetchCoverage}.`);
-	}
-	if (metrics.unsupportedWriterClaimRate > policy.quality.maxUnsupportedWriterClaimRate) {
-		blockers.push(`Unsupported writer claim rate ${metrics.unsupportedWriterClaimRate.toFixed(2)} exceeds policy maximum ${policy.quality.maxUnsupportedWriterClaimRate}.`);
 	}
 	if (run.mode === "deep-research" && policy.gates.requireEditor && !evaluation.finalEditorCoversOutline) {
 		blockers.push("Deep Research final editor must depend on every approved Section Writer.");
@@ -288,14 +322,14 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 	if (metrics.sectionWriterCoverage < policy.quality.minSectionWriterCoverage) {
 		blockers.push(`Section Writer coverage ${metrics.sectionWriterCoverage.toFixed(2)} is below policy minimum ${policy.quality.minSectionWriterCoverage}.`);
 	}
-	if (!citationReleased && metrics.finalCitationCoverage < policy.quality.minFinalCitationCoverage) {
-		blockers.push(`Final document citation coverage ${metrics.finalCitationCoverage.toFixed(2)} is below policy minimum ${policy.quality.minFinalCitationCoverage}.`);
+	if (strictQuality && requiresWebEvidence && metrics.finalCitationCoverage < policy.quality.minFinalCitationCoverage) {
+		blockers.push(`Final document citation coverage ${metrics.finalCitationCoverage.toFixed(2)} is below strict web evidence minimum ${policy.quality.minFinalCitationCoverage}.`);
 	}
-	if (!lengthReleased && metrics.finalDocumentLengthRatio < policy.quality.minFinalDocumentLengthRatio) {
-		blockers.push(`Final document length ${finalDocumentUnits} is below the research brief minimum ${minimumDocumentUnits}.`);
+	if (strictQuality && metrics.finalDocumentLengthRatio < policy.quality.minFinalDocumentLengthRatio) {
+		blockers.push(`Final document length ${finalDocumentUnits} is below strict research brief minimum ${minimumDocumentUnits}.`);
 	}
-	if (metrics.unsupportedFinalCitationRate > policy.quality.maxUnsupportedFinalCitationRate) {
-		blockers.push(`Unsupported final citation rate ${metrics.unsupportedFinalCitationRate.toFixed(2)} exceeds policy maximum ${policy.quality.maxUnsupportedFinalCitationRate}.`);
+	if (strictQuality && requiresWebEvidence && metrics.unsupportedFinalCitationRate > policy.quality.maxUnsupportedFinalCitationRate) {
+		blockers.push(`Unsupported final citation rate ${metrics.unsupportedFinalCitationRate.toFixed(2)} exceeds strict policy maximum ${policy.quality.maxUnsupportedFinalCitationRate}.`);
 	}
 	if (metrics.delegationProvenanceCoverage < policy.quality.minDelegationProvenanceCoverage) {
 		blockers.push(`Delegation provenance coverage ${metrics.delegationProvenanceCoverage.toFixed(2)} is below policy minimum ${policy.quality.minDelegationProvenanceCoverage}.`);
@@ -307,6 +341,30 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 		blockers.push(`${metrics.unresolvedConflicts} evidence conflict(s) remain unresolved (policy max ${policy.gates.maxUnresolvedConflicts}).`);
 	}
 	const warnings: string[] = [];
+	if (run.mode === "deep-research" && sourceFindings.length === 0) {
+		warnings.push("Deep Research has no accepted source findings; local-codebase analysis may rely on the final document and artifact paths instead.");
+	}
+	if (sourceFindings.length > 0 && metrics.claimCitationCoverage < 1) {
+		warnings.push(`Claim citation coverage ${metrics.claimCitationCoverage.toFixed(2)} is incomplete; review the evidence trace before relying on the conclusion.`);
+	}
+	if (researchNodes.length > 0 && metrics.researchTraceCoverage < 1) {
+		warnings.push(`Research trace coverage ${metrics.researchTraceCoverage.toFixed(2)} is incomplete; some accepted research claims cannot be traced to a validated source.`);
+	}
+	if (webSourceFindings.length > 0 && metrics.searchFetchCoverage < 1) {
+		warnings.push(`Search fetch coverage ${metrics.searchFetchCoverage.toFixed(2)} is incomplete; some cited web sources were not fetched.`);
+	}
+	if (materialWriterFindings.length > 0 && metrics.unsupportedWriterClaimRate > 0) {
+		warnings.push(`Unsupported writer claim rate ${metrics.unsupportedWriterClaimRate.toFixed(2)} is nonzero; review synthesis claims against available evidence.`);
+	}
+	if (finalMarkdown.trim() && metrics.finalCitationCoverage < 1) {
+		warnings.push(`Final document citation coverage ${metrics.finalCitationCoverage.toFixed(2)} is incomplete; local-codebase deliverables may intentionally omit web citations.`);
+	}
+	if (finalMarkdown.trim() && metrics.finalDocumentLengthRatio < 1) {
+		warnings.push(`Final document length ${finalDocumentUnits} is below the research brief target ${minimumDocumentUnits}; assess whether the delivered scope remains adequate.`);
+	}
+	if (metrics.unsupportedFinalCitationRate > 0) {
+		warnings.push(`Unsupported final citation rate ${metrics.unsupportedFinalCitationRate.toFixed(2)} is nonzero; verify document references before publication.`);
+	}
 	if (sourceEvidence.length > 0 && metrics.primarySourceRatio < policy.quality.warnPrimarySourceRatioBelow) {
 		warnings.push(`Primary source ratio ${metrics.primarySourceRatio.toFixed(2)} is below warning threshold ${policy.quality.warnPrimarySourceRatioBelow}.`);
 	}
@@ -343,6 +401,7 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 		score,
 		releaseReady: blockers.length === 0,
 		policy,
+		evidenceMode,
 		metrics,
 		blockers,
 		warnings,

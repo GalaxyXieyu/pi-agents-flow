@@ -19,8 +19,8 @@ function run(): WorkflowRun {
 		branch: "main",
 		status: "active",
 		revision: 1,
-		createdAt: 1,
-		updatedAt: 1,
+		createdAt: Date.now() - 1_000,
+		updatedAt: Date.now(),
 		tasks: {},
 		nodes: {},
 		appliedEventIds: ["event-1"],
@@ -59,6 +59,7 @@ function fakeContext(): ExtensionContext {
 		cwd: "/repo",
 		hasUI: true,
 		isIdle: () => true,
+		abort() {},
 		ui: { notify() {}, setToolsExpanded() {} },
 		sessionManager: { getSessionId: () => "session-1", getBranch: () => [] },
 	} as unknown as ExtensionContext;
@@ -149,6 +150,42 @@ describe("workflow tool and commands", () => {
 		assert.equal(toolResult.content[0]?.type, "text");
 	});
 
+	it("aborts the root Pi turn only after a workflow tool stop succeeds", async () => {
+		const pi = new FakePi();
+		const order: string[] = [];
+		const controller: WorkflowController = {
+			current: () => run(),
+			async execute(params) {
+				order.push(`controller:${params.action}`);
+				return result("stopped");
+			},
+		};
+		const ctx = fakeContext();
+		ctx.abort = () => order.push("abort");
+		registerWorkflowTool(pi as unknown as ExtensionAPI, controller);
+
+		await pi.tools[0]!.execute("call-stop", { action: "stop", runId: "workflow-1" }, undefined, undefined, ctx);
+		assert.deepEqual(order, ["controller:stop", "abort"]);
+
+		order.length = 0;
+		await pi.tools[0]!.execute("call-status", { action: "status", runId: "workflow-1" }, undefined, undefined, ctx);
+		assert.deepEqual(order, ["controller:status"]);
+	});
+
+	it("does not abort the root Pi turn when workflow tool stop fails", async () => {
+		const pi = new FakePi();
+		let aborts = 0;
+		const controller: WorkflowController = {
+			current: () => run(),
+			async execute() { throw new Error("stop failed"); },
+		};
+		const ctx = fakeContext();
+		ctx.abort = () => { aborts++; };
+		registerWorkflowTool(pi as unknown as ExtensionAPI, controller);
+		await assert.rejects(() => pi.tools[0]!.execute("call-stop-fail", { action: "stop", runId: "workflow-1" }, undefined, undefined, ctx), /stop failed/);
+		assert.equal(aborts, 0);
+	});
+
 	it("forces workflow tool calls back to the compact host card state", async () => {
 		const pi = new FakePi();
 		let compacted = 0;
@@ -179,8 +216,8 @@ describe("workflow tool and commands", () => {
 			{ fg: (_name: string, text: string) => text, bg: (_name: string, text: string) => text, bold: (text: string) => text } as never,
 		);
 		const rendered = component?.render(120).join("\n") ?? "";
-		assert.match(rendered, /Workflow workflow/);
-		assert.doesNotMatch(rendered, /RAW STATUS SHOULD NOT LEAK/);
+		assert.match(rendered, /Requirement: Goal/);
+		assert.doesNotMatch(rendered, /workflow-1|RAW STATUS SHOULD NOT LEAK/);
 	});
 
 	it("keeps WorkflowDataContract V1 in model-supplied apply_plan work units", () => {
@@ -389,6 +426,7 @@ describe("workflow tool and commands", () => {
 		const pi = new FakePi();
 		const calls: unknown[] = [];
 		const decisions = [false, true];
+		let aborts = 0;
 		const controller: WorkflowController = {
 			current: () => run(),
 			async execute(params) { calls.push(params); return result("stopped"); },
@@ -397,6 +435,7 @@ describe("workflow tool and commands", () => {
 		const ctx = {
 			...fakeContext(),
 			hasUI: true,
+			abort: () => { aborts++; },
 			ui: { notify() {}, confirm: async () => decisions.shift() ?? false },
 		} as unknown as ExtensionContext;
 
@@ -404,6 +443,27 @@ describe("workflow tool and commands", () => {
 		await pi.commands.get("workflow")?.handler("stop workflow-1", ctx);
 
 		assert.deepEqual(calls, [{ action: "stop", runId: "workflow-1" }]);
+		assert.equal(aborts, 1);
+	});
+
+	it("does not abort the root Pi turn when the slash stop action fails", async () => {
+		const pi = new FakePi();
+		let aborts = 0;
+		const notices: string[] = [];
+		const controller: WorkflowController = {
+			current: () => run(),
+			async execute() { throw new Error("durable stop failed"); },
+		};
+		registerWorkflowCommands(pi as unknown as ExtensionAPI, controller);
+		const ctx = {
+			...fakeContext(),
+			hasUI: true,
+			abort: () => { aborts++; },
+			ui: { notify: (message: string) => notices.push(message), confirm: async () => true },
+		} as unknown as ExtensionContext;
+		await pi.commands.get("workflow")?.handler("stop workflow-1", ctx);
+		assert.equal(aborts, 0);
+		assert.deepEqual(notices, ["durable stop failed"]);
 	});
 
 	it("routes explicit language overrides and injects the resolved language contract", async () => {

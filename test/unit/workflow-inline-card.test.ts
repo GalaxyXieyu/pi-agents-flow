@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { renderWorkflowInlineCard, type WorkflowInlineCardInput } from "../../src/tui/workflow-inline-card.ts";
 import type { ActivitySnapshot } from "../../src/activity/types.ts";
 
@@ -15,9 +16,9 @@ function makeSnapshot(overrides: Partial<ActivitySnapshot["workflow"]> & { tasks
 		version: 1,
 		language: "zh",
 		workflow: {
-			runId: "test-run",
-			goal: "",
-			status: "active",
+			runId: overrides.runId ?? "test-run",
+			goal: overrides.goal ?? "",
+			status: overrides.status ?? "active",
 			tasks: overrides.tasks,
 		},
 		executions: overrides.executions ?? [],
@@ -115,6 +116,27 @@ test("localizes status labels to English", () => {
 	assert.doesNotMatch(lines[1], /状态|运行/);
 });
 
+test("shows the original workflow requirement on the first line", () => {
+	const input: WorkflowInlineCardInput = {
+		runId: "goal-run-001",
+		language: "zh",
+		status: "active",
+		snapshot: makeSnapshot({
+			runId: "goal-run-001",
+			goal: "分析 Workflow 运行状态并修复 Agent 活动展示",
+			status: "active",
+			tasks: {},
+			executions: [],
+		}),
+		createdAt: Date.now() - 5000,
+	};
+	const lines = renderWorkflowInlineCard(input, theme as never, 44);
+	assert.match(lines[0], /需求：分析 Workflow/);
+	assert.doesNotMatch(lines[0], /goal-run/);
+	assert.ok(visibleWidth(lines[0]!) <= 44, "header must fit the terminal width");
+	assert.match(lines[0], /5s/);
+});
+
 test("shows overflow in expanded mode when agents exceed limit", () => {
 	const tasks: Record<string, any> = {};
 	const executions: any[] = [];
@@ -136,10 +158,32 @@ test("shows overflow in expanded mode when agents exceed limit", () => {
 	assert.ok(hasOverflow, "should show overflow indicator in expanded mode");
 	const linesCollapsed = renderWorkflowInlineCard(input, theme as never, 120, false);
 	const hasTaskRows = linesCollapsed.some((line) => line.includes("Task"));
-	assert.ok(!hasTaskRows, "collapsed mode should not show task rows");
+	assert.ok(!hasTaskRows, "default mode should only show running agents");
 });
 
-test("shows agent rows with employee name and activity in expanded mode", () => {
+test("does not cap running Agent rows in the default card", () => {
+	const tasks: Record<string, any> = {};
+	const executions: any[] = [];
+	for (let i = 0; i < 16; i++) {
+		tasks[`t${i}`] = {
+			id: `t${i}`, label: `Task ${i}`, order: i, state: "running", completed: 0, total: 1,
+			workUnits: [{ id: `w${i}`, taskId: `t${i}`, label: `Task ${i}`, order: 0, state: "running", dependsOn: [], attempts: 1, artifacts: [], executions: [], node: { id: `w${i}`, taskId: `t${i}`, kind: "custom", label: `Task ${i}`, order: 0, status: "running", dependsOn: [], attempts: [], agentSpec: { id: `a${i}`, baseAgent: `agent-${i}`, role: `role-${i}`, objective: `activity-${i}`, instructions: "", context: "fresh" } } }],
+			children: [], plan: { id: `t${i}`, label: `Task ${i}`, order: i },
+		};
+		executions.push({ key: `e${i}`, agent: `agent-${i}`, role: `role-${i}`, state: "running", startedAt: Date.now() - 1000, attempt: 1, artifacts: [], recent: [], workUnitId: `w${i}`, activity: `activity-${i}` });
+	}
+	const input: WorkflowInlineCardInput = {
+		runId: "many-running",
+		language: "en",
+		status: "active",
+		snapshot: makeSnapshot({ runId: "many-running", goal: "Run every lane", status: "active", tasks, executions }),
+	};
+	const lines = renderWorkflowInlineCard(input, theme as never, 120);
+	assert.equal(lines.filter((line) => line.includes("agent-")).length, 16);
+	assert.ok(!lines.some((line) => line.includes("… +")));
+});
+
+test("shows every running agent with activity and duration by default", () => {
 	const input: WorkflowInlineCardInput = {
 		runId: "agent-run-001",
 		language: "en",
@@ -157,13 +201,15 @@ test("shows agent rows with employee name and activity in expanded mode", () => 
 			],
 		}),
 	};
-	const lines = renderWorkflowInlineCard(input, theme as never, 120, true);
-	const hasResearch = lines.some((l) => l.includes("researcher"));
-	const hasWrite = lines.some((l) => l.includes("writer"));
-	assert.ok(hasResearch, "should show researcher agent");
-	assert.ok(hasWrite, "should show writer agent");
-	const hasActivity = lines.some((l) => l.includes("Calling read"));
-	assert.ok(hasActivity, "should show agent activity");
+	const lines = renderWorkflowInlineCard(input, theme as never, 120);
+	const runningLine = lines.find((line) => line.includes("researcher"));
+	assert.ok(runningLine, "should show the running researcher by default");
+	assert.match(runningLine, /Calling read/);
+	assert.match(runningLine, /10s$/, "should show the Agent's own elapsed time");
+	assert.ok(!lines.some((line) => line.includes("writer")), "should hide pending agents by default");
+
+	const expandedLines = renderWorkflowInlineCard(input, theme as never, 120, true);
+	assert.ok(expandedLines.some((line) => line.includes("writer")), "expanded mode should retain pending agents");
 });
 
 test("shows duration on header line when createdAt is provided", () => {

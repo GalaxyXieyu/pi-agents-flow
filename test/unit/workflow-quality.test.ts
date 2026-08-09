@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { resolveWorkflowPolicy } from "../../src/workflows/policy.ts";
 import { assessWorkflowQuality, formatWorkflowQualityReport } from "../../src/workflows/quality.ts";
 import type { WorkflowResult, WorkflowFinding, WorkflowNode, WorkflowRun } from "../../src/workflows/types.ts";
 
@@ -166,7 +167,7 @@ describe("workflow quality benchmark", () => {
 		assert.equal(report.score, 100);
 	});
 
-	it("blocks snippet-only evidence and evidence URLs that were not fetched", () => {
+	it("warns on snippet-only evidence and evidence URLs that were not fetched", () => {
 		const snippetUrl = "https://example.test/snippet";
 		const report = assessWorkflowQuality(run([
 			acceptedNode("snippet", "research", envelope([finding("snippet claim", { url: snippetUrl })], { queries: ["snippet query"] })),
@@ -174,9 +175,9 @@ describe("workflow quality benchmark", () => {
 			validResearchNode("recovery"),
 		]));
 
-		assert.equal(report.releaseReady, false);
-		assert.ok(report.blockers.some((blocker) => blocker.toLowerCase().includes("trace")));
-		assert.ok(report.blockers.some((blocker) => blocker.toLowerCase().includes("fetch")));
+		assert.ok(!report.blockers.some((blocker) => blocker.toLowerCase().includes("trace") || blocker.toLowerCase().includes("fetch")));
+		assert.ok(report.warnings.some((warning) => warning.toLowerCase().includes("trace")));
+		assert.ok(report.warnings.some((warning) => warning.toLowerCase().includes("fetch")));
 	});
 
 	it("excludes file probes from web fetch coverage and traces local evidence independently of agent identity", () => {
@@ -193,7 +194,7 @@ describe("workflow quality benchmark", () => {
 		assert.equal(report.metrics.searchFetchCoverage, 1);
 	});
 
-	it("rejects local trace references that runtime validation cannot resolve", () => {
+	it("warns when local trace references fail runtime validation", () => {
 		const local = acceptedNode("missing-local", "research", envelope([
 			finding("unresolved local claim", { artifactPath: "/missing/source.ts", quote: "not actually read" }),
 		]));
@@ -201,17 +202,17 @@ describe("workflow quality benchmark", () => {
 			validateLocalEvidence: () => false,
 		});
 		assert.equal(report.metrics.researchTraceCoverage, 2 / 3);
-		assert.ok(report.blockers.some((blocker) => blocker.toLowerCase().includes("trace")));
+		assert.ok(report.warnings.some((warning) => warning.toLowerCase().includes("trace")));
 	});
 
-	it("does not exempt a local-researcher lane that returns no local or web trace", () => {
+	it("warns when a local-researcher lane returns no local or web trace", () => {
 		const untraced = acceptedNode("untraced-local", "research", envelope([
 			{ claim: "bare local claim", confidence: "high", evidence: [{ title: "unverified source" }] },
 		]));
 		untraced.agentSpec.baseAgent = "local-researcher";
 		const report = assessWorkflowQuality(run([untraced, validResearchNode("safety"), validResearchNode("recovery")]));
 		assert.equal(report.metrics.researchTraceCoverage, 2 / 3);
-		assert.ok(report.blockers.some((blocker) => blocker.toLowerCase().includes("trace")));
+		assert.ok(report.warnings.some((warning) => warning.toLowerCase().includes("trace")));
 	});
 
 	it("matches fetched web evidence by canonical URL rather than raw annotation-sensitive text", () => {
@@ -242,7 +243,7 @@ describe("workflow quality benchmark", () => {
 		assert.equal(report.metrics.searchFetchCoverage, 1);
 	});
 
-	it("blocks accepted source claims without a URL or artifact reference", () => {
+	it("warns on accepted source claims without a URL or artifact reference", () => {
 		const unsupported = finding("unsupported claim");
 		unsupported.evidence = [{ title: "Search result snippet" }];
 		const report = assessWorkflowQuality(run([
@@ -251,8 +252,8 @@ describe("workflow quality benchmark", () => {
 			validResearchNode("recovery"),
 		]));
 
-		assert.equal(report.releaseReady, false);
-		assert.ok(report.blockers.some((blocker) => blocker.toLowerCase().includes("citation")));
+		assert.ok(!report.blockers.some((blocker) => blocker.toLowerCase().includes("citation")));
+		assert.ok(report.warnings.some((warning) => warning.toLowerCase().includes("citation")));
 	});
 
 	it("accepts a semantic Writer paraphrase when its evidence traces to an accepted source", () => {
@@ -274,16 +275,16 @@ describe("workflow quality benchmark", () => {
 		assert.equal(report.metrics.unsupportedWriterClaimRate, 0);
 	});
 
-	it("blocks Writer findings that introduce a new claim", () => {
+	it("warns when Writer findings introduce a new claim", () => {
 		const research = [validResearchNode("architecture"), validResearchNode("safety"), validResearchNode("recovery")];
 		const documents = documentNodes(research);
 		const editor = documents.find((node) => node.kind === "editor")!;
 		editor.result = { ...editor.result!, evidence: { ...editor.result!.evidence!, findings: [...editor.result!.evidence!.findings, finding("new writer claim", { artifactPath: "delivery/final.md" })] } };
 		const report = assessWorkflowQuality(run([...research, ...documents]));
 
-		assert.equal(report.releaseReady, false);
+		assert.equal(report.releaseReady, true, report.blockers.join("\n"));
 		assert.ok(report.metrics.unsupportedWriterClaimRate > 0);
-		assert.ok(report.blockers.some((blocker) => blocker.toLowerCase().includes("writer")));
+		assert.ok(report.warnings.some((warning) => warning.toLowerCase().includes("writer")));
 	});
 
 	it("blocks accepted nodes that bypass correlated delegation provenance", () => {
@@ -347,6 +348,35 @@ describe("workflow quality benchmark", () => {
 		assert.equal(resolved.metrics.unresolvedConflicts, 0);
 	});
 
+	it("infers local evidence mode without requiring web citations", () => {
+		const local = acceptedNode("local", "research", envelope([
+			finding("local implementation claim", { artifactPath: "/repo/src/workflow.ts", kind: "primary", quote: "state transition" }),
+		]));
+		const research = [local, validResearchNode("safety"), validResearchNode("recovery")];
+		const report = assessWorkflowQuality(run([...research, ...documentNodes(research)]));
+		assert.equal(report.evidenceMode, "mixed");
+		assert.equal(report.releaseReady, true, report.blockers.join("\n"));
+	});
+
+	it("enforces only the selected evidence class in strict mode", () => {
+		const local = acceptedNode("local", "research", envelope([
+			finding("local implementation claim", { artifactPath: "/repo/src/workflow.ts", kind: "primary", quote: "state transition" }),
+		]));
+		const research = [local, validResearchNode("safety"), validResearchNode("recovery")];
+		const webStrict = resolveWorkflowPolicy("deep-research", { qualityEnforcement: "strict", evidenceMode: "web" });
+		const webReport = assessWorkflowQuality(run([...research, ...documentNodes(research)]), webStrict);
+		assert.equal(webReport.evidenceMode, "web");
+		assert.equal(webReport.releaseReady, true, webReport.blockers.join("\n"));
+
+		const localOnly = [acceptedNode("local-only", "research", envelope([
+			finding("local only claim", { artifactPath: "/repo/src/workflow.ts", kind: "primary", quote: "state transition" }),
+		])), acceptedNode("local-b", "research", envelope([finding("local b", { artifactPath: "/repo/src/b.ts", kind: "primary", quote: "line" })])), acceptedNode("local-c", "research", envelope([finding("local c", { artifactPath: "/repo/src/c.ts", kind: "primary", quote: "line" })]))];
+		const localStrict = resolveWorkflowPolicy("deep-research", { qualityEnforcement: "strict", evidenceMode: "local" });
+		const localReport = assessWorkflowQuality(run([...localOnly, ...documentNodes(localOnly)]), localStrict);
+		assert.equal(localReport.evidenceMode, "local");
+		assert.equal(localReport.releaseReady, true, localReport.blockers.join("\n"));
+	});
+
 	it("excludes superseded research nodes from release metrics", () => {
 		const obsolete = acceptedNode("obsolete", "research", envelope([
 			finding("obsolete claim", { url: "https://old.example/source" }),
@@ -370,7 +400,7 @@ describe("workflow quality benchmark", () => {
 
 		assert.equal(report.releaseReady, false);
 		assert.ok(report.blockers.some((blocker) => blocker.toLowerCase().includes("outline")));
-		assert.ok(report.blockers.some((blocker) => blocker.toLowerCase().includes("length")));
+		assert.ok(report.warnings.some((warning) => warning.toLowerCase().includes("citation")));
 	});
 
 	it("releases citation and length shortfalls when the Reviewer declares acceptance", () => {

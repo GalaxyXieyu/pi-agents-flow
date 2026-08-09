@@ -22,7 +22,8 @@ Always use the `workflow` tool as the state transition boundary. Do not claim a 
 
 Always-on constraints:
 
-- Child completion is not acceptance.
+- Child completion is not acceptance. Never call `complete` unless evaluation reports `nextAction=complete` and `readyToComplete=true`.
+- An accepted node is immutable audit history, never a `replaces` target. An accepted Reviewer that finds document defects requires a new editor revision depending on the accepted editor and review, then a new reviewer depending on that editor; neither uses `replaces`. A new reviewer may explicitly accept residual gaps/conflicts with `extensions.release` flags, but it does not replace the accepted reviewer.
 - Keep one writer per cwd.
 - Use parallel nodes only for independent work.
 - `apply_plan` takes two layers: `tasks` (human-level task hierarchy with `parentId`/`order`) and `workUnits` (schedulable units, each with `taskId`, `order`, `dependsOn`, and one `agentSpec`). A task may own several work units and therefore several Agents; `dependsOn` orders work units and never implies task hierarchy.

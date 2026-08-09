@@ -206,7 +206,10 @@ function applyPlan(run: WorkflowRun, tasks: Record<string, WorkflowTaskPlan>, pl
 			const target = run.nodes[plan.replaces];
 			if (!target) throw new Error(`Work unit '${plan.id}' replaces unknown node '${plan.replaces}'.`);
 			if (target.status !== "failed" && target.status !== "cancelled" && target.status !== "rejected" && target.status !== "pending" && target.status !== "ready") {
-				throw new Error(`Work unit '${plan.id}' can only replace a failed, cancelled, rejected, pending, or ready node; '${plan.replaces}' is ${target.status}.`);
+				const acceptedReviewHint = target.status === "accepted" && target.kind === "reviewer"
+					? " The accepted review is immutable audit history. If it found document defects, add a new editor revision depending on that editor and review, then a new reviewer depending on the new editor; neither uses replaces. If residual risk is acceptable, add a new reviewer of the final editor with the explicit release flags instead."
+					: " Accepted nodes are immutable audit history; add a new follow-up node with explicit dependencies instead of replaces.";
+				throw new Error(`Work unit '${plan.id}' can only replace a failed, cancelled, rejected, pending, or ready node; '${plan.replaces}' is ${target.status}.${acceptedReviewHint}`);
 			}
 			if (target.kind !== plan.kind) {
 				throw new Error(`Work unit '${plan.id}' must have kind '${target.kind}' to replace '${plan.replaces}', not '${plan.kind}'.`);
