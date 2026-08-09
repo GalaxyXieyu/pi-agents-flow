@@ -54,11 +54,19 @@ export type WorkflowRepairAction =
 		target: string;
 	};
 
+export interface WorkflowRepairDecision {
+	kind: WorkflowRepairAction["kind"];
+	target: string;
+	reason: string;
+}
+
 export interface WorkflowRepairGuidance {
 	version: 0;
 	workflowId: string;
 	revision: number;
 	nextAction: WorkflowEvaluation["nextAction"];
+	/** Deterministic first action so a Supervisor need not parse prose guidance. */
+	recommendedAction?: WorkflowRepairDecision;
 	followUpQueries: string[];
 	preferredSourceHints: string[];
 	actions: WorkflowRepairAction[];
@@ -312,11 +320,13 @@ if (unresolved.gaps.length <= policy.gates.maxUnresolvedGaps) {
 		searchBenchmark ? `searchScore=${searchBenchmark.score}` : undefined,
 		top ? `topActions=${top}` : "topActions=none",
 	].filter(Boolean).join(" | ");
+	const recommendedAction = actions[0];
 	return {
 		version: 0,
 		workflowId: run.id,
 		revision: run.revision,
 		nextAction: evaluation.nextAction,
+		...(recommendedAction ? { recommendedAction: { kind: recommendedAction.kind, target: recommendedAction.target, reason: recommendedAction.reason } } : {}),
 		followUpQueries,
 		preferredSourceHints,
 		actions,
@@ -329,6 +339,7 @@ export function formatWorkflowRepairGuidance(guidance: WorkflowRepairGuidance): 
 	const lines = [
 		"## Repair guidance",
 		guidance.summary,
+		...(guidance.recommendedAction ? [`Recommended next action: ${guidance.recommendedAction.kind} :: ${guidance.recommendedAction.target} — ${guidance.recommendedAction.reason}`] : []),
 	];
 	if (guidance.followUpQueries.length > 0) {
 		lines.push("", "Suggested follow-up queries:");
