@@ -53,6 +53,7 @@ export function activitySelections(snapshot: ActivitySnapshot, perspective: Acti
 		return snapshot.executions
 			.map((execution, index) => ({ execution, index }))
 			.sort((left, right) => AGENT_STATE_ORDER[left.execution.state] - AGENT_STATE_ORDER[right.execution.state]
+				|| right.execution.startedAt - left.execution.startedAt
 				|| (left.execution.taskPath ?? "").localeCompare(right.execution.taskPath ?? "")
 				|| left.index - right.index)
 			.map(({ execution }) => ({ kind: "execution" as const, key: `execution:${execution.key}`, execution }));
@@ -353,8 +354,24 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 		refresh() {
 			if (!ctx || !ui) return;
 			try {
-				snapshot = options.getSnapshot();
-				if (!perspective) perspective = snapshot.workflow ? "work" : "agents";
+				const previousSnapshot = snapshot;
+				const previousAgentRows = previousSnapshot ? activitySelections(previousSnapshot, "agents") : [];
+				const previousAgentHead = previousAgentRows[0]?.key;
+				const wasFollowingAgentHead = !active || selectedKey === undefined || selectedKey === previousAgentHead;
+				const previousAgentKeys = new Set(previousAgentRows.map((row) => row.key));
+				const nextSnapshot = options.getSnapshot();
+				const nextPerspective = perspective ?? (nextSnapshot.workflow ? "work" : "agents");
+				const nextAgentRows = activitySelections(nextSnapshot, "agents");
+				const hasNewAgent = previousSnapshot !== undefined && nextAgentRows.some((row) => !previousAgentKeys.has(row.key));
+				snapshot = nextSnapshot;
+				if (!perspective) perspective = nextPerspective;
+				// Keep the live Agents roster pinned to its newest/highest-priority row
+				// only while the user is already following the head (or the dock is
+				// inactive). Once the user navigates down, refreshes must not steal focus.
+				if (nextPerspective === "agents" && hasNewAgent && wasFollowingAgentHead) {
+					selectedKey = nextAgentRows[0]?.key;
+					expandedKey = undefined;
+				}
 				clampSelection();
 				if (inspectorOpen || selections().length === 0) { hide(); return; }
 				if (!registered) {

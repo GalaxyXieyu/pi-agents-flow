@@ -265,6 +265,63 @@ describe("activity dock controller", () => {
 		}
 	});
 
+	it("follows a newly spawned top Agent while the user is following the head", async () => {
+		const ui = fakeUi();
+		const s = liveState();
+		const opened: string[] = [];
+		const controller = createActivityDockController({
+			getSnapshot: () => buildActivitySnapshot(s, run()),
+			openSelection: (selection) => { opened.push(selection.key); },
+		});
+		try {
+			controller.setContext(ui.ctx);
+			renderDock(ui);
+			const handler = ui.handler()!;
+			handler("\x1b[B");
+			handler("v");
+			s.foregroundControls.set("newest", {
+				runId: "newest", mode: "single", startedAt: 50, updatedAt: 51,
+				currentAgent: "debugger", description: "Newest investigation",
+			} as never);
+			const expectedHead = activitySelections(buildActivitySnapshot(s, run()), "agents")[0]?.key;
+			controller.refresh();
+			handler("\r");
+			await new Promise((resolve) => setImmediate(resolve));
+			assert.equal(opened[0], expectedHead, "a new top Agent becomes selected and visible while following live work");
+		} finally {
+			controller.dispose();
+		}
+	});
+
+	it("does not steal the Agents selection while the user browses older rows", async () => {
+		const ui = fakeUi();
+		const s = liveState();
+		const opened: string[] = [];
+		const controller = createActivityDockController({
+			getSnapshot: () => buildActivitySnapshot(s, run()),
+			openSelection: (selection) => { opened.push(selection.key); },
+		});
+		try {
+			controller.setContext(ui.ctx);
+			renderDock(ui);
+			const handler = ui.handler()!;
+			handler("\x1b[B");
+			handler("v");
+			handler("j");
+			const browsedKey = activitySelections(buildActivitySnapshot(s, run()), "agents")[1]?.key;
+			s.foregroundControls.set("newest", {
+				runId: "newest", mode: "single", startedAt: 50, updatedAt: 51,
+				currentAgent: "debugger", description: "Newest investigation",
+			} as never);
+			controller.refresh();
+			handler("\r");
+			await new Promise((resolve) => setImmediate(resolve));
+			assert.equal(opened[0], browsedKey, "manual browsing must survive roster refreshes");
+		} finally {
+			controller.dispose();
+		}
+	});
+
 	it("keeps the last snapshot mounted when the store read throws", () => {
 		const ui = fakeUi();
 		let fail = false;
@@ -293,6 +350,12 @@ describe("activity selections", () => {
 		const rows = activitySelections(snapshot, "agents");
 		assert.equal(rows.length, 5);
 		assert.ok(rows.every((row) => row.kind !== "execution" || row.execution.workUnitId !== "doc"));
+	});
+
+	it("orders equal-state Agents newest first", () => {
+		const snapshot = buildActivitySnapshot(liveState(), run());
+		const running = activitySelections(snapshot, "agents").filter((row) => row.kind === "execution" && row.execution.state === "running");
+		assert.deepEqual(running.map((row) => row.kind === "execution" ? row.execution.startedAt : 0), [30, 3]);
 	});
 
 	it("folds terminal tasks in the work perspective", () => {
