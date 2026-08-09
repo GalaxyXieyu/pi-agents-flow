@@ -195,7 +195,7 @@ describe("workflow scheduler", () => {
 		assert.equal(reloaded.nodes["research-a"]?.result?.summary.text, "large");
 	});
 
-	it("records preflight and terminal failures as retryable failed attempts", async () => {
+	it("records transient transport failures as explicitly retryable failed attempts", async () => {
 		const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-scheduler-fail-"));
 		tempDirs.push(rootDir);
 		const store = createWorkflowStore({ rootDir });
@@ -205,7 +205,7 @@ describe("workflow scheduler", () => {
 		const adapter: WorkflowDelegationAdapter = {
 			async run(currentRun, workflowNode, attempt) {
 				calls++;
-				if (calls === 1) return { ok: false, stage: "preflight", error: "missing skill" };
+				if (calls === 1) return { ok: false, stage: "transport", error: "Connection error." };
 				return { ok: true, response: completedResponse(attempt.requestId, currentRun.id, workflowNode.id), launchContractDigest: "digest-2" };
 			},
 		};
@@ -214,7 +214,9 @@ describe("workflow scheduler", () => {
 		const run = await scheduler.runReady("workflow-fail");
 		assert.equal(run.nodes["research-a"]?.status, "failed");
 		assert.equal(run.nodes["research-a"]?.attempts[0]?.status, "failed");
-		assert.equal(run.nodes["research-a"]?.attempts[0]?.error, "missing skill");
+		assert.equal(run.nodes["research-a"]?.attempts[0]?.error, "Connection error.");
+		assert.equal(run.nodes["research-a"]?.attempts[0]?.failure?.failureClass, "provider_transport_failed");
+		assert.equal(run.nodes["research-a"]?.attempts[0]?.failure?.retryable, true);
 
 		const unchanged = await scheduler.runReady("workflow-fail");
 		assert.equal(unchanged.nodes["research-a"]?.attempts.length, 1);
@@ -224,6 +226,29 @@ describe("workflow scheduler", () => {
 		assert.equal(retried.nodes["research-a"]?.attempts.length, 2);
 		assert.equal(retried.nodes["research-a"]?.attempts[0]?.status, "failed");
 		assert.equal(retried.nodes["research-a"]?.attempts[1]?.status, "completed");
+	});
+
+	it("pauses the workflow on exhausted provider balance and refuses an in-place retry", async () => {
+		const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-scheduler-quota-"));
+		tempDirs.push(rootDir);
+		const store = createWorkflowStore({ rootDir });
+		store.create({ id: "workflow-quota", mode: "deep-research", goal: "Research", cwd: "/repo", sessionId: "session-1", branch: "main", at: 1 });
+		store.append("workflow-quota", { id: "event-plan", type: "workflow.plan_applied", at: 2, tasks: [{ id: "task-main", label: "Research", order: 0 }], workUnits: [node("research-a"), node("research-b")] });
+		let calls = 0;
+		const scheduler = createWorkflowScheduler({
+			store,
+			adapter: { async run() { calls++; return { ok: false, stage: "transport", error: '402: {"message":"Insufficient Balance"}' }; } },
+			now: (() => { let value = 10; return () => value++; })(),
+		});
+
+		const failed = await scheduler.runReady("workflow-quota", { concurrency: 1 });
+		assert.equal(failed.status, "paused");
+		assert.equal(failed.nodes["research-a"]?.attempts[0]?.failure?.failureClass, "provider_quota_exhausted");
+		assert.equal(failed.nodes["research-a"]?.attempts[0]?.failure?.retryable, false);
+		assert.match(failed.pauseReason ?? "", /provider_quota_exhausted/);
+		assert.equal(failed.nodes["research-b"]?.attempts.length, 0);
+		await assert.rejects(() => scheduler.runReady("workflow-quota", { nodeIds: ["research-a"], retryNodeIds: ["research-a"] }), /only active workflows/);
+		assert.equal(calls, 1);
 	});
 
 	it("stops scheduling after the persisted node-attempt ceiling", async () => {

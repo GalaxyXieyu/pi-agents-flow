@@ -6,6 +6,8 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { writeAtomicJson } from "../shared/atomic-json.ts";
 import { DEFAULT_WORKFLOW_CONCURRENCY, loadConfig } from "../extension/config.ts";
+import { classifyWorkflowFailure, normalizeParentModel } from "../runs/shared/model-fallback.ts";
+import { toModelInfo } from "../shared/model-info.ts";
 import type { SubagentForegroundCompleteEvent } from "../shared/types.ts";
 import { collectWorkflowClarification } from "../tui/workflow-clarify.ts";
 import { collectWorkflowOutlineReview, type WorkflowOutlineReviewResult } from "../tui/workflow-outline-review.ts";
@@ -279,6 +281,15 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 		const approved = await ctx.ui.confirm("Approve Coding implementation?", approvalContext);
 		if (!approved) throw new Error("Coding implementation approval was declined; the plan gate remains unchanged.");
 	};
+	const classifiedFailure = (error: string, context: Parameters<typeof classifyWorkflowFailure>[1] = {}) => {
+		const classification = classifyWorkflowFailure(error, context);
+		return {
+			failureClass: classification.failureClass,
+			retryable: classification.retryable,
+			suggestedAction: classification.suggestedAction,
+			...(classification.pauseWorkflow ? { pauseWorkflow: true } : {}),
+		};
+	};
 	const registerCompletion = (store: WorkflowStore, run: WorkflowRun, nodeId: string, attemptId: string, result: WorkflowResult): Pick<Extract<WorkflowEvent, { type: "node.completed" }>, "result" | "resultArtifact" | "outputs"> => {
 		const node = run.nodes[nodeId];
 		if (!node) throw new Error(`Unknown workflow node '${nodeId}'.`);
@@ -337,15 +348,17 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 				...metadata,
 			});
 		} catch (error) {
+			const terminalError = completion.success
+				? `Detached child returned invalid structured output: ${error instanceof Error ? error.message : String(error)}`
+				: completion.summary || `Detached child exited with code ${completion.exitCode}.`;
 			return store.append(run.id, {
 				id: `foreground:${completion.id}:failed`,
 				type: "node.failed",
 				at: completion.timestamp,
 				nodeId: match.id,
 				attemptId: attempt.attemptId,
-				error: completion.success
-					? `Detached child returned invalid structured output: ${error instanceof Error ? error.message : String(error)}`
-					: completion.summary || `Detached child exited with code ${completion.exitCode}.`,
+				error: terminalError,
+				failure: classifiedFailure(terminalError, completion.success ? { failureClass: "invalid_result" } : { stage: "transport" }),
 				...metadata,
 			});
 		}
@@ -481,7 +494,31 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 	};
 	const qualityDetails = (store: WorkflowStore, run: WorkflowRun): Pick<WorkflowControllerDetails, "qualityReport" | "qualityReportPath"> => {
 		const artifactStore = createLocalWorkflowArtifactStore(store.paths(run.id).artifacts);
-		const qualityReport = assessWorkflowQuality(run, undefined, { readArtifact: (descriptor) => artifactStore.read(descriptor).toString("utf8") });
+		const cwd = path.resolve(run.cwd);
+		const artifactsDir = path.resolve(store.paths(run.id).artifacts);
+		const validateLocalEvidence = (reference: string): boolean => {
+			let candidate = reference;
+			try {
+				if (reference.startsWith("file:")) candidate = new URL(reference).pathname;
+			} catch {
+				return false;
+			}
+			const resolved = path.resolve(cwd, candidate);
+			const inAllowedRoot = resolved === cwd
+				|| resolved.startsWith(`${cwd}${path.sep}`)
+				|| resolved === artifactsDir
+				|| resolved.startsWith(`${artifactsDir}${path.sep}`);
+			if (!inAllowedRoot) return false;
+			try {
+				return fs.statSync(resolved).isFile();
+			} catch {
+				return false;
+			}
+		};
+		const qualityReport = assessWorkflowQuality(run, undefined, {
+			readArtifact: (descriptor) => artifactStore.read(descriptor).toString("utf8"),
+			validateLocalEvidence,
+		});
 		const qualityReportPath = path.join(store.paths(run.id).bundles, "quality-report.json");
 		writeAtomicJson(qualityReportPath, qualityReport);
 		return { qualityReport, qualityReportPath };
@@ -808,20 +845,30 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 					if (requestedNode && workflowNodeAttemptsExhausted(requestedNode, persistedMaxNodeAttempts)) {
 						throw new Error(`Workflow node '${requestedNode.id}' reached its ${persistedMaxNodeAttempts}-attempt ceiling. Inspect retained output, then reopen it (action=reopen) to grant more attempts, replace it (add a work unit with replaces='${requestedNode.id}'), or reject it.`);
 					}
+					const requestedFailure = requestedNode?.attempts.at(-1)?.failure;
+					if (requestedNode && requestedFailure?.retryable === false) {
+						throw new Error(`Workflow node '${requestedNode.id}' failed with ${requestedFailure.failureClass} and cannot be retried in place. ${requestedFailure.suggestedAction} To change model/provider, add a same-kind work unit with replaces='${requestedNode.id}' and an explicit agentSpec.model; the old node remains pinned to its recorded model.`);
+					}
 					const readyNodes = Object.values(run.nodes).filter((node) => node.status === "ready");
 					const exhaustedNodes = Object.values(run.nodes).filter((node) => workflowNodeAttemptsExhausted(node, persistedMaxNodeAttempts));
 					if (!requestedNode && readyNodes.length === 0 && exhaustedNodes.length > 0) {
 						throw new Error(`Workflow node attempt ceiling ${persistedMaxNodeAttempts} reached for: ${exhaustedNodes.map((node) => node.id).join(", ")}. Supervisor intervention required: inspect retained structured output/artifacts first, then reopen (grant more attempts), replace (add a work unit with replaces=<id>), or reject each exhausted node. The exhausted nodes will not be retried automatically.`);
 					}
 					if (!requestedNode && readyNodes.length === 0) {
-						const retryable = Object.values(run.nodes).filter((node) => (node.status === "failed" || node.status === "cancelled") && !workflowNodeAttemptsExhausted(node, persistedMaxNodeAttempts));
+						const retryable = Object.values(run.nodes).filter((node) => (node.status === "failed" || node.status === "cancelled") && node.attempts.at(-1)?.failure?.retryable !== false && !workflowNodeAttemptsExhausted(node, persistedMaxNodeAttempts));
 						if (retryable.length > 0) throw new Error(`No ready workflow nodes. Retry one failed/cancelled node explicitly with nodeId: ${retryable.map((node) => node.id).join(", ")}.`);
+						const nonRetryable = Object.values(run.nodes).filter((node) => node.status === "failed" && node.attempts.at(-1)?.failure?.retryable === false);
+						if (nonRetryable.length > 0) throw new Error(`No ready workflow nodes. Non-retryable failures require replacement or provider remediation: ${nonRetryable.map((node) => `${node.id} (${node.attempts.at(-1)?.failure?.failureClass})`).join(", ")}.`);
 					}
 					const scheduler = createWorkflowScheduler({
 						store,
 						adapter: options.adapter,
 						now,
 						maxConcurrency,
+						runtime: {
+							parentModel: normalizeParentModel(ctx.model),
+							availableModels: ctx.modelRegistry.getAvailable().map(toModelInfo),
+						},
 						onTransition: (transitioned) => {
 							persistBinding(transitioned);
 							projectRun(ctx, transitioned, evaluateWorkflow(transitioned));

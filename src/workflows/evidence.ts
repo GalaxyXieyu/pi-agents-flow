@@ -8,8 +8,17 @@ export function confidenceRank(value: WorkflowFinding["confidence"]): number {
 	return value === "high" ? 3 : value === "medium" ? 2 : 1;
 }
 
+export function evidenceHasLocalReference(evidence: EvidenceRecord): boolean {
+	if (evidence.artifactPath?.trim()) return true;
+	try {
+		return new URL(evidence.url?.trim() ?? "").protocol.toLowerCase() === "file:";
+	} catch {
+		return false;
+	}
+}
+
 export function evidenceHasCitation(evidence: EvidenceRecord): boolean {
-	return Boolean(evidence.url?.trim() || evidence.artifactPath?.trim());
+	return Boolean(evidence.url?.trim() || evidenceHasLocalReference(evidence));
 }
 
 /**
@@ -17,7 +26,7 @@ export function evidenceHasCitation(evidence: EvidenceRecord): boolean {
  * failed file probes, and already-materialized artifacts are not web fetches.
  */
 export function evidenceRequiresWebFetch(evidence: EvidenceRecord): boolean {
-	if (evidence.artifactPath?.trim()) return false;
+	if (evidenceHasLocalReference(evidence)) return false;
 	try {
 		const protocol = new URL(evidence.url?.trim() ?? "").protocol.toLowerCase();
 		return protocol === "http:" || protocol === "https:";

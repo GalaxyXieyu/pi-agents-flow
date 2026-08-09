@@ -250,6 +250,10 @@ async function directAction(
 		}
 		const result = await controller.execute({ action, ...(runId ? { runId } : {}) }, ctx);
 		display(pi, result.text);
+		// Workflow cancellation and the root Pi operation use separate abort
+		// controllers. Stop the current model turn only after the durable workflow
+		// state and user-visible confirmation have been written.
+		if (action === "stop") ctx.abort();
 	} catch (error) {
 		ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
 	}

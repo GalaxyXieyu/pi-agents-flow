@@ -47,6 +47,8 @@ export interface SubagentLaunchContractInput {
 	agentScope?: AgentScope;
 	context?: "fresh" | "fork";
 	model?: string;
+	/** Optional per-launch fallback chain. Overrides the base Agent fallbackModels. */
+	fallbackModels?: string[];
 	thinking?: string | false;
 	parentModel?: ParentModel;
 	availableModels?: ReadonlyArray<AvailableModelInfo | { provider: string; id: string; fullId?: string; reasoning?: boolean }>;
@@ -276,7 +278,7 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 	const primaryModel = resolveEffectiveSubagentModel(input.model, agent.model, input.parentModel, availableModels, preferredProvider, { scope: discovered.modelScope });
 	const effectiveThinkingConfig = input.thinking !== undefined ? input.thinking : agent.thinking;
 	const model = applyThinkingSuffix(primaryModel, effectiveThinkingConfig, input.thinking !== undefined);
-	const modelCandidates = buildModelCandidates(primaryModel, agent.fallbackModels, availableModels, preferredProvider, { scope: discovered.modelScope })
+	const modelCandidates = buildModelCandidates(primaryModel, input.fallbackModels ?? agent.fallbackModels, availableModels, preferredProvider, { scope: discovered.modelScope })
 		.map((candidate) => applyThinkingSuffix(candidate, effectiveThinkingConfig, input.thinking !== undefined) ?? candidate);
 	let toolPlan: PiLaunchToolPlan;
 	try {

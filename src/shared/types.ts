@@ -1591,6 +1591,8 @@ export interface RunSyncOptions {
 	nestedRoute?: NestedRouteInfo;
 	/** Override the agent's default model (format: "provider/id" or just "id") */
 	modelOverride?: string;
+	/** Ordered per-launch fallback models; overrides the Agent's configured fallbackModels. */
+	fallbackModelsOverride?: string[];
 	/** Override the agent's default thinking level for this run */
 	thinkingOverride?: AgentConfig["thinking"];
 	/** Registry models available for heuristic bare-model resolution */

@@ -154,6 +154,23 @@ describe("activity board", () => {
 		assert.ok(lines.length < 30, "the board must remain bounded in a 40-row terminal");
 	});
 
+	it("keeps a Task running while a sibling repair is active", () => {
+		const workflow = run();
+		workflow.nodes.failed = workUnit({
+			id: "failed", taskId: "task-main", kind: "writer", label: "Original write", order: 2, status: "failed",
+			attempts: [{ attemptId: "failed:1", requestId: "r-failed", number: 1, startedAt: Date.now() - 5_000, completedAt: Date.now(), status: "failed", error: "invalid contract" }],
+		});
+		workflow.nodes.repair = workUnit({
+			id: "repair", taskId: "task-main", kind: "writer", label: "Replacement write", order: 3, status: "running", replaces: "failed",
+			attempts: [{ attemptId: "repair:1", requestId: "r-repair", number: 1, startedAt: Date.now() - 1_000, status: "running" }],
+		});
+		const snapshot = buildActivitySnapshot(state(), workflow);
+		assert.equal(snapshot.workflow?.tasks[0]?.state, "running");
+		const view = board({ perspective: "work", initialKey: "work-unit:failed", getSnapshot: () => snapshot });
+		const text = view.component.render(120).join("\n");
+		assert.match(text, /Replacement write \(running\) is handling this/);
+	});
+
 	it("collapses a Task with Enter and inspects a Work Unit without closing the board", () => {
 		const taskView = board({ perspective: "work", initialKey: "task:task-main" });
 		taskView.component.handleInput("\r");

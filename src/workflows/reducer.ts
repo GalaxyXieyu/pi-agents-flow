@@ -387,6 +387,7 @@ export function reduceWorkflowEvent(run: WorkflowRun | undefined, event: Workflo
 				status: "failed",
 				completedAt: event.at,
 				error: event.error,
+				...(event.failure ? { failure: structuredClone(event.failure) } : {}),
 				...(event.childRunId ? { childRunId: event.childRunId } : {}),
 				...(event.launchContractDigest ? { launchContractDigest: event.launchContractDigest } : {}),
 				// Retained so a later recovery pass can still find a child's persisted

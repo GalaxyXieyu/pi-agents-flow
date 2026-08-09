@@ -1,3 +1,4 @@
+import type { WorkflowFailureClass } from "../runs/shared/model-fallback.ts";
 import type { WorkflowPolicy } from "./policy.ts";
 import type { WorkflowLanguage } from "./language.ts";
 
@@ -264,6 +265,13 @@ export interface WorkflowWorkUnitPlan {
 	replaces?: string;
 }
 
+export interface WorkflowFailure {
+	failureClass: WorkflowFailureClass;
+	retryable: boolean;
+	suggestedAction: string;
+	pauseWorkflow?: boolean;
+}
+
 export interface WorkflowAttempt {
 	attemptId: string;
 	requestId: string;
@@ -272,6 +280,8 @@ export interface WorkflowAttempt {
 	completedAt?: number;
 	status: "running" | "waiting" | "completed" | "failed" | "cancelled";
 	error?: string;
+	/** Durable failure disposition used by retry guidance and workflow recovery. */
+	failure?: WorkflowFailure;
 	result?: WorkflowResult;
 	childRunId?: string;
 	launchContractDigest?: string;
@@ -456,6 +466,7 @@ export type WorkflowEvent =
 		nodeId: string;
 		attemptId: string;
 		error: string;
+		failure?: WorkflowFailure;
 		childRunId?: string;
 		launchContractDigest?: string;
 		model?: string;

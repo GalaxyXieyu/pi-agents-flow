@@ -18,7 +18,7 @@ Read the references needed for the current transition:
 
 Always use the `workflow` tool as the state transition boundary. Do not claim a run or node changed state unless the tool result confirms it.
 
-`workflow_assets` is the read-only companion tool. Call it to list available base Agents, skills, and MCP direct tools before composing a dynamic plan; it never changes workflow state. Do not call it for `/coding`: Coding stages use a fixed persisted DAG and known hidden Agents.
+`workflow_assets` is the read-only companion tool. Call it to list available base Agents, skills, MCP direct tools, and model tiers (fast/standard/deep) before composing a dynamic plan; it never changes workflow state. Do not call it for `/coding`: Coding stages use a fixed persisted DAG and known hidden Agents.
 
 Always-on constraints:
 
@@ -33,6 +33,7 @@ Always-on constraints:
 - Add verifier or repair nodes only for a named gap, conflict, failure, or release gate.
 - Do not execute model-generated JavaScript or create another child executor.
 - Extensions stay inherited from the selected base Agent and are never expanded per node. Node configuration may revoke tools with `denyTools` and may open additional tools with `extraTools`, but the capability ceiling is a hard cap that no node can widen. Both fields require a base Agent that declares an explicit tools allowlist.
+- Omit `agentSpec.model` on every node by default so children inherit the current session model with the workflow fallback chain (`taqu/deepseek-v4-flash` -> `taqu/kimi-k2.7-code`). Set `agentSpec.model` only when a node explicitly needs a different tier; always pick from the `workflow_assets` model catalog, never guess a model name.
 - Ask the user only when the answer changes scope, cost, safety, or the final product. Ordinary research uncertainty should be represented as a gap or accepted uncertainty.
 - Route coding work with a known delivery shape through `/coding plan|build|verify|full`, which persists the complete preset DAG before execution. Use general dynamic planning only when the required topology cannot be known up front.
 - Route by deliverable class. A source-grounded research report uses `deep-research` mode. A publishable article (公众号/长文, opinion, narrative prose) uses `general` mode and the article pipeline: `positioning` -> `writer` -> `human-writing` -> `qa`, with `human-writing`/`qa` as a required pre-delivery gate. Do not deliver an article through the research-report pipeline; the report gates optimize coverage and citations, not reading experience. See the scope guard in the `deep-research` `SKILL.md`.

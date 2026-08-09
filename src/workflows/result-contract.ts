@@ -41,7 +41,7 @@ function findingSchema(): Record<string, unknown> {
 					type: "object",
 					additionalProperties: false,
 					properties: {
-						title: { type: "string" }, url: { type: "string" }, artifactId: { type: "string" }, quote: { type: "string" },
+						title: { type: "string" }, url: { type: "string" }, artifactPath: { type: "string" }, quote: { type: "string" },
 						kind: { type: "string", enum: ["primary", "secondary", "community"] }, publishedAt: { type: "string" }, retrievedAt: { type: "string" },
 					},
 				},
@@ -121,6 +121,9 @@ export function parseWorkflowResult(value: unknown, contract: WorkflowDataContra
 		if (!record(submission) || (submission.kind !== "value" && submission.kind !== "file")) throw new Error(`Output port '${name}' submission is invalid.`);
 		if (submission.kind === "value") {
 			if (!("value" in submission) || "path" in submission || "sha256" in submission) throw new Error(`Output port '${name}' value submission is invalid.`);
+			if (port.mediaType.toLowerCase().startsWith("text/") && typeof submission.value !== "string") {
+				throw new Error(`Output port '${name}' declares ${port.mediaType} but its value submission is not text.`);
+			}
 			outputs[name] = { kind: "value", value: structuredClone(submission.value) as WorkflowJsonValue };
 		} else {
 			if (typeof submission.path !== "string" || !submission.path.trim() || "value" in submission) throw new Error(`Output port '${name}' file submission is invalid.`);

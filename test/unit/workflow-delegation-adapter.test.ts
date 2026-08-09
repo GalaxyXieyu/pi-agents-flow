@@ -101,6 +101,10 @@ describe("workflow delegation adapter", () => {
 		assert.equal(schema.type, "object");
 		assert.ok((schema.required as string[]).includes("summary"));
 		assert.ok((schema.required as string[]).includes("evidence"));
+		const evidence = (schema.properties as Record<string, any>).evidence;
+		const findingEvidenceProperties = evidence.properties.findings.items.properties.evidence.items.properties;
+		assert.ok(findingEvidenceProperties.artifactPath, "local code/artifact evidence must be accepted by the runtime schema");
+		assert.equal(findingEvidenceProperties.artifactId, undefined);
 		assert.match(WORKFLOW_RESULT_SUBMISSION_GUIDE, /structured_output/);
 		assert.match(WORKFLOW_RESULT_SUBMISSION_GUIDE, /summary\.text/);
 	});

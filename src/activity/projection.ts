@@ -237,9 +237,11 @@ function nodeReason(node: WorkflowNode): string | undefined {
 }
 
 function aggregate(states: ActivityState[]): ActivityState {
-	if (states.includes("failed")) return "failed";
+	// A task remains live while any child is running or awaiting a terminal
+	// response. A historical sibling failure must not mask that live repair.
 	if (states.includes("running")) return "running";
 	if (states.includes("waiting")) return "waiting";
+	if (states.includes("failed")) return "failed";
 	if (states.includes("paused")) return "paused";
 	if (states.length > 0 && states.every((state) => state === "completed" || state === "accepted")) return "completed";
 	if (states.length > 0 && states.every((state) => TERMINAL.has(state))) return "cancelled";

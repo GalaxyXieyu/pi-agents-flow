@@ -175,8 +175,23 @@ export function buildWorkflowRepairGuidance(
 			],
 		});
 	}
-	const retryableFailures = Object.values(run.nodes).filter((node) => (node.status === "failed" || node.status === "cancelled") && !workflowNodeAttemptsExhausted(node, maxNodeAttempts));
-	for (const node of retryableFailures) {
+	const unresolvedFailures = Object.values(run.nodes).filter((node) => (node.status === "failed" || node.status === "cancelled") && !workflowNodeAttemptsExhausted(node, maxNodeAttempts));
+	for (const node of unresolvedFailures) {
+		const failure = node.attempts.at(-1)?.failure;
+		if (failure?.retryable === false) {
+			actions.push({
+				kind: "supervisor_intervention",
+				priority: failure.pauseWorkflow ? 120 : 100,
+				reason: `${failure.failureClass} is not retryable on the immutable node '${node.id}'. ${failure.suggestedAction}`,
+				target: node.id,
+				promptHints: [
+					`Do not run_ready nodeId='${node.id}'; its recorded AgentSpec/model will not inherit later global model changes.`,
+					`For a model/provider change, add one same-kind work unit with replaces='${node.id}' and an explicit agentSpec.model; accepting it auto-supersedes the failed node.`,
+					...(failure.pauseWorkflow ? ["Resolve provider quota/credentials or prepare the replacement before resuming the workflow."] : []),
+				],
+			});
+			continue;
+		}
 		actions.push({
 			kind: "run_ready",
 			priority: 90,

@@ -1440,7 +1440,7 @@ async function runSyncCompletion(
 
 	const candidates = buildModelCandidates(
 		options.modelOverride ?? agent.model,
-		agent.fallbackModels,
+		options.fallbackModelsOverride ?? agent.fallbackModels,
 		options.availableModels,
 		options.preferredModelProvider,
 		{ scope: options.modelScope },
@@ -1613,7 +1613,7 @@ async function runSyncCompletion(
 				attempt.error = startupError;
 				break modelAttemptsLoop;
 			}
-			if (!isRetryableModelFailure(result.error) || modelIndex === modelsToTry.length - 1) break modelAttemptsLoop;
+			if (!isRetryableModelFailure(result.error, candidate, modelsToTry[modelIndex + 1]) || modelIndex === modelsToTry.length - 1) break modelAttemptsLoop;
 			attemptNotes.push(formatModelAttemptNote(attempt, modelsToTry[modelIndex + 1]));
 			break;
 		}

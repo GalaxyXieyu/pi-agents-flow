@@ -20,6 +20,7 @@ const supportedFields = new Set([
 	"context",
 	"cwd",
 	"model",
+	"fallbackModels",
 	"thinking",
 	"timeoutMs",
 	"turnBudget",
@@ -62,6 +63,9 @@ function validateSharedFields(
 	if (!nonEmptyString(value.cwd)) return { ok: false, ...identity, error: "Delegation cwd must be a non-empty string." };
 	if (value.model !== undefined && !nonEmptyString(value.model)) {
 		return { ok: false, ...identity, error: "model must be a non-empty string when provided." };
+	}
+	if (value.fallbackModels !== undefined && (!Array.isArray(value.fallbackModels) || value.fallbackModels.length === 0 || !value.fallbackModels.every(nonEmptyString))) {
+		return { ok: false, ...identity, error: "fallbackModels must be a non-empty string array when provided." };
 	}
 	if (value.timeoutMs !== undefined && (typeof value.timeoutMs !== "number" || !Number.isInteger(value.timeoutMs) || value.timeoutMs < 1)) {
 		return { ok: false, ...identity, error: "timeoutMs must be an integer >= 1." };
@@ -118,6 +122,10 @@ function parseRequest(value: Record<string, unknown>, requestId: string): Subage
 	}
 	if (typeof value.model === "string" && Buffer.byteLength(value.model, "utf8") > MAX_SHORT_TEXT_BYTES) {
 		return { ok: false, ...identity, error: "Delegation model exceeds 1 KiB when UTF-8 encoded." };
+	}
+	const fallbackModels = Array.isArray(value.fallbackModels) ? value.fallbackModels as string[] : [];
+	if (fallbackModels.length > 8 || fallbackModels.some((model) => Buffer.byteLength(model, "utf8") > MAX_SHORT_TEXT_BYTES)) {
+		return { ok: false, ...identity, error: "fallbackModels supports at most 8 entries of at most 1 KiB each." };
 	}
 	const skillEntries = typeof value.skill === "string" ? [value.skill] : Array.isArray(value.skill) ? value.skill as string[] : [];
 	if (skillEntries.length > MAX_SKILL_ENTRIES) {

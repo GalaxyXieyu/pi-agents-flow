@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
 	buildModelCandidates,
+	classifyWorkflowFailure,
 	fuzzyResolveModel,
 	isRetryableModelFailure,
 	normalizeModelSegment,
@@ -66,10 +67,35 @@ describe("model fallback helpers", () => {
 		);
 	});
 
+	it("classifies quota/auth as workflow-pausing failures and transient streams as retryable", () => {
+		assert.deepEqual(classifyWorkflowFailure('402: {"message":"Insufficient Balance"}'), {
+			failureClass: "provider_quota_exhausted",
+			retryable: false,
+			modelFallbackRetryable: false,
+			pauseWorkflow: true,
+			suggestedAction: "Add provider balance/quota or create a same-kind replacement node on a different provider/model, then resume the workflow.",
+		});
+		assert.equal(classifyWorkflowFailure("authentication failed").failureClass, "provider_auth_failed");
+		assert.equal(classifyWorkflowFailure("authentication failed").pauseWorkflow, true);
+		assert.equal(classifyWorkflowFailure("Stream ended without finish_reason").retryable, true);
+		assert.equal(classifyWorkflowFailure("Subagent exceeded turn budget").retryable, false);
+		assert.equal(classifyWorkflowFailure("Subagent process terminated by signal SIGTERM").retryable, false);
+		assert.equal(classifyWorkflowFailure("billing report validation failed").pauseWorkflow, false);
+		assert.equal(classifyWorkflowFailure("Access forbidden by repository policy").pauseWorkflow, false);
+		assert.equal(classifyWorkflowFailure("quota field missing from config").pauseWorkflow, false);
+		assert.deepEqual(classifyWorkflowFailure("Input binding 'evidence' concat-text requires text values."), {
+			failureClass: "invalid_result",
+			retryable: false,
+			modelFallbackRetryable: false,
+			pauseWorkflow: false,
+			suggestedAction: "Inspect retained output and create a corrected replacement node; changing providers alone will not repair the contract.",
+		});
+	});
+
 	it("detects retryable provider/model failures", () => {
 		assert.equal(isRetryableModelFailure("rate limit exceeded for provider"), true);
 		assert.equal(isRetryableModelFailure("model unavailable"), true);
-		assert.equal(isRetryableModelFailure("authentication failed"), true);
+		assert.equal(isRetryableModelFailure("authentication failed"), false);
 		assert.equal(isRetryableModelFailure("Subagent produced no output (possible model cold-start or empty response)."), true);
 		assert.equal(isRetryableModelFailure("model load failed"), true);
 		assert.equal(isRetryableModelFailure("Stream ended without finish_reason"), true);

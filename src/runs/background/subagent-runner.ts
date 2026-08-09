@@ -1461,7 +1461,7 @@ async function runSingleStep(
 			finalResult.finalOutput = startupError;
 			break modelAttemptsLoop;
 		}
-		if (!isRetryableModelFailure(error) || modelIndex === candidates.length - 1) break modelAttemptsLoop;
+		if (!isRetryableModelFailure(error, candidates[modelIndex], candidates[modelIndex + 1]) || modelIndex === candidates.length - 1) break modelAttemptsLoop;
 		attemptNotes.push(formatModelAttemptNote(attempt, candidates[modelIndex + 1]));
 		modelIndex += 1;
 		startupAttemptIndex = 0;

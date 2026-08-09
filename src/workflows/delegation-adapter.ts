@@ -15,6 +15,7 @@ import {
 import { DEFAULT_TURN_BUDGET_GRACE_TURNS } from "../runs/shared/turn-budget.ts";
 import { CODING_PREAPPROVAL_READONLY_ANNOTATION } from "./coding-preset.ts";
 import { workflowResultSchema, WORKFLOW_RESULT_SUBMISSION_GUIDE } from "./result-contract.ts";
+import type { AvailableModelInfo, ParentModel } from "../runs/shared/model-fallback.ts";
 import type { WorkflowAttempt, WorkflowNode, WorkflowRun } from "./types.ts";
 
 export interface WorkflowDelegationEvents {
@@ -27,6 +28,7 @@ export type WorkflowPreflightResult =
 		ok: true;
 		agent: string;
 		model?: string;
+		modelCandidates?: string[];
 		thinking?: SubagentDelegationThinking;
 		launchContractDigest?: string;
 		effectiveTools?: string[];
@@ -40,14 +42,21 @@ export type WorkflowDelegationRunResult =
 	| { ok: true; response: SubagentDelegationResponse; launchContractDigest?: string }
 	| { ok: false; stage: "preflight" | "transport"; error: string };
 
+export interface WorkflowDelegationRuntimeContext {
+	parentModel?: ParentModel;
+	availableModels?: AvailableModelInfo[];
+}
+
 export interface WorkflowDelegationAdapter {
-	run(run: WorkflowRun, node: WorkflowNode, attempt: WorkflowAttempt, signal?: AbortSignal): Promise<WorkflowDelegationRunResult>;
+	run(run: WorkflowRun, node: WorkflowNode, attempt: WorkflowAttempt, signal?: AbortSignal, runtime?: WorkflowDelegationRuntimeContext): Promise<WorkflowDelegationRunResult>;
 }
 
 interface CreateWorkflowDelegationAdapterOptions {
 	events: WorkflowDelegationEvents;
 	preflight?: WorkflowPreflight;
 	responseTimeoutMs?: number;
+	/** Workflow-only fixed fallback chain; does not mutate base Agent config. */
+	fallbackModels?: string[];
 }
 
 const thinkingLevels = new Set<SubagentDelegationThinking>([
@@ -91,6 +100,7 @@ export function buildWorkflowDelegationRequest(
 		context: node.agentSpec.context,
 		cwd: run.cwd,
 		...(resolved.model ?? node.agentSpec.model ? { model: resolved.model ?? node.agentSpec.model } : {}),
+		...(resolved.modelCandidates && resolved.modelCandidates.length > 1 ? { fallbackModels: resolved.modelCandidates.slice(1) } : {}),
 		...(resolved.thinking ?? node.agentSpec.thinking ? { thinking: resolved.thinking ?? node.agentSpec.thinking } : {}),
 		...(node.agentSpec.timeoutMs !== undefined ? { timeoutMs: node.agentSpec.timeoutMs } : {}),
 		...(node.agentSpec.turnBudget ? { turnBudget: node.agentSpec.turnBudget } : {}),
@@ -112,6 +122,7 @@ async function defaultPreflight(input: SubagentLaunchContractInput): Promise<Wor
 		...(result.contract.model ? { model: result.contract.model } : {}),
 		...(v2Thinking(result.contract.thinking) ? { thinking: v2Thinking(result.contract.thinking) } : {}),
 		launchContractDigest: result.contract.launchContractDigest,
+		modelCandidates: [...result.contract.modelCandidates],
 		effectiveTools: [...result.contract.tools.effectiveAllowlist],
 		effectiveMcpTools: [...result.contract.tools.effectiveMcpTools],
 	};
@@ -175,7 +186,7 @@ export function createWorkflowDelegationAdapter(
 	const preflight = options.preflight ?? defaultPreflight;
 	const responseTimeoutMs = options.responseTimeoutMs ?? 30 * 60 * 1_000;
 	return {
-		async run(run, node, attempt, signal) {
+		async run(run, node, attempt, signal, runtime) {
 			const resultSchema = workflowResultSchema(node.dataContract);
 			const turnBudget = node.agentSpec.turnBudget
 				? {
@@ -189,6 +200,10 @@ export function createWorkflowDelegationAdapter(
 				task: taskFor(node),
 				context: node.agentSpec.context,
 				...(node.agentSpec.model ? { model: node.agentSpec.model } : {}),
+				...(options.fallbackModels?.length ? { fallbackModels: [...options.fallbackModels] } : {}),
+				...(runtime?.parentModel ? { parentModel: runtime.parentModel } : {}),
+				...(runtime?.availableModels ? { availableModels: runtime.availableModels } : {}),
+				...(runtime?.parentModel?.provider ? { preferredProvider: runtime.parentModel.provider } : {}),
 				...(node.agentSpec.thinking ? { thinking: node.agentSpec.thinking } : {}),
 				...(node.agentSpec.skills ? { skill: node.agentSpec.skills } : {}),
 				...(node.agentSpec.extraTools?.length ? { extraTools: [...node.agentSpec.extraTools] } : {}),

@@ -4,18 +4,19 @@ import * as path from "node:path";
 
 import type { SubagentDelegationTerminalResponse } from "../api/delegation.ts";
 import { DEFAULT_WORKFLOW_CONCURRENCY } from "../extension/config.ts";
+import { classifyWorkflowFailure, type WorkflowFailureContext } from "../runs/shared/model-fallback.ts";
 import { materializeWorkflowContextPack } from "./context-pack.ts";
 import { effectiveAcceptedResultNodes } from "./effective-nodes.ts";
 import { workflowLanguageInstruction, workflowRunLanguage } from "./language.ts";
 import { createLocalWorkflowArtifactStore } from "./artifact-store.ts";
-import type { WorkflowDelegationAdapter } from "./delegation-adapter.ts";
+import type { WorkflowDelegationAdapter, WorkflowDelegationRuntimeContext } from "./delegation-adapter.ts";
 import { resolveWorkflowPolicy } from "./policy.ts";
 import { allocateWorkflowOutputSlots, registerWorkflowOutputs } from "./output-ports.ts";
 import { parseWorkflowResult } from "./result-contract.ts";
 import { resolveWorkflowMaxNodeAttempts, workflowNodeAttemptsExhausted } from "./retry-policy.ts";
 import { buildResearchSearchPlan, formatResearchSearchPlan, type ResearchSourcePortfolio } from "./query-strategy.ts";
 import type { WorkflowStore } from "./store.ts";
-import type { WorkflowAttempt, WorkflowDataContract, WorkflowEvent, WorkflowResult, WorkflowRun } from "./types.ts";
+import type { WorkflowAttempt, WorkflowDataContract, WorkflowEvent, WorkflowFailure, WorkflowResult, WorkflowRun } from "./types.ts";
 
 interface CreateWorkflowSchedulerOptions {
 	store: WorkflowStore;
@@ -24,6 +25,8 @@ interface CreateWorkflowSchedulerOptions {
 	onTransition?: (run: WorkflowRun) => void;
 	/** Ceiling on children running at once. Clamps whatever the Supervisor requests. */
 	maxConcurrency?: number;
+	/** Resolved parent session model + registry snapshot for workflow child preflight. */
+	runtime?: WorkflowDelegationRuntimeContext;
 }
 
 interface RunReadyOptions {
@@ -42,7 +45,21 @@ export interface WorkflowScheduler {
 
 function runnable(node: WorkflowRun["nodes"][string], maxNodeAttempts: number, retryRequested: boolean): boolean {
 	if (node.status === "ready") return true;
-	return retryRequested && (node.status === "failed" || node.status === "cancelled") && !workflowNodeAttemptsExhausted(node, maxNodeAttempts);
+	const lastFailure = node.attempts.at(-1)?.failure;
+	return retryRequested
+		&& (node.status === "failed" || node.status === "cancelled")
+		&& lastFailure?.retryable !== false
+		&& !workflowNodeAttemptsExhausted(node, maxNodeAttempts);
+}
+
+function workflowFailure(error: string, context?: WorkflowFailureContext): WorkflowFailure {
+	const classification = classifyWorkflowFailure(error, context);
+	return {
+		failureClass: classification.failureClass,
+		retryable: classification.retryable,
+		suggestedAction: classification.suggestedAction,
+		...(classification.pauseWorkflow ? { pauseWorkflow: true } : {}),
+	};
 }
 
 function requestId(runId: string, nodeId: string, attemptNumber: number): string {
@@ -267,6 +284,20 @@ export function createWorkflowScheduler(options: CreateWorkflowSchedulerOptions)
 		options.onTransition?.(run);
 		return run;
 	};
+	const fail = (runId: string, event: Omit<Extract<WorkflowEvent, { type: "node.failed" }>, "type" | "failure">, context?: WorkflowFailureContext): WorkflowRun => {
+		const failure = workflowFailure(event.error, context);
+		let run = append(runId, { ...event, type: "node.failed", failure });
+		if (failure.pauseWorkflow && run.status === "active") {
+			run = append(runId, {
+				id: `${event.id}:pause`,
+				type: "workflow.status_changed",
+				at: event.at,
+				status: "paused",
+				reason: `${failure.failureClass} at node '${event.nodeId}'. ${failure.suggestedAction}`,
+			});
+		}
+		return run;
+	};
 	return {
 		cancelNode(nodeId) {
 			const controller = nodeControllers.get(nodeId);
@@ -345,7 +376,7 @@ export function createWorkflowScheduler(options: CreateWorkflowSchedulerOptions)
 					let result: Awaited<ReturnType<WorkflowDelegationAdapter["run"]>> | undefined;
 					let adapterError: unknown;
 					try {
-						result = await options.adapter.run(startedRun, withWorkflowContext(options.store, startedRun, startedNode, outputSlots), attempt, combinedController.signal);
+						result = await options.adapter.run(startedRun, withWorkflowContext(options.store, startedRun, startedNode, outputSlots), attempt, combinedController.signal, options.runtime);
 					} catch (error) {
 						adapterError = error;
 					} finally {
@@ -355,33 +386,35 @@ export function createWorkflowScheduler(options: CreateWorkflowSchedulerOptions)
 					}
 					const nodeAborted = combinedController.signal.aborted;
 					if (adapterError !== undefined || !result) {
-						append(runId, {
+						const terminalError = adapterError instanceof Error ? adapterError.message : String(adapterError ?? "Workflow adapter returned no result.");
+						const failureEvent = {
 							id: `${attempt.requestId}:${nodeAborted ? "cancelled" : "failed"}`,
-							type: nodeAborted ? "node.cancelled" : "node.failed",
 							at: now(),
 							nodeId: node.id,
 							attemptId: attempt.attemptId,
-							error: adapterError instanceof Error ? adapterError.message : String(adapterError ?? "Workflow adapter returned no result."),
-						});
+							error: terminalError,
+						};
+						if (nodeAborted) append(runId, { ...failureEvent, type: "node.cancelled" });
+						else fail(runId, failureEvent, { stage: "transport" });
 						continue;
 					}
 					if (result.ok === false) {
-						append(runId, {
+						const failureEvent = {
 							id: `${attempt.requestId}:${nodeAborted ? "cancelled" : "failed"}`,
-							type: nodeAborted ? "node.cancelled" : "node.failed",
 							at: now(),
 							nodeId: node.id,
 							attemptId: attempt.attemptId,
 							error: result.error,
-						});
+						};
+						if (nodeAborted) append(runId, { ...failureEvent, type: "node.cancelled" });
+						else fail(runId, failureEvent, { stage: result.stage });
 						continue;
 					}
 					const response = result.response;
 					if (response.status === "detached") {
 						if (!response.runId) {
-							append(runId, {
+							fail(runId, {
 								id: `${attempt.requestId}:failed`,
-								type: "node.failed",
 								at: now(),
 								nodeId: node.id,
 								attemptId: attempt.attemptId,
@@ -421,15 +454,14 @@ export function createWorkflowScheduler(options: CreateWorkflowSchedulerOptions)
 					try {
 						parsed = parseWorkflowResult(response.result.value, startedNode.dataContract);
 					} catch (error) {
-						append(runId, {
+						fail(runId, {
 							id: `${attempt.requestId}:failed`,
-								type: "node.failed",
-								at: now(),
-								nodeId: node.id,
-								attemptId: attempt.attemptId,
-								error: `Invalid structured result: ${error instanceof Error ? error.message : String(error)}`,
-								...terminalMetadata(response, result.launchContractDigest),
-							});
+							at: now(),
+							nodeId: node.id,
+							attemptId: attempt.attemptId,
+							error: `Invalid structured result: ${error instanceof Error ? error.message : String(error)}`,
+							...terminalMetadata(response, result.launchContractDigest),
+						}, { failureClass: "invalid_result" });
 							continue;
 					}
 					try {
@@ -443,15 +475,14 @@ export function createWorkflowScheduler(options: CreateWorkflowSchedulerOptions)
 									...terminalMetadata(response, result.launchContractDigest),
 								});
 					} catch (error) {
-						append(runId, {
+						fail(runId, {
 								id: `${attempt.requestId}:failed`,
-									type: "node.failed",
-									at: now(),
-									nodeId: node.id,
-									attemptId: attempt.attemptId,
-									error: `Workflow output registration failed: ${error instanceof Error ? error.message : String(error)}`,
-									...terminalMetadata(response, result.launchContractDigest),
-								});
+								at: now(),
+								nodeId: node.id,
+								attemptId: attempt.attemptId,
+								error: `Workflow output registration failed: ${error instanceof Error ? error.message : String(error)}`,
+								...terminalMetadata(response, result.launchContractDigest),
+							}, { failureClass: "output_registration_failed" });
 					}
 					continue;
 					}
@@ -476,27 +507,25 @@ export function createWorkflowScheduler(options: CreateWorkflowSchedulerOptions)
 								...terminalMetadata(terminal, result.launchContractDigest),
 							});
 						} catch (registrationError) {
-							append(runId, {
+							fail(runId, {
 								id: `${attempt.requestId}:failed`,
-								type: "node.failed",
 								at: now(),
 								nodeId: node.id,
 								attemptId: attempt.attemptId,
 								error: `Workflow output registration failed: ${registrationError instanceof Error ? registrationError.message : String(registrationError)}`,
 								...terminalMetadata(terminal, result.launchContractDigest),
-							});
+							}, { failureClass: "output_registration_failed" });
 						}
 						continue;
 					}
-					append(runId, {
+					fail(runId, {
 						id: `${attempt.requestId}:failed`,
-						type: "node.failed",
 						at: now(),
 						nodeId: node.id,
 						attemptId: attempt.attemptId,
 						error,
 						...(terminal ? terminalMetadata(terminal, result.launchContractDigest) : {}),
-					});
+					}, { status: response.status });
 				}
 			};
 			await Promise.all(Array.from({ length: Math.min(concurrency, readyNodeIds.length) }, () => worker()));

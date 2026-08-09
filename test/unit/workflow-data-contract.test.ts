@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { assertWorkflowDataContract, assertWorkflowDataFlow, selectJsonPointer } from "../../src/workflows/data-contract.ts";
+import { parseWorkflowResult } from "../../src/workflows/result-contract.ts";
 import type { WorkflowDataContract, WorkflowWorkUnitPlan } from "../../src/workflows/types.ts";
 
 function outputPort(mediaType = "text/plain"): NonNullable<WorkflowDataContract["outputs"]>[string] {
@@ -47,6 +48,34 @@ describe("WorkflowDataContract", () => {
 			outputs: { result: outputPort() },
 		})), /delivery is invalid/);
 		assert.throws(() => assertWorkflowDataFlow([producer, consumer]), /undeclared port/);
+	});
+
+	it("rejects concat-text bindings from non-text output ports at graph compile time", () => {
+		const producer = plan("producer", [], { version: 1, profile: "generic", inputs: [], outputs: { findings: outputPort("application/json") } });
+		const consumer = plan("consumer", ["producer"], {
+			version: 1,
+			profile: "generic",
+			inputs: [{ name: "evidence", purpose: "combine research evidence", from: [{ nodeId: "producer", port: "findings" }], merge: "concat-text" }],
+			outputs: { result: outputPort() },
+		});
+		assert.throws(() => assertWorkflowDataFlow([producer, consumer]), /uses concat-text.*not a text media type/);
+	});
+
+	it("rejects object value submissions for text output ports", () => {
+		const dataContract: WorkflowDataContract = {
+			version: 1,
+			profile: "generic",
+			inputs: [],
+			outputs: { findings: { mediaType: "text/markdown", description: "research findings", storage: "inline", required: true, classification: "internal" } },
+		};
+		const submission = {
+			version: 1,
+			summary: { text: "summary", covers: [], omissions: [], confidence: "high" },
+			outputs: { findings: { kind: "value", value: { claim: "not text" } } },
+			diagnostics: { gaps: [], conflicts: [], warnings: [] },
+			recommendations: [],
+		};
+		assert.throws(() => parseWorkflowResult(submission, dataContract), /declares text\/markdown but its value submission is not text/);
 	});
 
 	it("requires dataContract profile to match the work-unit kind", () => {

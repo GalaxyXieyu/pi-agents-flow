@@ -6,7 +6,7 @@ import { buildWorkflowRepairGuidance, formatWorkflowRepairGuidance } from "../..
 import { evaluateWorkflow } from "../../src/workflows/gates.ts";
 import { resolveWorkflowPolicy } from "../../src/workflows/policy.ts";
 import { assessWorkflowQuality } from "../../src/workflows/quality.ts";
-import type { WorkflowResult, WorkflowNode, WorkflowRun } from "../../src/workflows/types.ts";
+import type { WorkflowFinding, WorkflowResult, WorkflowNode, WorkflowRun } from "../../src/workflows/types.ts";
 
 function envelope(partial: Partial<WorkflowResult> & { findings: WorkflowFinding[] }): WorkflowResult {
 	return {
@@ -105,6 +105,26 @@ describe("workflow repair guidance and search benchmark fixtures", () => {
 		]);
 		const guidance = buildWorkflowRepairGuidance(workflow, evaluateWorkflow(workflow));
 		assert.ok(guidance.actions.some((action) => action.kind === "record_uncertainty" && action.target.includes("private roadmap")));
+	});
+
+	it("recommends replacement instead of retry for non-retryable provider failures", () => {
+		const failed = accepted("quota", "research", envelope({ findings: [] }), "failed");
+		failed.agentSpec.model = "deepseek/deepseek-v4-flash:medium";
+		failed.attempts[0]!.error = '402: {"message":"Insufficient Balance"}';
+		failed.attempts[0]!.failure = {
+			failureClass: "provider_quota_exhausted",
+			retryable: false,
+			pauseWorkflow: true,
+			suggestedAction: "Add balance or replace the node.",
+		};
+		const workflow = run([failed]);
+		workflow.status = "paused";
+		const guidance = buildWorkflowRepairGuidance(workflow, evaluateWorkflow(workflow));
+		assert.ok(!guidance.actions.some((action) => action.kind === "run_ready" && action.target === "quota"));
+		const intervention = guidance.actions.find((action) => action.kind === "supervisor_intervention" && action.target === "quota");
+		assert.ok(intervention);
+		assert.match(intervention.reason, /provider_quota_exhausted/);
+		assert.ok(intervention.kind === "supervisor_intervention" && intervention.promptHints.some((hint) => hint.includes("replaces='quota'")));
 	});
 
 	it("attaches searchBenchmark and follow-up queries to quality reports when blocked", () => {

@@ -401,7 +401,13 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		persistSnapshot: (data) => pi.appendEntry(WORKFLOW_TODO_SNAPSHOT_ENTRY_TYPE, data),
 	});
 	const workflowController = createWorkflowController({
-		adapter: createWorkflowDelegationAdapter({ events: pi.events }),
+		adapter: createWorkflowDelegationAdapter({
+		events: pi.events,
+		// Workflow-owned cross-provider fallback. Avoids DeepSeek account failures
+		// cascading to every lane when the primary session model is on the same
+		// provider. Only workflow delegation uses this; base Agent config is unchanged.
+		fallbackModels: ["taqu/deepseek-v4-flash", "taqu/kimi-k2.7-code"],
+	}),
 		appendEntry: (customType, data) => pi.appendEntry(customType, data),
 		hasTool: (name) => pi.getAllTools().some((tool) => tool.name === name),
 		cancelWaitingChild: (childRunId) => state.foregroundControls.get(childRunId)?.interrupt?.() === true,

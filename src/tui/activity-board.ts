@@ -6,6 +6,7 @@ import { discoverAgents, resolveAgentName, type AgentConfig } from "../agents/ag
 import type { ActivityArtifact, ActivityPerspective, ActivitySelection, ActivitySnapshot, ActivityState, ActivityUsage, AgentExecutionActivity, TaskActivity, WorkUnitActivity } from "../activity/types.ts";
 import { formatDuration, formatTokens, shortenPath, sumDefinedNumbers } from "../shared/formatters.ts";
 import type { SubagentState } from "../shared/types.ts";
+import { DEFAULT_WORKFLOW_MAX_NODE_ATTEMPTS, workflowNodeAttemptsExhausted } from "../workflows/retry-policy.ts";
 import { activitySelections } from "./activity-dock.ts";
 import { FleetAvatarRenderer } from "./fleet-avatar.ts";
 import { fleetIdentity, type FleetIdentity } from "./fleet-identity.ts";
@@ -235,6 +236,34 @@ function dependencyLabels(selection: Extract<ActivitySelection, { kind: "work-un
 	return selection.workUnit.dependsOn.map((id) => byId.get(id) ?? id);
 }
 
+function recoveryDetailLines(workUnit: WorkUnitActivity, snapshot: ActivitySnapshot): string[] {
+	const node = workUnit.node;
+	if (node.status !== "failed" && node.status !== "cancelled") return [];
+	const language = snapshot.language;
+	const failure = node.attempts.at(-1)?.failure;
+	const replacements = allTaskWorkUnits(snapshot.workflow?.tasks ?? [])
+		.filter((candidate) => candidate.node.replaces === node.id && candidate.state !== "superseded");
+	const replacement = replacements.find((candidate) => candidate.state === "running" || candidate.state === "waiting") ?? replacements[0];
+	if (replacement) {
+		return [
+			language === "zh"
+				? `下一步       替代节点 ${replacement.label}（${replacement.state}）正在接管此失败。`
+				: `Next step   ${replacement.label} (${replacement.state}) is handling this failure.`,
+		];
+	}
+	if (failure?.retryable === false) {
+		return [
+			`${localize(language, "Next step", "下一步")}   ${localize(language, "Create a same-kind replacement for", "创建同类型替代节点以替换")} '${node.id}'.`,
+			`${localize(language, "Why", "原因")}         ${failure.failureClass}: ${failure.suggestedAction}`,
+		];
+	}
+	const ceiling = node.maxAttempts ?? DEFAULT_WORKFLOW_MAX_NODE_ATTEMPTS;
+	const exhausted = workflowNodeAttemptsExhausted(node, ceiling);
+	return exhausted
+		? [`${localize(language, "Next step", "下一步")}   ${localize(language, "Attempt limit reached; inspect artifacts, then reopen or create a replacement.", "已达尝试上限；检查产物后 reopen 或创建替代节点。")}`]
+		: [`${localize(language, "Next step", "下一步")}   ${localize(language, `Retry only this node (${node.attempts.length}/${node.maxAttempts ?? ceiling}) with run_ready nodeId='${node.id}'.`, `仅重试此节点（${node.attempts.length}/${node.maxAttempts ?? ceiling}）：run_ready nodeId='${node.id}'。`)}`];
+}
+
 function taskAgentActivity(task: TaskActivity): Array<{ unit: WorkUnitActivity; execution: AgentExecutionActivity }> {
 	return taskWorkUnits(task).flatMap((unit) => {
 		const execution = unit.executions.at(-1);
@@ -279,6 +308,7 @@ function planDetailLines(selection: ActivitySelection | undefined, snapshot: Act
 			`${localize(snapshot.language, "Attempts", "尝试")}    ${selection.workUnit.attempts}`,
 			`${localize(snapshot.language, "Duration", "时长")}    ${durationSummary(selection.workUnit.durationMs, snapshot.language)}`,
 			`${localize(snapshot.language, "Usage", "用量")}       ${usageSummary(selection.workUnit.usage, snapshot.language)}`,
+			...recoveryDetailLines(selection.workUnit, snapshot),
 			...artifactLines(selection.workUnit.artifacts, theme, snapshot.language),
 		];
 	}

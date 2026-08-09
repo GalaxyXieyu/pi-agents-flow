@@ -37,6 +37,8 @@ export interface SubagentDelegationRequest {
 	context: "fresh" | "fork";
 	cwd: string;
 	model?: string;
+	/** Ordered per-launch fallbacks resolved by workflow preflight. */
+	fallbackModels?: string[];
 	thinking?: SubagentDelegationThinking;
 	timeoutMs?: number;
 	turnBudget?: SubagentDelegationTurnBudget;

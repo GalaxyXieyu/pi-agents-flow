@@ -552,11 +552,12 @@ export function registerWorkflowAssetsTool(pi: ExtensionAPI): void {
 	const tool: ToolDefinition<typeof WorkflowAssetsParams, WorkflowAssetsDetails> = {
 		name: "workflow_assets",
 		label: "Workflow Assets",
-		description: "List the base Agents, skills, and MCP direct tools available for composing workflow nodes. Read-only; it never changes workflow state.",
-		promptSnippet: "List available base Agents, skills, and MCP tools before composing a workflow DAG.",
+		description: "List the base Agents, skills, MCP direct tools, and model tiers available for composing workflow nodes. Read-only; it never changes workflow state.",
+		promptSnippet: "List available base Agents, skills, MCP tools, and model tiers before composing a workflow DAG.",
 		promptGuidelines: [
 			"Call this once before apply_plan when you need to choose baseAgent, skills, or tools. Do not guess names.",
 			"Agent names are valid agentSpec.baseAgent values; skill names are valid agentSpec.skills entries.",
+			"Models are grouped into fast/standard/deep tiers. Omit agentSpec.model to inherit the current session model; set it only when a node needs a specific tier (e.g. deep for hard analysis, fast for recon).",
 		],
 		parameters: WorkflowAssetsParams,
 		executionMode: "parallel",
@@ -565,7 +566,7 @@ export function registerWorkflowAssetsTool(pi: ExtensionAPI): void {
 			// the host's global tool-output toggle from leaking a previous expanded
 			// state into this high-volume, model-facing inspection step.
 			if (ctx.hasUI && typeof ctx.ui.setToolsExpanded === "function") ctx.ui.setToolsExpanded(false);
-			const catalog = buildAssetCatalog(ctx.cwd);
+			const catalog = buildAssetCatalog(ctx.cwd, ctx.modelRegistry.getAvailable().map((m) => `${m.provider}/${m.id}`));
 			return { content: [{ type: "text", text: formatAssetCatalog(catalog) }], details: { catalog } };
 		},
 		/**
@@ -643,6 +644,7 @@ export function registerWorkflowTool(pi: ExtensionAPI, controller: WorkflowContr
 			"After clarify succeeds, immediately call set_brief with clarification=confirmed. Never call apply_plan before set_brief succeeds.",
 			"After drafting the detailed outline, call set_outline with approval=user instead of printing a standalone confirmation request. Pi opens an inline outline review form where Enter approves or the user can submit revision feedback. If changes are requested, revise and call set_outline again. Use approval=supervisor only when the user explicitly requested immediate execution without outline review.",
 			"Deep Research role mapping is strict: research -> researcher, verification -> research-verifier, outline -> research-architect, section-writer -> research-section-writer, writer -> research-writer, editor -> research-editor, reviewer -> research-reviewer. Use kind=outline only for a real Outline Architect artifact, not ordinary reconnaissance. Final plans need at least three research lanes, at least two Section Writers with distinct outline ownership, one Editor after every Section Writer, and one Reviewer after the Editor. Every Deep Research Editor must declare the required output port document as text/markdown with storage=artifact; completion reads that exact port.",
+		"Omit agentSpec.model on every node by default so children inherit the current session model with the workflow fallback chain. Set agentSpec.model only when a node explicitly needs a different tier (call workflow_assets first to see available fast/standard/deep models); never guess a model name that is not in the catalog.",
 			"Every workUnit must declare WorkflowDataContract V1. profile must match kind: research/verification -> research, section-writer/writer/editor -> writer, reviewer -> reviewer, outline/custom -> generic. Input binding and output port names must match ^[a-z][a-z0-9._-]{0,63}$: use architecture-map or architecture_map, never camelCase. Inputs bind explicit direct-dependency nodeId/port pairs; outputs declare mediaType, description, storage, required, and classification.",
 			"Child completion is not acceptance. Call evaluate, then accept or reject each completed node with a concrete rationale. For Reviewer nodes, accept a sound review result even when its document verdict is fail; only extensions.release marks the reviewed document as approved for completion.",
 			"run_ready without nodeId launches only newly ready nodes. Retry one failed/cancelled node only with explicit nodeId while it remains below maxNodeAttempts (default 3); never retry unrelated failures while launching a repair node. After the ceiling, inspect retained output, then reject or supersede with one accepted replacement.",
@@ -667,8 +669,13 @@ export function registerWorkflowTool(pi: ExtensionAPI, controller: WorkflowContr
 					});
 				}
 				: undefined;
-			const response = await controller.execute(parseWorkflowActionParams(rawParams), ctx, signal, onProgress);
-			return { content: [{ type: "text", text: response.text }], details: response.details };
+			const params = parseWorkflowActionParams(rawParams);
+			const response = await controller.execute(params, ctx, signal, onProgress);
+			const result = { content: [{ type: "text" as const, text: response.text }], details: response.details };
+			// Persist/cancel workflow-owned work first, then terminate the root Pi turn
+			// so the model cannot keep thinking or enqueue another workflow action.
+			if (params.action === "stop") ctx.abort();
+			return result;
 		},
 		renderCall() {
 			return new Text("", 0, 0);

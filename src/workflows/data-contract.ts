@@ -137,7 +137,11 @@ export function assertWorkflowDataFlow(plans: WorkflowWorkUnitPlan[]): void {
 			for (const source of binding.from) {
 				const producer = byId.get(source.nodeId);
 				if (!producer) continue;
-				if (!producer.dataContract.outputs[source.port]) throw new Error(`Work unit '${plan.id}' input '${binding.name}' references undeclared port '${source.port}' on '${source.nodeId}'.`);
+				const output = producer.dataContract.outputs[source.port];
+				if (!output) throw new Error(`Work unit '${plan.id}' input '${binding.name}' references undeclared port '${source.port}' on '${source.nodeId}'.`);
+				if (binding.merge === "concat-text" && !output.mediaType.toLowerCase().startsWith("text/")) {
+					throw new Error(`Work unit '${plan.id}' input '${binding.name}' uses concat-text but '${source.nodeId}.${source.port}' is ${output.mediaType}, not a text media type.`);
+				}
 			}
 		}
 	}

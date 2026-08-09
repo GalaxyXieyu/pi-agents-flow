@@ -179,19 +179,39 @@ describe("workflow quality benchmark", () => {
 		assert.ok(report.blockers.some((blocker) => blocker.toLowerCase().includes("fetch")));
 	});
 
-	it("excludes file probes from web fetch coverage and traces local-researcher lanes by contract", () => {
+	it("excludes file probes from web fetch coverage and traces local evidence independently of agent identity", () => {
 		const fileProbe = "file:///opt/pi-agent-core/README.md";
 		const local = acceptedNode("local-code", "research", envelope([
 			finding("the installed package has no bundled README", { url: fileProbe, kind: "primary", quote: "ENOENT" }),
 			finding("the local implementation mirrors a remote source", { url: "https://github.com/example/pi/blob/main/workflow.ts", artifactPath: "/repo/workflow.ts", kind: "primary", quote: "state reducer" }),
 		]));
-		local.agentSpec.baseAgent = "local-researcher";
 		const research = [local, validResearchNode("safety"), validResearchNode("recovery")];
 		const report = assessWorkflowQuality(run([...research, ...documentNodes(research)]));
 
 		assert.equal(report.releaseReady, true, report.blockers.join("\n"));
 		assert.equal(report.metrics.researchTraceCoverage, 1);
 		assert.equal(report.metrics.searchFetchCoverage, 1);
+	});
+
+	it("rejects local trace references that runtime validation cannot resolve", () => {
+		const local = acceptedNode("missing-local", "research", envelope([
+			finding("unresolved local claim", { artifactPath: "/missing/source.ts", quote: "not actually read" }),
+		]));
+		const report = assessWorkflowQuality(run([local, validResearchNode("safety"), validResearchNode("recovery")]), undefined, {
+			validateLocalEvidence: () => false,
+		});
+		assert.equal(report.metrics.researchTraceCoverage, 2 / 3);
+		assert.ok(report.blockers.some((blocker) => blocker.toLowerCase().includes("trace")));
+	});
+
+	it("does not exempt a local-researcher lane that returns no local or web trace", () => {
+		const untraced = acceptedNode("untraced-local", "research", envelope([
+			{ claim: "bare local claim", confidence: "high", evidence: [{ title: "unverified source" }] },
+		]));
+		untraced.agentSpec.baseAgent = "local-researcher";
+		const report = assessWorkflowQuality(run([untraced, validResearchNode("safety"), validResearchNode("recovery")]));
+		assert.equal(report.metrics.researchTraceCoverage, 2 / 3);
+		assert.ok(report.blockers.some((blocker) => blocker.toLowerCase().includes("trace")));
 	});
 
 	it("matches fetched web evidence by canonical URL rather than raw annotation-sensitive text", () => {

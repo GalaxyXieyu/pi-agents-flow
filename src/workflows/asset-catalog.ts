@@ -13,6 +13,7 @@ import { canInvokeAgent, discoverAgents, effectiveAgentVisibility, type AgentSou
 import { discoverAvailableSkills } from "../agents/skills.ts";
 import { listAvailableMcpDirectTools } from "../runs/shared/mcp-direct-tool-allowlist.ts";
 import { compactText } from "../shared/formatters.ts";
+import { formatModelTierCatalog } from "./model-tiers.ts";
 import { DEEP_RESEARCH_BASE_AGENT_BY_KIND } from "./plan-rules.ts";
 
 export interface AssetCatalogAgent {
@@ -45,9 +46,10 @@ export interface AssetCatalog {
 	agents: AssetCatalogAgent[];
 	skills: AssetCatalogSkill[];
 	mcpTools: AssetCatalogMcpTool[];
+	modelCatalog?: string;
 }
 
-export function buildAssetCatalog(cwd: string): AssetCatalog {
+export function buildAssetCatalog(cwd: string, availableModelFullIds?: readonly string[]): AssetCatalog {
 	const agents = discoverAgents(cwd, "both").agents
 		// workflow_assets is the Supervisor's composition catalog, not a user-facing list:
 		// include every model-invocable agent even when `visibility: hidden` hides it from
@@ -76,7 +78,7 @@ export function buildAssetCatalog(cwd: string): AssetCatalog {
 			selector: selection.selector,
 		}))
 		.sort((a, b) => a.name.localeCompare(b.name));
-	return { agents, skills, mcpTools };
+	return { agents, skills, mcpTools, ...(availableModelFullIds ? { modelCatalog: formatModelTierCatalog(availableModelFullIds) } : {}) };
 }
 
 function agentLine(agent: AssetCatalogAgent): string {
@@ -115,6 +117,9 @@ export function formatAssetCatalog(catalog: AssetCatalog): string {
 	);
 	if (catalog.mcpTools.length === 0) {
 		lines.push("- (none discovered; MCP direct tools need a warm metadata cache)");
+	}
+	if (catalog.modelCatalog) {
+		lines.push("", catalog.modelCatalog);
 	}
 	return lines.join("\n");
 }

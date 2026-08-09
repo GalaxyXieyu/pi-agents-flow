@@ -275,51 +275,39 @@ export function buildModelCandidates(
 	return candidates;
 }
 
-const RETRYABLE_MODEL_FAILURE_PATTERNS = [
-	/rate\s*limit/i,
-	/too many requests/i,
-	/\b429\b/,
-	/quota/i,
-	/billing/i,
-	/credit/i,
-	/auth(?:entication)?/i,
-	/unauthori[sz]ed/i,
-	/forbidden/i,
-	/api key/i,
-	/token expired/i,
-	/invalid key/i,
-	/provider.*unavailable/i,
-	/model.*unavailable/i,
-	/model.*disabled/i,
-	/model.*not found/i,
-	/unknown model/i,
-	/overloaded/i,
-	/service unavailable/i,
-	/temporar(?:ily)? unavailable/i,
-	/connection refused/i,
-	// The bare message most provider SDKs emit for a dropped or refused socket.
-	// Without this, the single most common transport failure was classified as
-	// non-retryable, so configured fallback models were never attempted.
-	/connection error/i,
-	/\bECONN(?:RESET|REFUSED|ABORTED)\b/,
-	/\bETIMEDOUT\b/,
-	/\bEAI_AGAIN\b/,
-	/\bEPIPE\b/,
-	/fetch failed/i,
-	/network error/i,
-	/socket hang up/i,
-	/stream ended without finish_reason/i,
-	/upstream/i,
-	/timed? out/i,
-	/timeout/i,
-	/\b502\b/,
-	/\b503\b/,
-	/\b504\b/,
-	/cold.?start/i,
-	/empty response/i,
-	/no output/i,
-	/model.*(?:load|fail|error)/i,
-];
+export type WorkflowFailureClass =
+	| "provider_quota_exhausted"
+	| "provider_auth_failed"
+	| "provider_rate_limited"
+	| "provider_unavailable"
+	| "provider_stream_failed"
+	| "provider_transport_failed"
+	| "process_terminated"
+	| "turn_budget_exhausted"
+	| "tool_budget_exhausted"
+	| "timeout"
+	| "invalid_result"
+	| "output_registration_failed"
+	| "preflight_failed"
+	| "cancelled"
+	| "task_failed";
+
+export interface WorkflowFailureClassification {
+	failureClass: WorkflowFailureClass;
+	/** Whether rerunning the same immutable workflow node is reasonable. */
+	retryable: boolean;
+	/** Whether the low-level runner may try another configured model candidate. */
+	modelFallbackRetryable: boolean;
+	/** Provider/account failures pause queued workflow work until intervention. */
+	pauseWorkflow: boolean;
+	suggestedAction: string;
+}
+
+export interface WorkflowFailureContext {
+	status?: string;
+	stage?: "preflight" | "transport";
+	failureClass?: WorkflowFailureClass;
+}
 
 /**
  * Failures reported as `<tool> failed (exit N): ...` or `<tool> failed with
@@ -330,10 +318,92 @@ const RETRYABLE_MODEL_FAILURE_PATTERNS = [
  */
 const TOOL_FAILURE_PREFIX = /^[\w.:@/-]+ failed (?:(?:\(exit \d+\):)|(?:with exit code \d+))(?:\s|$)/i;
 
-export function isRetryableModelFailure(error: string | undefined): boolean {
+function classified(
+	failureClass: WorkflowFailureClass,
+	retryable: boolean,
+	modelFallbackRetryable: boolean,
+	pauseWorkflow: boolean,
+	suggestedAction: string,
+): WorkflowFailureClassification {
+	return { failureClass, retryable, modelFallbackRetryable, pauseWorkflow, suggestedAction };
+}
+
+/**
+ * Convert provider/process terminal text into a durable workflow disposition.
+ * String matching is a compatibility fallback; callers should pass structured
+ * status/stage hints whenever the delegation protocol supplies them.
+ */
+export function classifyWorkflowFailure(error: string | undefined, context: WorkflowFailureContext = {}): WorkflowFailureClassification {
+	const message = error?.trim() ?? "";
+	const status = context.status?.toLowerCase();
+	if (context.failureClass === "output_registration_failed") {
+		return classified("output_registration_failed", false, false, false, "Inspect the output contract or artifact store, then create a corrected replacement node.");
+	}
+	if (
+		context.failureClass === "invalid_result"
+		|| status === "structured_output_failed"
+		|| status === "invalid_request"
+		|| /(?:invalid structured result|workflow context pack|input binding .+ requires text values|requires .* text media type|declares text\/.+ but .* not text)/i.test(message)
+	) {
+		return classified("invalid_result", false, false, false, "Inspect retained output and create a corrected replacement node; changing providers alone will not repair the contract.");
+	}
+	if (status === "turn_budget_exhausted" || /(?:subagent\s+)?exceeded turn budget|turn budget exhausted/i.test(message)) {
+		return classified("turn_budget_exhausted", false, false, false, "Inspect retained output, then replace the node with an adequate turn budget or a narrower objective.");
+	}
+	if (status === "tool_budget_exhausted" || /tool budget exhausted/i.test(message)) {
+		return classified("tool_budget_exhausted", false, false, false, "Inspect retained output, then replace the node with an adequate tool budget or a narrower objective.");
+	}
+	if (TOOL_FAILURE_PREFIX.test(message)) {
+		return classified("task_failed", true, false, false, "Inspect the failed tool operation before explicitly retrying this node.");
+	}
+	if (/\b402\b|insufficient (?:balance|funds?|credit)|(?:provider|api|account|billing)\s+quota(?:\s+(?:exhausted|exceeded))?|quota\s+(?:exhausted|exceeded)|billing (?:failure|error|required)|credit exhausted/i.test(message)) {
+		return classified("provider_quota_exhausted", false, false, true, "Add provider balance/quota or create a same-kind replacement node on a different provider/model, then resume the workflow.");
+	}
+	if (/\b401\b|authentication failed|provider auth(?:entication)? failed|unauthori[sz]ed|invalid api key|api key (?:invalid|expired|missing)|token expired/i.test(message)) {
+		return classified("provider_auth_failed", false, false, true, "Repair provider credentials or create a same-kind replacement node on a different provider/model, then resume the workflow.");
+	}
+	if (/rate\s*limit|too many requests|\b429\b/i.test(message)) {
+		return classified("provider_rate_limited", true, true, false, "Wait for the provider retry window or explicitly retry with a different provider/model.");
+	}
+	if (/stream ended without finish_reason|incomplete stream|stream.*(?:closed|ended|failed)/i.test(message)) {
+		return classified("provider_stream_failed", true, true, false, "Retry the node; if the stream failure recurs, replace it with a different provider/model.");
+	}
+	if (/subagent process terminated|terminated by signal|\bSIG(?:TERM|KILL|ABRT|SEGV)\b/i.test(message)) {
+		return classified("process_terminated", false, false, false, "Inspect process/runtime logs and retained output before creating a replacement node.");
+	}
+	if (status === "timed_out" || /timed? out|timeout|\bETIMEDOUT\b/i.test(message)) {
+		return classified("timeout", true, true, false, "Retry once or replace the node with a larger timeout or different provider/model.");
+	}
+	if (/provider.*unavailable|model.*unavailable|model.*disabled|model.*not found|unknown model|overloaded|service unavailable|temporar(?:ily)? unavailable|\b50[234]\b|model.*(?:load|fail|error)|cold.?start/i.test(message)) {
+		return classified("provider_unavailable", false, true, false, "Create a same-kind replacement node using an available model; the original node remains pinned to its recorded model.");
+	}
+	if (context.stage === "transport" || /connection refused|connection error|\bECONN(?:RESET|REFUSED|ABORTED)\b|\bEAI_AGAIN\b|\bEPIPE\b|fetch failed|network error|socket hang up|upstream|empty response|no output/i.test(message)) {
+		return classified("provider_transport_failed", true, true, false, "Retry the node; if transport failures recur, replace it with a different provider/model.");
+	}
+	if (context.stage === "preflight") {
+		return classified("preflight_failed", false, false, false, "Fix the node AgentSpec, model, skills, or tool preflight, then create a corrected replacement node.");
+	}
+	if (status === "cancelled" || status === "interrupted") {
+		return classified("cancelled", true, false, false, "Retry only if the cancellation was intentional or transient.");
+	}
+	return classified("task_failed", true, false, false, "Inspect the task error and retained artifacts before explicitly retrying this node.");
+}
+
+function modelProvider(model: string | undefined): string | undefined {
+	if (!model) return undefined;
+	const { baseModel } = splitThinkingSuffix(model);
+	const slash = baseModel.indexOf("/");
+	return slash > 0 ? normalizeModelSegment(baseModel.slice(0, slash)) : undefined;
+}
+
+export function isRetryableModelFailure(error: string | undefined, currentModel?: string, nextModel?: string): boolean {
 	if (!error) return false;
-	if (TOOL_FAILURE_PREFIX.test(error.trim())) return false;
-	return RETRYABLE_MODEL_FAILURE_PATTERNS.some((pattern) => pattern.test(error));
+	const classification = classifyWorkflowFailure(error);
+	if (classification.modelFallbackRetryable) return true;
+	if (classification.failureClass !== "provider_quota_exhausted" && classification.failureClass !== "provider_auth_failed") return false;
+	const currentProvider = modelProvider(currentModel);
+	const nextProvider = modelProvider(nextModel);
+	return Boolean(currentProvider && nextProvider && currentProvider !== nextProvider);
 }
 
 export function formatModelAttemptNote(attempt: ModelAttemptSummary, nextModel?: string): string {

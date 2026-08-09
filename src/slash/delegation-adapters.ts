@@ -135,6 +135,7 @@ export interface DelegatedSubagentExecutionParams {
 	tasks?: PromptTemplateDelegationTask[];
 	context: "fresh" | "fork";
 	model?: string;
+	fallbackModels?: string[];
 	cwd: string;
 	worktree?: boolean;
 	timeoutMs?: number;
@@ -368,6 +369,7 @@ export function toSubagentDelegationExecutionParams(request: SubagentDelegationR
 		context: request.context,
 		cwd: request.cwd,
 		model: request.model,
+		...(request.fallbackModels ? { fallbackModels: [...request.fallbackModels] } : {}),
 		timeoutMs: request.timeoutMs,
 		turnBudget: request.turnBudget,
 		enforceHardTurnLimit: true,

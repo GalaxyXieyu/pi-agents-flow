@@ -1,11 +1,11 @@
 import { benchmarkResearchLanes, type SearchQualityBenchmarkResult } from "./benchmark.ts";
 import { evaluateWorkflow } from "./gates.ts";
 import { effectiveAcceptedResultNodes, acceptedReviewerRelease } from "./effective-nodes.ts";
-import { canonicalEvidenceUrl, canonicalFetchedUrl, claimSimilarity, evidenceRequiresWebFetch, findingHasCitation } from "./evidence.ts";
+import { canonicalEvidenceUrl, canonicalFetchedUrl, claimSimilarity, evidenceHasLocalReference, evidenceRequiresWebFetch, findingHasCitation } from "./evidence.ts";
 import { buildWorkflowRepairGuidance } from "./guidance.ts";
 import { resolveWorkflowPolicy, type WorkflowPolicy } from "./policy.ts";
 import { normalizeWorkflowText } from "./text-normalize.ts";
-import type { WorkflowArtifactDescriptor, WorkflowReviewerRelease, WorkflowRun } from "./types.ts";
+import type { WorkflowArtifactDescriptor, WorkflowNode, WorkflowReviewerRelease, WorkflowRun } from "./types.ts";
 
 export interface WorkflowQualityMetrics {
 	claimCitationCoverage: number;
@@ -129,6 +129,16 @@ function substantiveParagraphs(markdown: string): string[] {
 export interface WorkflowQualityContext {
 	/** Reads a resolved output artifact as UTF-8 text. Enables reading full deliverables that exceed the summary cap. */
 	readArtifact?: (descriptor: WorkflowArtifactDescriptor) => string;
+	/** Optional runtime validation for child-reported local source paths. */
+	validateLocalEvidence?: (reference: string) => boolean;
+}
+
+function nodeHasLocalTrace(node: WorkflowNode, context?: WorkflowQualityContext): boolean {
+	return Boolean(node.result?.evidence?.findings.some((finding) => finding.evidence.some((evidence) => {
+		if (!evidenceHasLocalReference(evidence)) return false;
+		const reference = evidence.artifactPath?.trim() || evidence.url?.trim();
+		return Boolean(reference && (context?.validateLocalEvidence?.(reference) ?? true));
+	})));
 }
 
 export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: WorkflowPolicy, context?: WorkflowQualityContext): WorkflowQualityReport {
@@ -156,7 +166,6 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 	const sourceNodes = accepted.filter((node) => node.kind === "research" || node.kind === "verification");
 	const sourceFindings = sourceNodes.flatMap((node) => node.result?.evidence?.findings ?? []);
 	const sourceEvidence = sourceFindings.flatMap((finding) => finding.evidence);
-	const tracedResearchNodes = researchNodes.filter((node) => node.agentSpec.baseAgent !== "local-researcher");
 	const researchLanes = researchNodes.map((node) => ({
 		id: node.id,
 		findings: node.result?.evidence?.findings ?? [],
@@ -179,10 +188,10 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 		evidence.artifactPath ? normalizeWorkflowText(evidence.artifactPath) : undefined,
 	]).filter((reference): reference is string => Boolean(reference)));
 	const writerFindings = writerNodes.flatMap((node) => node.result?.evidence?.findings ?? []);
+	const materialWriterFindings = writerFindings.filter((finding) => normalizeWorkflowText(finding.claim ?? "") !== "");
 	const writerClaimThreshold = policy.evidence.nearDuplicateSimilarity;
-	const unsupportedWriterClaims = writerFindings.filter((finding) => {
+	const unsupportedWriterClaims = materialWriterFindings.filter((finding) => {
 		const claim = finding.claim ?? "";
-		if (normalizeWorkflowText(claim) === "") return false;
 		if (sourceClaimList.some((sourceClaim) => claimSimilarity(claim, sourceClaim) >= writerClaimThreshold)) return false;
 		return !finding.evidence.some((evidence) => {
 			const references = [
@@ -228,11 +237,16 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 		evidenceSpecificity: ratio(sourceEvidence.filter((evidence) => Boolean(evidence.quote?.trim())).length, sourceEvidence.length, 0),
 		duplicateSourceRate: searchBenchmark?.duplicateSourceRate ?? 0,
 		researchTraceCoverage: ratio(
-			tracedResearchNodes.filter((node) => node.result?.evidence?.search && node.result.evidence.search.queries.length > 0 && node.result.evidence.search.fetchedUrls.some((url) => Boolean(canonicalFetchedUrl(url)))).length,
-			tracedResearchNodes.length,
+			researchNodes.filter((node) => {
+				const search = node.result?.evidence?.search;
+				const hasWebTrace = Boolean(search?.queries.length && search.fetchedUrls.some((url) => Boolean(canonicalFetchedUrl(url))));
+				const hasLocalTrace = nodeHasLocalTrace(node, context);
+				return hasWebTrace || hasLocalTrace;
+			}).length,
+			researchNodes.length,
 		),
 		searchFetchCoverage: ratio(fetchedSourceFindings.length, webSourceFindings.length),
-		unsupportedWriterClaimRate: ratio(unsupportedWriterClaims.length, writerFindings.length, 0),
+		unsupportedWriterClaimRate: ratio(unsupportedWriterClaims.length, materialWriterFindings.length, 0),
 		outlineCoverage: run.mode === "deep-research" ? ratio(outlineSections.filter((section) => headings.has(normalizeWorkflowText(section.title))).length, outlineSections.length, 0) : 1,
 		sectionWriterCoverage: run.mode === "deep-research" ? ratio([...expectedWriterIds].filter((id) => isWriterCovered(id)).length, expectedWriterIds.size, 0) : 1,
 		finalCitationCoverage: run.mode === "deep-research" ? ratio(citedParagraphs.length, paragraphs.length, 0) : 1,
@@ -252,7 +266,7 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 	if (metrics.claimCitationCoverage < policy.quality.minClaimCitationCoverage) {
 		blockers.push(`Claim citation coverage ${metrics.claimCitationCoverage.toFixed(2)} is below policy minimum ${policy.quality.minClaimCitationCoverage}.`);
 	}
-	if (tracedResearchNodes.length > 0 && metrics.researchTraceCoverage < policy.quality.minResearchTraceCoverage) {
+	if (researchNodes.length > 0 && metrics.researchTraceCoverage < policy.quality.minResearchTraceCoverage) {
 		blockers.push(`Research trace coverage ${metrics.researchTraceCoverage.toFixed(2)} is below policy minimum ${policy.quality.minResearchTraceCoverage}.`);
 	}
 	if (metrics.searchFetchCoverage < policy.quality.minSearchFetchCoverage) {
