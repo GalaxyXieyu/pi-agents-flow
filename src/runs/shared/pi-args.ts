@@ -19,6 +19,34 @@ import { SUBAGENT_CAPABILITY_CEILING_ENV, capabilityCeilingAgentRestrictionSourc
 
 const TASK_ARG_LIMIT = 8000;
 const MAX_LAUNCH_RESOLVED_EXTENSION_IDS = 32;
+
+/**
+ * Runtime-default tools available to every subagent. Agent declarations add
+ * role-specific capabilities; they do not replace this baseline. Keep this
+ * list synchronized with the workflow skill documentation.
+ */
+export const SUBAGENT_CORE_DEFAULT_TOOLS = Object.freeze([
+	"read",
+	"grep",
+	"find",
+	"ls",
+	"bash",
+	"edit",
+	"write",
+	"contact_supervisor",
+] as const);
+
+/** Ambient provider tools allowed for every child and required only when a role explicitly declares them. */
+export const SUBAGENT_WEB_DEFAULT_TOOLS = Object.freeze([
+	"web_search",
+	"fetch_content",
+	"get_search_content",
+] as const);
+
+export const SUBAGENT_DEFAULT_TOOLS = Object.freeze([
+	...SUBAGENT_CORE_DEFAULT_TOOLS,
+	...SUBAGENT_WEB_DEFAULT_TOOLS,
+] as const);
 const PROMPT_RUNTIME_EXTENSION_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "subagent-prompt-runtime.ts");
 const FANOUT_CHILD_EXTENSION_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "extension", "fanout-child.ts");
 export const SUBAGENT_CHILD_ENV = "PI_SUBAGENT_CHILD";
@@ -58,9 +86,9 @@ export interface BuildPiArgsInput {
 	inheritSkills: boolean;
 	requireReadTool?: boolean;
 	tools?: string[];
-	/** Per-launch tool grants layered onto the base Agent allowlist (builtin names or MCP selectors). */
+	/** Per-launch role-specific grants layered onto runtime defaults and the base Agent declaration. */
 	extraTools?: string[];
-	/** Per-launch tool revocations removed from the base Agent allowlist. */
+	/** Per-launch policy revocations applied after defaults and additions resolve. */
 	denyTools?: string[];
 	extensions?: string[];
 	subagentOnlyExtensions?: string[];
@@ -214,22 +242,20 @@ export function resolvePiLaunchToolPlan(input: ResolvePiLaunchToolPlanInput): Pi
 	const extraMcpSelectors = extraToolEntries.filter((tool) => tool.includes("/"));
 	const extraBuiltinTools = extraToolEntries.filter((tool) => !tool.includes("/"));
 	const denyToolSet = new Set(input.denyTools ?? []);
-	// Grants and revocations layer onto an explicit allowlist. Without one the base
-	// Agent already has unrestricted builtins, and introducing a list here would
-	// *narrow* the child to just these names, which inverts the caller's intent.
-	if ((extraToolEntries.length > 0 || denyToolSet.size > 0) && input.tools === undefined) {
-		throw new Error("extraTools and denyTools require a base Agent that declares an explicit tools allowlist; without one the child is already unrestricted and layering a list would narrow it instead of adjusting it.");
-	}
-	const declaredTools = input.tools === undefined ? undefined : [...input.tools, ...extraBuiltinTools];
-	const requestedBuiltinTools = declaredTools?.filter((tool) => !(tool.includes("/") || tool.endsWith(".ts") || tool.endsWith(".js"))) ?? [];
+	// Runtime defaults are present even when the base Agent omits tools or
+	// declares an empty allowlist. Role-specific declarations and per-launch
+	// grants are additive. Capability ceilings remain the hard upper bound;
+	// denyTools may narrow defaults only for an intentional role or offline policy.
+	const declaredTools = [...(input.tools ?? []), ...extraBuiltinTools];
+	const explicitlyDeclaredBuiltinTools = declaredTools.filter((tool) => !(tool.includes("/") || tool.endsWith(".ts") || tool.endsWith(".js")));
+	const requestedBuiltinTools = [...new Set([
+		...SUBAGENT_DEFAULT_TOOLS,
+		...explicitlyDeclaredBuiltinTools,
+	])];
 	if (input.requireReadTool && allowedToolSet && !allowedToolSet.has("read")) {
 		throw new Error(`Capability ceiling from ${capabilityCeiling?.sources.join(", ") || "unknown source"} excludes required tool 'read' for lazy skill loading.`);
 	}
-	const ceilingFilteredBuiltinTools = declaredTools === undefined
-		? (allowedToolSet ? [...allowedToolSet] : [])
-		: (input.requireReadTool && requestedBuiltinTools.length > 0 && !requestedBuiltinTools.includes("read") && !allowedToolSet
-			? ["read", ...requestedBuiltinTools]
-			: requestedBuiltinTools).filter((tool) => !allowedToolSet || allowedToolSet.has(tool));
+	const ceilingFilteredBuiltinTools = requestedBuiltinTools.filter((tool) => !allowedToolSet || allowedToolSet.has(tool));
 	const declaredBuiltinTools = ceilingFilteredBuiltinTools.filter((tool) => !denyToolSet.has(tool));
 	const fanoutAuthorized = declaredBuiltinTools.includes("subagent");
 	const toolExtensionPaths: string[] = capabilityCeiling?.denyExtensions ? [] : (input.tools ?? []).filter((tool) => !requestedBuiltinTools.includes(tool) && (tool.includes("/") || tool.endsWith(".ts") || tool.endsWith(".js")));
@@ -240,14 +266,15 @@ export function resolvePiLaunchToolPlan(input: ResolvePiLaunchToolPlanInput): Pi
 	const ceilingFilteredMcpSelections = resolvedMcpSelections.filter((selection) => !allowedToolSet || allowedToolSet.has(selection.name));
 	const effectiveMcpSelections = ceilingFilteredMcpSelections.filter((selection) => !denyToolSet.has(selection.name));
 	const effectiveMcpTools = effectiveMcpSelections.map((selection) => selection.name);
-	const explicitToolAllowlist = declaredTools !== undefined || (mcpSelectors?.length ?? 0) > 0 || allowedToolSet !== undefined;
+	// Every child is launched with an explicit allowlist so runtime defaults are
+	// deterministic and unavailable extension providers fail during preflight.
+	const explicitToolAllowlist = true;
 	const internalTools = input.structuredOutput ? ["structured_output"] : [];
 	const effectiveToolAllowlist = [...new Set([...declaredBuiltinTools, ...effectiveMcpTools, ...internalTools])];
-	const requiredChildTools = explicitToolAllowlist ? [...new Set([
-		...(declaredTools !== undefined ? declaredBuiltinTools : []),
-		...(mcpSelectors?.length ? effectiveMcpTools : []),
-		...internalTools,
-	])] : [];
+	const optionalWebDefaults = new Set<string>(SUBAGENT_WEB_DEFAULT_TOOLS);
+	const requiredChildTools = effectiveToolAllowlist.filter((tool) =>
+		!optionalWebDefaults.has(tool) || explicitlyDeclaredBuiltinTools.includes(tool),
+	);
 	const grantedTools = effectiveToolAllowlist.filter((tool) => extraBuiltinTools.includes(tool)
 		|| effectiveMcpSelections.some((selection) => selection.name === tool
 			&& extraMcpSelectors.some((selector) => selection.selector === selector || selection.selector.startsWith(`${selector}/`))
@@ -262,14 +289,12 @@ export function resolvePiLaunchToolPlan(input: ResolvePiLaunchToolPlanInput): Pi
 	const extensionArgs = disableAmbientExtensions
 		? [...new Set([...runtimeExtensions, ...configuredExtensions])]
 		: [...new Set([...runtimeExtensions, ...toolExtensionPaths, ...(input.subagentOnlyExtensions ?? [])])];
-	const requestedToolNames = declaredTools !== undefined
-		? [...new Set([...requestedBuiltinTools, ...resolvedMcpSelections.map((selection) => selection.name)])]
-		: undefined;
+	const requestedToolNames = [...new Set([...requestedBuiltinTools, ...resolvedMcpSelections.map((selection) => selection.name)])];
 	const capabilityAudit = capabilityCeiling ? {
 		ceiling: capabilityCeiling,
-		...(requestedToolNames ? { requestedTools: requestedToolNames } : {}),
+		requestedTools: requestedToolNames,
 		effectiveTools: effectiveToolAllowlist,
-		removedTools: requestedToolNames?.filter((tool) => !effectiveToolAllowlist.includes(tool)) ?? [],
+		removedTools: requestedToolNames.filter((tool) => !effectiveToolAllowlist.includes(tool)),
 		internalTools,
 		extensionsDenied: capabilityCeiling.denyExtensions,
 		removedExtensionCount: capabilityCeiling.denyExtensions ? (input.extensions?.length ?? 0) + (input.subagentOnlyExtensions?.length ?? 0) + ((input.tools ?? []).filter((tool) => tool.includes("/") || tool.endsWith(".ts") || tool.endsWith(".js")).length) : 0,

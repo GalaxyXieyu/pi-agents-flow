@@ -82,8 +82,8 @@ const WorkflowAgentSpecParams = Type.Object({
 	model: Type.Optional(Type.String({ description: "Optional Pi model id, for example provider/model." })),
 	thinking: Type.Optional(Type.String({ enum: ["off", "minimal", "low", "medium", "high", "xhigh", "max"] })),
 	skills: Type.Optional(Type.Array(Type.String(), { minItems: 1, description: "Skills resolved by normal pi-agents-flow preflight." })),
-	extraTools: Type.Optional(Type.Array(Type.String(), { minItems: 1, maxItems: MAX_NODE_TOOL_ENTRIES, description: "Tools granted to this node on top of the base Agent allowlist. Entries with '/' are MCP selectors (server or server/tool); others are builtin tool names. Extension paths are rejected and the capability ceiling still applies. Requires a base Agent that declares an explicit tools allowlist." })),
-	denyTools: Type.Optional(Type.Array(Type.String(), { minItems: 1, maxItems: MAX_NODE_TOOL_ENTRIES, description: "Tools revoked for this node even though the base Agent declares them. Requires a base Agent that declares an explicit tools allowlist." })),
+	extraTools: Type.Optional(Type.Array(Type.String(), { minItems: 1, maxItems: MAX_NODE_TOOL_ENTRIES, description: "Role-specific tools added on top of runtime defaults and the base Agent declaration. Entries with '/' are MCP selectors (server or server/tool); others are builtin tool names. Extension paths are rejected and the capability ceiling still applies." })),
+	denyTools: Type.Optional(Type.Array(Type.String(), { minItems: 1, maxItems: MAX_NODE_TOOL_ENTRIES, description: "Tools removed for an intentional read-only, offline, review-scope, or security policy after defaults and additions are resolved." })),
 	timeoutMs: Type.Optional(Type.Integer({ minimum: 1 })),
 	turnBudget: Type.Optional(Type.Object({
 		maxTurns: Type.Integer({ minimum: 1 }),
@@ -585,7 +585,7 @@ export function registerWorkflowAssetsTool(pi: ExtensionAPI): void {
 			// the host's global tool-output toggle from leaking a previous expanded
 			// state into this high-volume, model-facing inspection step.
 			if (ctx.hasUI && typeof ctx.ui.setToolsExpanded === "function") ctx.ui.setToolsExpanded(false);
-			const catalog = buildAssetCatalog(ctx.cwd, ctx.modelRegistry.getAvailable().map((m) => `${m.provider}/${m.id}`));
+			const catalog = buildAssetCatalog(ctx.cwd, ctx.modelRegistry?.getAvailable?.()?.map((m) => `${m.provider}/${m.id}`));
 			return { content: [{ type: "text", text: formatAssetCatalog(catalog) }], details: { catalog } };
 		},
 		/**

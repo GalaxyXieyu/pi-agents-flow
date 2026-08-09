@@ -227,12 +227,16 @@ export function createWorkflowDelegationAdapter(
 	return {
 		async run(run, node, attempt, signal, runtime) {
 			const resultSchema = workflowResultSchema(node.dataContract);
+			// Bound every bounded workflow child so its context stays under the provider's
+			// stable streaming range. Unbounded executors accumulate 400k+ tokens and the
+			// taqu provider drops the stream before finish_reason. Explicit node budgets win;
+			// otherwise inject a conservative default.
 			const turnBudget = node.agentSpec.turnBudget
 				? {
 					maxTurns: node.agentSpec.turnBudget.maxTurns,
 					graceTurns: node.agentSpec.turnBudget.graceTurns ?? DEFAULT_TURN_BUDGET_GRACE_TURNS,
 				}
-				: undefined;
+				: { maxTurns: DEFAULT_WORKFLOW_CHILD_TURN_BUDGET, graceTurns: DEFAULT_TURN_BUDGET_GRACE_TURNS };
 
 			function buildTask(formatErr?: string): string {
 				return taskFor(node, formatErr);

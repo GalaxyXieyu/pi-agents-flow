@@ -44,9 +44,9 @@ export interface SubagentDelegationRequest {
 	turnBudget?: SubagentDelegationTurnBudget;
 	toolBudget?: SubagentDelegationToolBudget;
 	skill?: string | string[] | boolean;
-	/** Per-launch tool grants layered on the base Agent's allowlist. */
+	/** Per-launch role-specific grants layered onto runtime defaults and the base Agent declaration. */
 	extraTools?: string[];
-	/** Per-launch tool revocations. */
+	/** Per-launch policy revocations applied after defaults and additions resolve. */
 	denyTools?: string[];
 	artifacts?: boolean;
 	result: SubagentDelegationResultRequest;

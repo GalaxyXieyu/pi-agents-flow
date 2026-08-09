@@ -198,6 +198,28 @@ describe("subagent prompt runtime", () => {
 		assert.equal(toolCall({ toolName: "write" }), undefined);
 	});
 
+	it("never blocks supervisor coordination or structured submission at the hard tool budget", () => {
+		const handlers = new Map<string, (payload: { toolName?: string }) => unknown>();
+		process.env[TOOL_BUDGET_ENV] = JSON.stringify({ hard: 1, block: "*" });
+
+		registerSubagentPromptRuntime({
+			on(event: string, handler: (payload: { toolName?: string }) => unknown) {
+				handlers.set(event, handler);
+			},
+		} as { on(event: string, handler: (payload: { toolName?: string }) => unknown): void });
+
+		const toolCall = handlers.get("tool_call");
+		assert.ok(toolCall, "tool_call handler should be registered");
+		assert.equal(toolCall({ toolName: "read" }), undefined);
+		for (const toolName of ["contact_supervisor", "subagent_supervisor", "structured_output"]) {
+			assert.equal(toolCall({ toolName }), undefined);
+		}
+		assert.deepEqual(toolCall({ toolName: "write" }), {
+			block: true,
+			reason: "Tool budget hard limit reached after 5 tool calls (hard 1). The 'write' tool is blocked so you can finalize from the context you already have.",
+		});
+	});
+
 	it("registers the native canonical steering inbox path", () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "subagent-steering-watch-runtime-"));
 		try {

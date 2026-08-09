@@ -1,6 +1,11 @@
 import type { ResolvedToolBudget, ToolBudgetConfig, ToolBudgetState } from "../../shared/types.ts";
 
 export const DEFAULT_TOOL_BUDGET_BLOCK = ["read", "grep", "find", "ls"] as const;
+export const TOOL_BUDGET_CONTROL_TOOLS = new Set([
+	"contact_supervisor",
+	"subagent_supervisor",
+	"structured_output",
+]);
 export const TOOL_BUDGET_ENV = "PI_SUBAGENT_TOOL_BUDGET";
 export const TOOL_BUDGET_ZERO_AUTH_ENV = "PI_SUBAGENT_TOOL_BUDGET_ZERO_AUTH";
 
@@ -55,7 +60,7 @@ export function toolBudgetState(budget: ResolvedToolBudget, toolCount: number, b
 }
 
 export function shouldBlockToolForBudget(budget: ResolvedToolBudget, toolName: string, nextToolCount: number): boolean {
-	if (nextToolCount <= budget.hard) return false;
+	if (TOOL_BUDGET_CONTROL_TOOLS.has(toolName) || nextToolCount <= budget.hard) return false;
 	return budget.block === "*" || budget.block.includes(toolName);
 }
 

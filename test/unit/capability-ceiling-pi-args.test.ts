@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildPiArgs } from "../../src/runs/shared/pi-args.ts";
+import { SUBAGENT_DEFAULT_TOOLS, buildPiArgs } from "../../src/runs/shared/pi-args.ts";
 
 describe("capability ceiling child launch enforcement", () => {
 	const base = {
@@ -37,14 +37,14 @@ describe("capability ceiling child launch enforcement", () => {
 		assert.equal(args.includes("/tmp/extension.ts"), false);
 	});
 
-	it("restricts omitted tool declarations without requiring every allowed name", () => {
+	it("restricts runtime defaults to the capability ceiling", () => {
 		const { args, env } = buildPiArgs({
 			...base,
 			capabilityCeiling: { version: 1, allowedTools: ["read", "grep"], denyExtensions: true, sources: ["plan"] },
 		});
 		assert.ok(args.includes("--tools"));
-		assert.ok(args.includes("grep,read"));
-		assert.equal(env.PI_SUBAGENT_REQUIRED_TOOLS, undefined);
+		assert.ok(args.includes("read,grep"));
+		assert.equal(env.PI_SUBAGENT_REQUIRED_TOOLS, JSON.stringify(["read", "grep"]));
 	});
 
 
@@ -55,8 +55,8 @@ describe("capability ceiling child launch enforcement", () => {
 			extensions: ["/tmp/extension.ts"],
 			capabilityCeiling: { version: 1, allowedTools: ["read"], denyExtensions: false, sources: ["plan"] },
 		});
-		assert.deepEqual(capabilityAudit?.requestedTools, ["read"]);
-		assert.deepEqual(capabilityAudit?.removedTools, []);
+		assert.deepEqual(capabilityAudit?.requestedTools, SUBAGENT_DEFAULT_TOOLS);
+		assert.deepEqual(capabilityAudit?.removedTools, SUBAGENT_DEFAULT_TOOLS.filter((tool) => tool !== "read"));
 		assert.equal(capabilityAudit?.removedExtensionCount, 0);
 	});
 
@@ -68,8 +68,8 @@ describe("capability ceiling child launch enforcement", () => {
 			subagentOnlyExtensions: ["/tmp/child-only.ts"],
 			capabilityCeiling: { version: 1, allowedTools: ["read"], denyExtensions: true, sources: ["plan"] },
 		});
-		assert.deepEqual(capabilityAudit?.requestedTools, ["read"]);
-		assert.deepEqual(capabilityAudit?.removedTools, []);
+		assert.deepEqual(capabilityAudit?.requestedTools, SUBAGENT_DEFAULT_TOOLS);
+		assert.deepEqual(capabilityAudit?.removedTools, SUBAGENT_DEFAULT_TOOLS.filter((tool) => tool !== "read"));
 		assert.equal(capabilityAudit?.removedExtensionCount, 3);
 	});
 

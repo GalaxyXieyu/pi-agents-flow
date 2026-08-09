@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { resolvePiLaunchToolPlan } from "../../src/runs/shared/pi-args.ts";
+import { SUBAGENT_DEFAULT_TOOLS, resolvePiLaunchToolPlan } from "../../src/runs/shared/pi-args.ts";
 import { parseSubagentDelegationRequest } from "../../src/slash/delegation-request.ts";
 import { parseWorkflowActionParams } from "../../src/workflows/tool.ts";
 import { parseSubagentCapabilityCeiling } from "../../src/runs/shared/capability-ceiling.ts";
 
 function ceiling(allowedTools: string[]) {
 	return parseSubagentCapabilityCeiling({ version: 1, allowedTools, denyExtensions: false, sources: ["test"] });
+}
+
+function defaultsWithout(...denied: string[]): string[] {
+	return SUBAGENT_DEFAULT_TOOLS.filter((tool) => !denied.includes(tool));
 }
 
 function node(agentSpec: Record<string, unknown>) {
@@ -65,23 +69,23 @@ function v2Request(extra: Record<string, unknown>) {
 
 describe("node-level tool grants and revocations", () => {
 	describe("resolution semantics", () => {
-		it("grants a builtin tool the base Agent does not declare", () => {
-			const plan = resolvePiLaunchToolPlan({ tools: ["read"], extraTools: ["write"] });
-			assert.deepEqual(plan.effectiveToolAllowlist, ["read", "write"]);
-			assert.deepEqual(plan.grantedTools, ["write"]);
+		it("grants a role-specific tool on top of runtime defaults", () => {
+			const plan = resolvePiLaunchToolPlan({ tools: [], extraTools: ["subagent"] });
+			assert.deepEqual(plan.effectiveToolAllowlist, [...SUBAGENT_DEFAULT_TOOLS, "subagent"]);
+			assert.deepEqual(plan.grantedTools, ["subagent"]);
 			assert.deepEqual(plan.revokedTools, []);
 		});
 
-		it("revokes a builtin tool the base Agent does declare", () => {
-			const plan = resolvePiLaunchToolPlan({ tools: ["read", "write", "bash"], denyTools: ["bash"] });
-			assert.deepEqual(plan.effectiveToolAllowlist, ["read", "write"]);
+		it("revokes a runtime default for an intentional policy", () => {
+			const plan = resolvePiLaunchToolPlan({ tools: [], denyTools: ["bash"] });
+			assert.deepEqual(plan.effectiveToolAllowlist, defaultsWithout("bash"));
 			assert.deepEqual(plan.revokedTools, ["bash"]);
 			assert.deepEqual(plan.grantedTools, []);
 		});
 
-		it("lets denyTools win over extraTools for the same name", () => {
-			const plan = resolvePiLaunchToolPlan({ tools: ["read"], extraTools: ["bash"], denyTools: ["bash"] });
-			assert.equal(plan.effectiveToolAllowlist.includes("bash"), false);
+		it("lets denyTools win over extraTools for the same role-specific name", () => {
+			const plan = resolvePiLaunchToolPlan({ extraTools: ["subagent"], denyTools: ["subagent"] });
+			assert.equal(plan.effectiveToolAllowlist.includes("subagent"), false);
 			assert.deepEqual(plan.grantedTools, []);
 		});
 
@@ -94,7 +98,7 @@ describe("node-level tool grants and revocations", () => {
 			assert.deepEqual(plan.effectiveToolAllowlist, ["read", "write"]);
 			assert.equal(plan.effectiveToolAllowlist.includes("bash"), false);
 			assert.deepEqual(plan.grantedTools, ["write"]);
-			assert.deepEqual(plan.capabilityAudit?.removedTools, ["bash"]);
+			assert.deepEqual(plan.capabilityAudit?.removedTools, SUBAGENT_DEFAULT_TOOLS.filter((tool) => tool !== "read" && tool !== "write"));
 		});
 
 		it("still revokes below the ceiling", () => {
@@ -112,22 +116,22 @@ describe("node-level tool grants and revocations", () => {
 			assert.equal(resolvePiLaunchToolPlan({ tools: ["read", "subagent"], denyTools: ["subagent"] }).fanoutAuthorized, false);
 		});
 
-		it("refuses to layer grants on an Agent without an explicit allowlist", () => {
-			assert.throws(() => resolvePiLaunchToolPlan({ extraTools: ["bash"] }), /explicit tools allowlist/);
-			assert.throws(() => resolvePiLaunchToolPlan({ denyTools: ["bash"] }), /explicit tools allowlist/);
+		it("layers grants and revocations without a base Agent tool declaration", () => {
+			assert.deepEqual(resolvePiLaunchToolPlan({ extraTools: ["subagent"] }).effectiveToolAllowlist, [...SUBAGENT_DEFAULT_TOOLS, "subagent"]);
+			assert.deepEqual(resolvePiLaunchToolPlan({ denyTools: ["bash"] }).effectiveToolAllowlist, defaultsWithout("bash"));
 		});
 
-		it("leaves an unrestricted Agent untouched when no grants are supplied", () => {
+		it("gives an Agent runtime defaults when no tools are declared", () => {
 			const plan = resolvePiLaunchToolPlan({});
-			assert.deepEqual(plan.effectiveToolAllowlist, []);
-			assert.equal(plan.explicitToolAllowlist, false);
+			assert.deepEqual(plan.effectiveToolAllowlist, SUBAGENT_DEFAULT_TOOLS);
+			assert.equal(plan.explicitToolAllowlist, true);
 			assert.deepEqual(plan.grantedTools, []);
 			assert.deepEqual(plan.revokedTools, []);
 		});
 
 		it("does not disturb toolBudget.block, which is a separate mechanism", () => {
 			const plan = resolvePiLaunchToolPlan({ tools: ["read", "grep"], denyTools: ["grep"] });
-			assert.deepEqual(plan.effectiveToolAllowlist, ["read"]);
+			assert.deepEqual(plan.effectiveToolAllowlist, defaultsWithout("grep"));
 			assert.equal("block" in plan, false);
 		});
 	});

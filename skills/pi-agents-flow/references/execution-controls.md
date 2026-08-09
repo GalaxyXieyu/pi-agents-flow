@@ -22,6 +22,14 @@ Precedence is by parsed runtime name:
 
 Project settings resolve from the nearest parent directory containing `.pi` or `.agents` by default. In monorepos or git worktrees where an incidental nested `.pi` directory should not shadow the repository config, set `subagents.projectRootResolution: "git-root"` in the repository root `.pi/settings.json`; a nested project can opt back with `"nearest"` in its own settings.
 
+## Default Child Tools
+
+Every child launch receives the runtime baseline `read`, `grep`, `find`, `ls`, `bash`, `edit`, `write`, `web_search`, `fetch_content`, `get_search_content`, and `contact_supervisor`, including agents with no `tools:` field or `tools: []`. Agent `tools:` declarations and launch `extraTools` add role-specific capabilities; they do not replace this baseline.
+
+`structured_output` is added only when `outputSchema` or a workflow data contract requires it. Fanout, wait, MCP, and other extension tools remain launch-dependent. Web tools require their normal providers to be installed and discoverable; naming a tool does not load its provider. An Agent with explicit `extensions:` runs in isolated extension mode and must include its web provider there if it still needs the default web tools.
+
+Do not repeat default tools in `extraTools`. Do not generate `denyTools` for them in ordinary delegation. Restrict a default only for a named read-only, offline, review-scope, or security policy; capability ceilings remain the non-bypassable upper bound.
+
 ## Running Subagents
 
 ### Single agent

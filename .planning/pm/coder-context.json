@@ -1,0 +1,121 @@
+{
+  "generated_at": "2026-08-09T23:39:14+08:00",
+  "project": {
+    "name": "CodingAgents",
+    "repo_root": "/Users/hb00156/Documents/coding/pi-agents-flow",
+    "config_path": "/Users/hb00156/Documents/coding/pi-agents-flow/.planning/pm/pm.json",
+    "tasklist_name": "CodingAgents",
+    "tasklist_guid": "a3894c51-137e-4e7c-9c1d-abe72179b818",
+    "task_prefix": "T",
+    "kind": "task",
+    "task_backend": "feishu",
+    "doc_backend": "feishu"
+  },
+  "repo_scan": {
+    "root": "/Users/hb00156/Documents/coding/pi-agents-flow",
+    "exists": true,
+    "name": "pi-agents-flow",
+    "markers": {
+      "git": true,
+      "package_json": true,
+      "pnpm_lock": false,
+      "yarn_lock": false,
+      "npm_lock": true,
+      "pyproject": false,
+      "requirements_txt": false,
+      "go_mod": false,
+      "cargo_toml": false,
+      "miniapp_app_json": false,
+      "miniapp_project_config": false,
+      "src_dir": true,
+      "pages_dir": false,
+      "components_dir": false
+    },
+    "package_manager": "npm",
+    "framework_hints": []
+  },
+  "bootstrap": {
+    "project_mode": "brownfield",
+    "recommended_action": "map-codebase",
+    "task_backend": "feishu",
+    "doc_backend": "feishu",
+    "doc_folder_name": "CodingAgents",
+    "doc_folder_token": "DTccfPZBble2LGd5taXcQ03knfe",
+    "doc_folder_url": "https://xcn8w8gj1s4u.feishu.cn/drive/folder/DTccfPZBble2LGd5taXcQ03knfe",
+    "project_doc_token": "QJt6dVTKhoJkjJxFsn5cAzIgniT",
+    "project_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/QJt6dVTKhoJkjJxFsn5cAzIgniT",
+    "requirements_doc_token": "JMGGdAdYMo6gZUxBQH9cxQkgnAy",
+    "requirements_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/JMGGdAdYMo6gZUxBQH9cxQkgnAy",
+    "roadmap_doc_token": "LaJcdgHeNodDWwxs198cXYv7nmc",
+    "roadmap_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/LaJcdgHeNodDWwxs198cXYv7nmc",
+    "state_doc_token": "VunrdZrHtojfnYxLjAzcP9longU",
+    "state_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/VunrdZrHtojfnYxLjAzcP9longU",
+    "notes": [
+      "brownfield 项目优先做 map-codebase，再补项目/路线图/状态文档。",
+      "greenfield 项目优先做 new-project，再进入任务拆解。",
+      "当前 task backend=feishu，doc backend=feishu。"
+    ]
+  },
+  "current_task": {
+    "task_id": "T2",
+    "summary": "[T2] Analyze and harden structured_output tool failures across workflow runs",
+    "status": "todo",
+    "guid": "092ac05e-dd7d-4025-978a-2df223b65201",
+    "url": "https://applink.feishu.cn/client/todo/detail?guid=092ac05e-dd7d-4025-978a-2df223b65201&suite_entity_num=t101024",
+    "description": "任务编号：T2\n创建时间：2026-08-09 23:38:51 CST\n类型：task\nRepo：/Users/hb00156/Documents/coding/pi-agents-flow\n\n需求：\n拉取所有调用 structured_output/调用功能工具的 flow 错误记录（包含输入和报错），按模型/错误类型/Schema 路径分析根因，并设计提示词、工具报错提示与自动格式兼容方案以降低弱模型调用失败率。先做证据分析，再给出并实现可验证的高优先级优化。\n\n执行要求：\n- 以 task/doc 为主，不再依赖本地 task/context/state 文件。\n- 进度默认写评论，验收证据优先回填附件或评论。",
+    "updated_at": "1786289932534",
+    "completed_at": "0",
+    "attachments": [],
+    "tasklists": [
+      {
+        "section_guid": "0555dc98-7c33-576b-7db0-c43519a48ee1",
+        "tasklist_guid": "a3894c51-137e-4e7c-9c1d-abe72179b818"
+      }
+    ]
+  },
+  "next_task": {
+    "task_id": "T1",
+    "summary": "[T1] Surface machine-readable recommendedAction from workflow evaluate/quality",
+    "status": "todo",
+    "guid": "03e3228c-18ab-4fe9-b53e-eb8d79112b55",
+    "url": "https://applink.feishu.cn/client/todo/detail?guid=03e3228c-18ab-4fe9-b53e-eb8d79112b55&suite_entity_num=t101023",
+    "updated_at": "1786287538485",
+    "created_at": "1786285007007"
+  },
+  "recent_comments": [],
+  "inputs": {
+    "config": "/Users/hb00156/Documents/coding/pi-agents-flow/.planning/pm/pm.json",
+    "context_path": "/Users/hb00156/Documents/coding/pi-agents-flow/.planning/pm/current-context.json",
+    "bootstrap_path": "/Users/hb00156/Documents/coding/pi-agents-flow/.planning/pm/bootstrap.json",
+    "plan_path": "/Users/hb00156/Documents/coding/pi-agents-flow/.planning/pm/plan-context.json",
+    "refine_path": "/Users/hb00156/Documents/coding/pi-agents-flow/.planning/pm/refine-context.json"
+  },
+  "recommended_flow": [
+    "Run brownfield mapping before broad code changes; build task/doc understanding first.",
+    "Implement the current task first and update progress through pm when done."
+  ],
+  "required_reads": [
+    ".planning/pm/pm.json",
+    ".planning/pm/current-context.json",
+    ".planning/pm/bootstrap.json"
+  ],
+  "handoff_contract": {
+    "active_task_source": "current_task",
+    "active_task_id": "T2",
+    "active_task_summary": "[T2] Analyze and harden structured_output tool failures across workflow runs",
+    "task_description_present": true,
+    "required_reads": [
+      ".planning/pm/pm.json",
+      ".planning/pm/current-context.json",
+      ".planning/pm/bootstrap.json"
+    ],
+    "source_of_truth": [
+      ".planning/pm/pm.json and .planning/pm/coder-context.json define runtime/config context.",
+      "current_task description is the execution index card."
+    ]
+  },
+  "source_of_truth": [
+    ".planning/pm/pm.json and .planning/pm/coder-context.json define runtime/config context.",
+    "current_task description is the execution index card."
+  ]
+}

@@ -7,6 +7,7 @@ import { registerSubagentCapabilityCeiling, resolveSubagentCapabilityCeiling } f
 import { resolveSubagentLaunchContract, SUBAGENT_LAUNCH_CONTRACT_VERSION } from "../../src/api/preflight.ts";
 import { clearSkillCache } from "../../src/agents/skills.ts";
 import { computeMcpServerHash } from "../../src/runs/shared/mcp-direct-tool-allowlist.ts";
+import { SUBAGENT_CORE_DEFAULT_TOOLS, SUBAGENT_DEFAULT_TOOLS } from "../../src/runs/shared/pi-args.ts";
 
 let tempDir = "";
 let previousHome: string | undefined;
@@ -122,7 +123,7 @@ Project prompt.
 			assert.deepEqual(result.contract.skills.requested, ["project-skill"]);
 			assert.equal(result.contract.skills.resolved[0]?.name, "project-skill");
 			assert.deepEqual(result.contract.tools.effectiveAllowlist, ["read"]);
-			assert.deepEqual(result.contract.tools.capabilityAudit?.removedTools, ["write"]);
+			assert.deepEqual(result.contract.tools.capabilityAudit?.removedTools, SUBAGENT_DEFAULT_TOOLS.filter((tool) => tool !== "read"));
 			assert.equal(result.contract.tools.capabilityAudit?.removedExtensionCount, 1);
 			assert.equal(result.contract.tools.disableAmbientExtensions, true);
 			assert.equal(result.contract.roots.sessionFile, path.join(sessionRoot, "run-123", "run-0", "session.jsonl"));
@@ -327,12 +328,12 @@ Project prompt.
 		assert.equal(result.ok, true);
 		assert.equal(result.contract.context, "fork");
 		assert.ok(result.contract.diagnostics.some((diagnostic) => diagnostic.code === "host_required"));
-		assert.deepEqual(result.contract.tools.declaredBuiltin, ["read", "subagent"]);
+		assert.deepEqual(result.contract.tools.declaredBuiltin, [...SUBAGENT_DEFAULT_TOOLS, "subagent"]);
 		assert.equal(result.contract.tools.explicitAllowlist, true);
 		assert.equal(result.contract.tools.fanoutAuthorized, true);
 		assert.deepEqual(result.contract.tools.internalTools, ["structured_output"]);
 		assert.deepEqual(result.contract.tools.effectiveMcpTools, ["github_search_repositories"]);
-		assert.deepEqual(result.contract.tools.requiredChildTools, ["read", "subagent", "github_search_repositories", "structured_output"]);
+		assert.deepEqual(result.contract.tools.requiredChildTools, [...SUBAGENT_CORE_DEFAULT_TOOLS, "subagent", "github_search_repositories", "structured_output"]);
 		assert.deepEqual(result.contract.tools.toolExtensionPaths, ["/tmp/tool-ext.ts"]);
 		assert.equal(result.contract.tools.disableAmbientExtensions, true);
 		assert.ok(result.contract.tools.runtimeExtensions.some((extensionPath) => extensionPath.endsWith("subagent-prompt-runtime.ts")));

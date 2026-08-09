@@ -199,9 +199,9 @@ export interface SubagentParamsLike {
 	scope?: string;
 	target?: string;
 	skill?: string | string[] | boolean;
-	/** Per-launch tool grants layered onto the base Agent allowlist (builtin names or MCP selectors). */
+	/** Per-launch role-specific grants layered onto runtime defaults and the base Agent declaration. */
 	extraTools?: string[];
-	/** Per-launch tool revocations removed from the base Agent allowlist. */
+	/** Per-launch policy revocations applied after defaults and additions resolve. */
 	denyTools?: string[];
 	output?: string | boolean;
 	outputMode?: "inline" | "file-only";

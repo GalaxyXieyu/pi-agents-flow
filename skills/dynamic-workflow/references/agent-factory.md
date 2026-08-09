@@ -9,9 +9,41 @@ Every node requires an `EphemeralAgentSpec`:
 - `instructions`: sources or artifacts to inspect, exclusions, evidence requirements, and stop condition.
 - `context`: use `fresh` for independent research/review; use `fork` only when parent conversation context is necessary.
 - `skills`: only the process knowledge required by this node.
-- `extraTools`: optional per-node tool grants layered on the base Agent's allowlist. Entries containing `/` are MCP direct-tool selectors (`server` or `server/tool`); the rest are builtin tool names. Extension paths are rejected.
-- `denyTools`: optional per-node tool revocations.
+- `extraTools`: optional role-specific tools added to runtime defaults and the base Agent declaration. Entries containing `/` are MCP direct-tool selectors (`server` or `server/tool`); the rest are builtin tool names. Extension paths are rejected.
+- `denyTools`: optional policy revocations applied after defaults and additions resolve.
 - optional model, thinking, timeout, turn budget, and tool budget.
+
+## Default subagent tools
+
+Every subagent starts with the same runtime baseline, even when the base Agent omits `tools:` or declares `tools: []`:
+
+| Group | Default tools |
+| --- | --- |
+| Workspace read and discovery | `read`, `grep`, `find`, `ls` |
+| Workspace mutation and commands | `bash`, `edit`, `write` |
+| Web research and retrieval | `web_search`, `fetch_content`, `get_search_content` |
+| Supervisor coordination | `contact_supervisor` |
+
+`structured_output` is a conditional runtime tool: it is added automatically only when the node declares an output schema. Other runtime tools such as child-safe fanout or waiting are added only when that launch mode requires them.
+
+Tool resolution order:
+
+```text
+runtime defaults
+  + base Agent `tools:`
+  + node `extraTools`
+  + selected MCP direct tools
+  + conditional runtime tools
+  -> capability ceiling
+  -> intentional `denyTools` policy
+```
+
+Rules for graph authors:
+
+- Treat base Agent `tools:` and node `extraTools` as role-specific additions. Do not repeat runtime defaults there.
+- Do not generate `denyTools` for runtime defaults during ordinary planning. Use it only for a named restriction such as read-only preapproval, an offline lane, or a reviewer that must not search for new evidence.
+- A capability ceiling remains the non-bypassable security boundary and may remove any default or added capability.
+- Tool names do not load extension providers. Default web tools still require their normal Pi providers to be installed and discoverable. If a base Agent declares `extensions:` and therefore enters isolated extension mode, include the web provider there as well. Preflight fails clearly when a role explicitly requires a provider that is missing.
 
 Every `WorkflowNodePlan` has these top-level fields: `id`, `kind`, `label`, `dependsOn`, `agentSpec`, and `dataContract`. `label` must be non-empty. `dependsOn` is an array of node ids and must remain acyclic.
 
@@ -103,7 +135,7 @@ The child returns a `WorkflowResult` through `structured_output`:
 ## Creation rules
 
 1. Choose the smallest base Agent whose existing capabilities can complete the node. New Deep Research document plans use `research-section-writer` for non-overlapping `section-writer` nodes, `research-editor` for the sole `editor`, and `research-reviewer` for the independent `reviewer`; `verification` uses `research-verifier`. The hidden `research-writer` mapping remains only for replaying legacy persisted `kind: writer` nodes and must not be selected for a new plan. The runtime rejects mismatched Deep Research role mappings.
-2. Never add extensions through the ephemeral spec. Tools may be adjusted with `extraTools` and `denyTools`, but only within the capability ceiling, which no node can widen. Both fields require a base Agent that declares an explicit tools allowlist; without one the child is already unrestricted and the launch fails rather than narrowing it. Prefer a reviewed persistent base Agent when a node needs a capability set that is broadly reusable.
+2. Never add extensions through the ephemeral spec. Runtime-default tools are already present. Use `extraTools` only for role-specific builtin or MCP capabilities, and use `denyTools` only for an explicit role/offline restriction. Neither field can widen the capability ceiling. Prefer a reviewed persistent base Agent when a capability set is broadly reusable.
 3. Give parallel children distinct lanes, evidence seams, and decisions. Do not clone the same broad prompt.
 4. Declare `dataContract.inputs` with explicit `from` bindings when the node consumes prior work. The runtime resolves only accepted direct dependencies and materializes a bounded Context Pack.
 5. Writers put the complete Markdown in `outputs.document`. Reviewers report findings in `diagnostics`. Researchers return `evidence.findings` and `evidence.search`.

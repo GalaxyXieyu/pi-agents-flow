@@ -1258,23 +1258,16 @@ async function runSingleAttempt(
 		fullOutput = fullOutput.trim() ? `${note}\n\n${fullOutput}` : note;
 	}
 	const completionGuardEnabled = isAgentContractV1(options.agentContract) ? agent.completionGuard === true : agent.completionGuard !== false;
-	// The guard's mutation-capability check must reflect the tools the child actually
-	// launched with. Per-launch grants/denies only ever apply on top of an explicit
-	// base allowlist (resolvePiLaunchToolPlan throws otherwise), so when neither is set
-	// we keep agent.tools verbatim to preserve the unrestricted/ceiling behavior.
-	const completionGuardTools = options.extraTools?.length || options.denyTools?.length
-		? [
-			...(agent.tools ?? []).filter((tool) => !(options.denyTools ?? []).includes(tool)),
-			...(options.extraTools ?? []).filter((tool) => !tool.includes("/")),
-		]
-		: agent.tools;
+	// Use the same resolved plan that launched the child so runtime defaults,
+	// grants, revocations, MCP tools, and capability ceilings cannot drift from
+	// completion-guard mutation inference.
 	const completionGuard = result.exitCode === 0 && !result.error && completionGuardEnabled
 		? evaluateCompletionMutationGuard({
 			agent: agent.name,
 			task: shared.originalTask ?? task,
 			messages: result.messages ?? [],
-			tools: completionGuardTools,
-			mcpDirectTools: agent.mcpDirectTools,
+			tools: toolPlan.effectiveToolAllowlist,
+			mcpDirectTools: toolPlan.effectiveMcpTools,
 		})
 		: undefined;
 	const completionGuardTriggered = completionGuard?.triggered === true && !observedMutationAttempt;

@@ -49,7 +49,7 @@ describe("tool-budget module", () => {
 		assert.deepEqual(decodeToolBudgetEnv(encodeToolBudgetEnv(zeroBudget), { allowZero: true }), zeroBudget);
 	});
 
-	it("tracks state and block decisions", () => {
+	it("tracks state and block decisions while preserving control-plane tools", () => {
 		const budget = { soft: 2, hard: 3, block: ["read"] };
 		assert.deepEqual(initialToolBudgetState(budget), { soft: 2, hard: 3, block: ["read"], toolCount: 0, outcome: "within-budget" });
 		assert.equal(toolBudgetState(budget, 2).outcome, "soft-reached");
@@ -57,6 +57,9 @@ describe("tool-budget module", () => {
 		assert.equal(shouldBlockToolForBudget(budget, "read", 4), true);
 		assert.equal(shouldBlockToolForBudget(budget, "write", 4), false);
 		assert.equal(shouldBlockToolForBudget({ hard: 0, block: "*" }, "read", 1), true);
+		for (const tool of ["contact_supervisor", "subagent_supervisor", "structured_output"]) {
+			assert.equal(shouldBlockToolForBudget({ hard: 0, block: "*" }, tool, 1), false);
+		}
 	});
 
 	it("formats user-facing budget messages", () => {

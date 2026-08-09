@@ -28,6 +28,8 @@ import {
 	SUBAGENT_RUN_ID_ENV,
 	PI_INTERCOM_STABLE_ID_ENV,
 	PI_INTERCOM_SESSION_ID_ENV,
+	SUBAGENT_CORE_DEFAULT_TOOLS,
+	SUBAGENT_DEFAULT_TOOLS,
 	applyThinkingSuffix,
 	buildPiArgs,
 	projectLaunchResolvedChildExtensions,
@@ -59,6 +61,14 @@ const originalEnv = {
 };
 const originalCwd = process.cwd();
 const tempRoots: string[] = [];
+
+function expectedTools(...additional: string[]): string[] {
+	return [...SUBAGENT_DEFAULT_TOOLS, ...additional];
+}
+
+function expectedToolsArg(...additional: string[]): string {
+	return expectedTools(...additional).join(",");
+}
 
 interface McpFixture {
 	root: string;
@@ -609,8 +619,8 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		});
 
 		const toolsArg = args[args.indexOf("--tools") + 1];
-		assert.equal(toolsArg, "read,grep,find,ls,bash,edit,write,contact_supervisor");
-		assert.deepEqual(JSON.parse(env[REQUIRED_CHILD_TOOLS_ENV] ?? "[]"), toolsArg.split(","));
+		assert.equal(toolsArg, expectedToolsArg());
+		assert.deepEqual(JSON.parse(env[REQUIRED_CHILD_TOOLS_ENV] ?? "[]"), SUBAGENT_CORE_DEFAULT_TOOLS);
 		assert.equal(env[CHILD_TOOL_DIAGNOSTIC_PATH_ENV], toolDiagnosticPath);
 	});
 
@@ -629,8 +639,8 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			},
 		});
 
-		assert.equal(args[args.indexOf("--tools") + 1], "read,fixture_search,structured_output");
-		assert.deepEqual(JSON.parse(env[REQUIRED_CHILD_TOOLS_ENV] ?? "[]"), ["read", "fixture_search", "structured_output"]);
+		assert.equal(args[args.indexOf("--tools") + 1], expectedToolsArg("fixture_search", "structured_output"));
+		assert.deepEqual(JSON.parse(env[REQUIRED_CHILD_TOOLS_ENV] ?? "[]"), [...SUBAGENT_CORE_DEFAULT_TOOLS, "fixture_search", "structured_output"]);
 	});
 
 	it("forwards the Pi package root to child processes for host peer resolution", () => {
@@ -646,7 +656,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		assert.equal(env[PI_CODING_AGENT_PACKAGE_ROOT_ENV], "/opt/pi-coding-agent");
 	});
 
-	it("adds read to explicit tool allowlists when skills must be loaded lazily", () => {
+	it("keeps read in runtime defaults when skills must be loaded lazily", () => {
 		const { args } = buildPiArgs({
 			baseArgs: ["-p"],
 			task: "hello",
@@ -657,10 +667,10 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			tools: ["bash"],
 		});
 
-		assert.equal(args[args.indexOf("--tools") + 1], "read,bash");
+		assert.equal(args[args.indexOf("--tools") + 1], expectedToolsArg());
 	});
 
-	it("does not duplicate read in explicit tool allowlists for lazy skills", () => {
+	it("does not duplicate read when base Agent tools include it", () => {
 		const { args } = buildPiArgs({
 			baseArgs: ["-p"],
 			task: "hello",
@@ -671,7 +681,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			tools: ["read", "bash"],
 		});
 
-		assert.equal(args[args.indexOf("--tools") + 1], "read,bash");
+		assert.equal(args[args.indexOf("--tools") + 1], expectedToolsArg());
 	});
 
 	it("includes adapter tool filters in MCP cache identity", () => {
@@ -728,13 +738,13 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			mcpDirectTools: ["chrome-devtools"],
 		});
 
-		assert.equal(args[args.indexOf("--tools") + 1], "read,bash,chrome_devtools_take_screenshot,chrome_devtools_click");
+		assert.equal(args[args.indexOf("--tools") + 1], expectedToolsArg("chrome_devtools_take_screenshot", "chrome_devtools_click"));
 		assert.equal(env.MCP_DIRECT_TOOLS, "chrome-devtools");
-		assert.equal(env[REQUIRED_CHILD_TOOLS_ENV], JSON.stringify(["read", "bash", "chrome_devtools_take_screenshot", "chrome_devtools_click"]));
+		assert.equal(env[REQUIRED_CHILD_TOOLS_ENV], JSON.stringify([...SUBAGENT_CORE_DEFAULT_TOOLS, "chrome_devtools_take_screenshot", "chrome_devtools_click"]));
 		assert.equal(env[MCP_DIRECT_CHILD_TOOLS_ENV], JSON.stringify(["chrome_devtools_take_screenshot", "chrome_devtools_click"]));
 	});
 
-	it("emits --no-tools for explicit empty tool allowlists", () => {
+	it("keeps runtime defaults for explicit empty tool declarations", () => {
 		for (const requireReadTool of [false, true]) {
 			const { args, env } = buildPiArgs({
 				baseArgs: ["-p"],
@@ -746,13 +756,12 @@ describe("buildPiArgs system prompt mode wiring", () => {
 				tools: [],
 			});
 
-			assert.ok(args.includes("--no-tools"));
-			assert.equal(args.includes("--tools"), false);
+			assert.equal(args[args.indexOf("--tools") + 1], expectedToolsArg());
 			assert.equal(env.MCP_DIRECT_TOOLS, "__none__");
 		}
 	});
 
-	it("restricts MCP-only agents to selected direct MCP tool names", () => {
+	it("adds selected direct MCP tool names to runtime defaults", () => {
 		for (const requireReadTool of [false, true]) {
 			const fixture = createMcpFixture();
 			writeMcpFixture(fixture);
@@ -767,12 +776,12 @@ describe("buildPiArgs system prompt mode wiring", () => {
 				mcpDirectTools: ["chrome-devtools"],
 			});
 
-			assert.equal(args[args.indexOf("--tools") + 1], "chrome_devtools_take_screenshot,chrome_devtools_click");
+			assert.equal(args[args.indexOf("--tools") + 1], expectedToolsArg("chrome_devtools_take_screenshot", "chrome_devtools_click"));
 			assert.equal(env.MCP_DIRECT_TOOLS, "chrome-devtools");
 		}
 	});
 
-	it("fails closed with --no-tools when MCP-only names cannot be resolved", () => {
+	it("keeps runtime defaults when MCP-only names cannot be resolved", () => {
 		for (const requireReadTool of [false, true]) {
 			const fixture = createMcpFixture();
 			writeJson(path.join(fixture.agentDir, "mcp.json"), {
@@ -789,8 +798,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 				mcpDirectTools: ["chrome-devtools"],
 			});
 
-			assert.ok(args.includes("--no-tools"));
-			assert.equal(args.includes("--tools"), false);
+			assert.equal(args[args.indexOf("--tools") + 1], expectedToolsArg());
 			assert.equal(env.MCP_DIRECT_TOOLS, "chrome-devtools");
 		}
 	});
@@ -813,14 +821,14 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			mcpDirectTools: ["github/search_repositories"],
 		});
 
-		assert.equal(args[args.indexOf("--tools") + 1], "read,github_search_repositories");
+		assert.equal(args[args.indexOf("--tools") + 1], expectedToolsArg("github_search_repositories"));
 	});
 
 	it("matches adapter prefix modes for direct MCP names", () => {
 		for (const [prefix, expected] of [
-			["server", "read,linear_mcp_list_issues"],
-			["short", "read,linear_list_issues"],
-			["none", "read,list_issues"],
+			["server", "linear_mcp_list_issues"],
+			["short", "linear_list_issues"],
+			["none", "list_issues"],
 		] as const) {
 			const fixture = createMcpFixture();
 			writeMcpFixture(fixture, {
@@ -839,7 +847,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 				mcpDirectTools: ["linear-mcp"],
 			});
 
-			assert.equal(args[args.indexOf("--tools") + 1], expected);
+			assert.equal(args[args.indexOf("--tools") + 1], expectedToolsArg(expected));
 		}
 	});
 
@@ -862,7 +870,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			mcpDirectTools: ["browser-mcp"],
 		});
 
-		assert.equal(args[args.indexOf("--tools") + 1], "read,browser_mcp_navigate,browser_mcp_get_console_logs");
+		assert.equal(args[args.indexOf("--tools") + 1], expectedToolsArg("browser_mcp_navigate", "browser_mcp_get_console_logs"));
 	});
 
 	it("falls back to explicit builtins when direct MCP cache or config is missing or invalid", () => {
@@ -879,7 +887,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			tools: ["read", "bash"],
 			mcpDirectTools: ["chrome-devtools"],
 		});
-		assert.equal(missingCache.args[missingCache.args.indexOf("--tools") + 1], "read,bash");
+		assert.equal(missingCache.args[missingCache.args.indexOf("--tools") + 1], expectedToolsArg());
 
 		const invalidFixture = createMcpFixture();
 		writeMcpFixture(invalidFixture, { cachedAt: Date.now() - 8 * 24 * 60 * 60 * 1000 });
@@ -892,7 +900,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			tools: ["read", "bash"],
 			mcpDirectTools: ["chrome-devtools"],
 		});
-		assert.equal(staleCache.args[staleCache.args.indexOf("--tools") + 1], "read,bash");
+		assert.equal(staleCache.args[staleCache.args.indexOf("--tools") + 1], expectedToolsArg());
 	});
 
 	it("resolves project MCP config from the child cwd and expands PI_CODING_AGENT_DIR", () => {
@@ -916,7 +924,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			cwd: fixture.projectDir,
 		});
 
-		assert.equal(args[args.indexOf("--tools") + 1], "read,project_mcp_inspect");
+		assert.equal(args[args.indexOf("--tools") + 1], expectedToolsArg("project_mcp_inspect"));
 	});
 
 	it("keeps tool extension paths when explicit extensions are allowlisted", () => {
@@ -935,7 +943,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		});
 
 		const extensionArgs = args.filter((arg, index) => args[index - 1] === "--extension");
-		assert.equal(args[args.indexOf("--tools") + 1], "read,chrome_devtools_take_screenshot");
+		assert.equal(args[args.indexOf("--tools") + 1], expectedToolsArg("chrome_devtools_take_screenshot"));
 		assert.ok(extensionArgs.some((arg) => arg.endsWith(path.join("src", "runs", "shared", "subagent-prompt-runtime.ts"))));
 		assert.ok(extensionArgs.includes("./custom-tool.ts"));
 		assert.ok(extensionArgs.includes("./allowed-ext.ts"));
@@ -955,7 +963,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 
 		const extensionArgs = args.filter((arg, index) => args[index - 1] === "--extension");
 		assert.ok(args.includes("--no-extensions"));
-		assert.equal(args[args.indexOf("--tools") + 1], "read");
+		assert.equal(args[args.indexOf("--tools") + 1], expectedToolsArg());
 		assert.ok(extensionArgs.includes("./main-allowed-ext.ts"));
 		assert.ok(extensionArgs.includes("./child-tool.ts"));
 	});
@@ -977,7 +985,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		});
 
 		const extensionArgs = args.filter((arg, index) => args[index - 1] === "--extension");
-		assert.equal(args[args.indexOf("--tools") + 1], "read,subagent");
+		assert.equal(args[args.indexOf("--tools") + 1], expectedToolsArg("subagent"));
 		assert.equal(env[SUBAGENT_FANOUT_CHILD_ENV], "1");
 		assert.equal(env[SUBAGENT_PARENT_EVENT_SINK_ENV], "/tmp/root/events");
 		assert.equal(env[SUBAGENT_PARENT_CONTROL_INBOX_ENV], "/tmp/root/control");
@@ -1113,7 +1121,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		});
 
 		const extensionArgs = args.filter((arg, index) => args[index - 1] === "--extension");
-		assert.equal(args[args.indexOf("--tools") + 1], "read,delegator_subagent");
+		assert.equal(args[args.indexOf("--tools") + 1], expectedToolsArg("delegator_subagent"));
 		assert.equal(env[SUBAGENT_FANOUT_CHILD_ENV], "0");
 		assert.ok(!extensionArgs.some((arg) => arg.endsWith(path.join("src", "extension", "fanout-child.ts"))));
 	});
