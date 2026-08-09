@@ -377,6 +377,33 @@ describe("workflow quality benchmark", () => {
 		assert.equal(localReport.releaseReady, true, localReport.blockers.join("\n"));
 	});
 
+	it("strict web mode blocks release when web evidence is missing", () => {
+		const local = acceptedNode("local-only", "research", envelope([
+			finding("local claim", { artifactPath: "/repo/src/workflow.ts", kind: "primary", quote: "state" }),
+		]));
+		const research = [local, acceptedNode("local-b", "research", envelope([finding("b", { artifactPath: "/repo/b.ts", kind: "primary", quote: "x" })])), acceptedNode("local-c", "research", envelope([finding("c", { artifactPath: "/repo/c.ts", kind: "primary", quote: "y" })]))];
+		const strict = resolveWorkflowPolicy("deep-research", { qualityEnforcement: "strict", evidenceMode: "web" });
+		const report = assessWorkflowQuality(run([...research, ...documentNodes(research)]), strict);
+		assert.equal(report.releaseReady, false);
+		assert.ok(report.blockers.some((b) => b.toLowerCase().includes("web evidence")));
+	});
+
+	it("strict local mode blocks release when local evidence is missing", () => {
+		const research = [validResearchNode("architecture"), validResearchNode("safety"), validResearchNode("recovery")];
+		const strict = resolveWorkflowPolicy("deep-research", { qualityEnforcement: "strict", evidenceMode: "local" });
+		const report = assessWorkflowQuality(run([...research, ...documentNodes(research)]), strict);
+		assert.equal(report.releaseReady, false);
+		assert.ok(report.blockers.some((b) => b.toLowerCase().includes("local artifact or file")));
+	});
+
+	it("strict mixed mode requires both evidence classes", () => {
+		const research = [validResearchNode("architecture"), validResearchNode("safety"), validResearchNode("recovery")];
+		const strict = resolveWorkflowPolicy("deep-research", { qualityEnforcement: "strict", evidenceMode: "mixed" });
+		const report = assessWorkflowQuality(run([...research, ...documentNodes(research)]), strict);
+		assert.equal(report.releaseReady, false);
+		assert.ok(report.blockers.some((b) => b.toLowerCase().includes("local artifact or file")));
+	});
+
 	it("excludes superseded research nodes from release metrics", () => {
 		const obsolete = acceptedNode("obsolete", "research", envelope([
 			finding("obsolete claim", { url: "https://old.example/source" }),

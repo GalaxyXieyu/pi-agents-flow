@@ -123,7 +123,14 @@ describe("workflow delegation adapter", () => {
 				ownerRunId: request.ownerRunId,
 				nodeId: request.nodeId,
 				status: "completed",
-				result: { kind: "structured", value: { summary: "done" } },
+				result: { kind: "structured", value: {
+					version: 1,
+					summary: { text: "done", covers: [], omissions: [], confidence: "high" },
+					outputs: { result: { kind: "value", value: "done" } },
+					diagnostics: { gaps: [], conflicts: [], warnings: [] },
+					recommendations: [],
+					evidence: { findings: [] },
+				} },
 				usage: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 1, toolCalls: 1, durationMs: 5 },
 			}));
 		});
@@ -190,7 +197,14 @@ describe("workflow delegation adapter", () => {
 					ownerRunId: request.ownerRunId,
 					nodeId: request.nodeId,
 					status: "completed",
-					result: { kind: "structured", value: { summary: "done" } },
+					result: { kind: "structured", value: {
+					version: 1,
+					summary: { text: "done", covers: [], omissions: [], confidence: "high" },
+					outputs: { result: { kind: "value", value: "done" } },
+					diagnostics: { gaps: [], conflicts: [], warnings: [] },
+					recommendations: [],
+					evidence: { findings: [] },
+				} },
 				}));
 			});
 			const result = await adapter.run(run, readonlyNode, attempt);

@@ -108,6 +108,48 @@ Workflow language defaults to `auto`: a goal containing Chinese resolves to Simp
 
 Useful controls are `/workflow status`, `/workflow quality`, `/workflow board`, `/workflow inspect`, `/workflow pause`, `/workflow resume`, and `/workflow stop`; each accepts an optional run id. Live workflow progress is surfaced in the persistent Activity Dock below the editor: Tasks group their work units and current Agent executions, while Agents lists every execution independently. `Enter` opens the Activity Board in the currently selected perspective and on the selected row. The Tasks board uses a plan tree on the left and contextual details on the right: Tasks, nested Tasks, and Work Units expose completion state and progress, while the detail pane shows objective, dependencies, attempts, duration, token usage, cost, and the Agent's current/recent activity. Completed and stopped workflows retain their task plan for review instead of collapsing into independent executions. Enter collapses or expands a Task and opens a started Work Unit execution in the full Fleet inspector. The Agents board keeps avatar-backed employee cards with duration and token usage; failed, cancelled, and superseded Agents are hidden by default and toggled with `f`. `Tab` opens the detail pane, and `v` switches between live activity and the Agent Definition with its system prompt, skills, tools, and MCP configuration. Closing Fleet returns to the same Activity Board selection. Task, Work Unit, and Agent details also show recorded `Evidence files` and `Run files` when available. Evidence paths are rendered as OSC 8 `file://` hyperlinks, so supported terminals (including iTerm2, Ghostty, Kitty, WezTerm, and VS Code) can open them by clicking. Paths ending in `:line[:column]` preserve that location in the label and add an `#Lline[:column]` file URL fragment for terminal/editor integrations; terminals without hyperlink support still show the full copyable path. For a running Work Unit or Agent, press `Enter` to open Fleet; `s` opens the native steering editor when that child has reported live-steering capability. Async children and foreground single Workflow children use the same correlated request/ack protocol, while terminal or unsupported children remain read-only. At the roster level, `v` switches between Tasks and Agents. Run `/coding`, `/swarm`, `/deep-research`, or `/workflow run` without a goal to open the matching native launch wizard for stage or mode, language, goal, and final confirmation. `/workflow stop` uses Pi's native confirmation dialog before it cancels a run. The model-facing `workflow` tool also supports `start`, `clarify`, `set_brief`, `set_outline`, `apply_plan`, `run_ready`, `evaluate`, `get_result`, `accept`, `reject`, `record_decision`, `cancel_node`, and `complete`.
 
+### Evidence quality policy
+
+Workflow quality defaults to `evidenceMode: "auto"` and `qualityEnforcement: "advisory"`. The runtime infers the actual evidence mode from accepted findings: HTTP(S) URLs and fetched search traces map to `web`; local `artifactPath` entries and `file://` references map to `local`; both present maps to `mixed`. Citation coverage, research trace coverage, search fetch coverage, unsupported writer claim rate, and final document citation coverage are computed and reported as quality warnings, but they do not block completion by default.
+
+When a deliverable contract demands a specific evidence class, pass explicit policy overrides on `workflow.start`:
+
+```json
+{
+  "evidenceMode": "local",
+  "qualityEnforcement": "strict",
+  "gates": { "maxUnresolvedGaps": 0 }
+}
+```
+
+Under `strict` enforcement, the corresponding metrics become release blockers:
+
+| Mode | Strict requirement |
+| --- | --- |
+| `web` | At least one accepted HTTP(S) source, fetch provenance, and citation coverage above the policy minimum |
+| `local` | At least one accepted local artifact or `file://` source; URL citations are not required |
+| `mixed` | Both web and local evidence classes must be present and traceable |
+| `auto` | Infers the mode from accepted evidence and applies the corresponding rules |
+
+A Reviewer may explicitly accept residual gaps, conflicts, citation shortfalls, or length shortfalls through `extensions.release` flags, which relax the corresponding gates without requiring a manual decision per item.
+
+### Choosing an entry point
+
+Use the simplest tool that covers the task:
+
+```text
+# Ordinary parallel task — one agent, one bounded job
+subagent({ agent: "worker", task: "fix the login redirect bug in auth.ts" })
+
+# Code delivery with planning, approval, and verification
+/coding full add retry logic to the workflow delegation adapter
+
+# Local-codebase research — no web citations required
+/deep-research --lang zh audit the controller error handling and failure classification
+```
+
+Use `/coding plan` when you only need an approved plan, `/coding build` for implementation with review, `/coding verify` for goal-backward verification of existing work, or `/coding full` for the complete plan-to-verify lifecycle. Use `/deep-research` when the deliverable is a source-grounded report. Use `/workflow run` (general mode) when the required topology cannot be known up front and the Supervisor must dynamically create nodes based on runtime results.
+
 ### One-shot static graphs
 
 A long flow whose structure only lives in the Supervisor's running context degrades: as the context grows, adherence to constraints set early in the run drops, and steps that were supposed to be sequential start getting skipped or reordered. The fix is to move the structure out of the Supervisor's memory as early as possible.

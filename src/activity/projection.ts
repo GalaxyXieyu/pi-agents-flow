@@ -267,6 +267,7 @@ function workflowExecution(run: WorkflowRun, node: WorkflowNode, fleetByRunId: M
 	const fleetItem = executionRunId ? fleetByRunId.get(executionRunId) : undefined;
 	const live = fleetItem ? fleetExecution(fleetItem) : undefined;
 	const reason = nodeReason(node);
+	const failure = attempt?.failure;
 	const attemptUsage: ActivityUsage | undefined = attempt?.usage ? {
 		inputTokens: attempt.usage.input,
 		outputTokens: attempt.usage.output,
@@ -299,6 +300,7 @@ function workflowExecution(run: WorkflowRun, node: WorkflowNode, fleetByRunId: M
 		taskPath: `${taskPath(node.taskId, run.tasks)} › ${node.label}`,
 		attempt: attempt?.number ?? 0,
 		...(reason ? { error: reason } : {}),
+		...(failure ? { failureClass: failure.failureClass, retryable: failure.retryable, suggestedAction: failure.suggestedAction } : {}),
 	};
 }
 

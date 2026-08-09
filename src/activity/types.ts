@@ -54,6 +54,9 @@ export interface AgentExecutionActivity {
 	taskPath?: string;
 	attempt: number;
 	error?: string;
+	failureClass?: string;
+	retryable?: boolean;
+	suggestedAction?: string;
 	role?: string;
 	objective?: string;
 	context?: "fresh" | "fork";

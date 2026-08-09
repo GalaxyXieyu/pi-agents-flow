@@ -217,9 +217,8 @@ export function createWorkflowDelegationAdapter(
 ): WorkflowDelegationAdapter {
 	const preflight = options.preflight ?? defaultPreflight;
 	const responseTimeoutMs = options.responseTimeoutMs ?? 30 * 60 * 1_000;
+	const MAX_FORMAT_STEER_ATTEMPTS = 2;
 	return {
-const MAX_FORMAT_STEER_ATTEMPTS = 2;
-
 		async run(run, node, attempt, signal, runtime) {
 			const resultSchema = workflowResultSchema(node.dataContract);
 			const turnBudget = node.agentSpec.turnBudget

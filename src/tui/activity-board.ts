@@ -341,6 +341,8 @@ function selectedAgentActivityLines(selection: ActivitySelection | undefined, sn
 		`${localize(snapshot.language, "Current", "当前")}   ${execution.activity ?? localize(snapshot.language, "No live tool activity", "无实时工具活动")}`,
 		...(execution.recent.length ? ["", localize(snapshot.language, "Recent", "最近"), ...execution.recent.map((event) => `  ${statusBadge(event.state, theme)} ${event.text}`)] : []),
 		...(execution.error ? ["", `${localize(snapshot.language, "Error", "错误")}     ${execution.error}`] : []),
+		...(execution.failureClass ? [`${localize(snapshot.language, "Failure", "失败")}    ${execution.failureClass} (${execution.retryable ? localize(snapshot.language, "retryable", "可重试") : localize(snapshot.language, "not retryable", "不可重试")})`] : []),
+		...(execution.suggestedAction ? [`${localize(snapshot.language, "Action", "动作")}    ${execution.suggestedAction}`] : []),
 	];
 }
 
