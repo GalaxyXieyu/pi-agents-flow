@@ -1887,14 +1887,10 @@ function applySingleAgentLaunchDefaults(params: SubagentParamsLike, agents: Agen
 	};
 }
 
-export const DEFAULT_FOREGROUND_TIMEOUT_MS = 30 * 60 * 1000;
-
-function resolveForegroundTimeout(params: SubagentParamsLike, defaultTimeoutMs?: number): { timeoutMs?: number; error?: string } {
+function resolveRunTimeout(params: SubagentParamsLike): { timeoutMs?: number; error?: string } {
 	const rawTimeout = params.timeoutMs;
 	const rawMaxRuntime = params.maxRuntimeMs;
-	if (rawTimeout === undefined && rawMaxRuntime === undefined) {
-		return defaultTimeoutMs === undefined ? {} : { timeoutMs: defaultTimeoutMs };
-	}
+	if (rawTimeout === undefined && rawMaxRuntime === undefined) return {};
 	for (const [name, value] of [["timeoutMs", rawTimeout], ["maxRuntimeMs", rawMaxRuntime]] as const) {
 		if (value === undefined) continue;
 		if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
@@ -4361,11 +4357,8 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 		const requestedAsync = effectiveParams.async ?? deps.asyncByDefault;
 		const backgroundRequestedWhileClarifying = (hasChain || hasTasks) && requestedAsync && effectiveParams.clarify === true;
 		const effectiveAsync = requestedAsync && effectiveParams.clarify !== true;
-		const foregroundTimeout = resolveForegroundTimeout(
-			effectiveParams,
-			effectiveAsync ? undefined : DEFAULT_FOREGROUND_TIMEOUT_MS,
-		);
-		if (foregroundTimeout.error) return buildRequestedModeError(effectiveParams, foregroundTimeout.error);
+		const runTimeout = resolveRunTimeout(effectiveParams);
+		if (runTimeout.error) return buildRequestedModeError(effectiveParams, runTimeout.error);
 		const controlConfig = resolveControlConfig(deps.config.control, effectiveParams.control);
 
 		const artifactConfig: ArtifactConfig = {
@@ -4458,7 +4451,7 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 			controlConfig,
 			intercomBridge,
 			nestedRoute,
-			timeoutMs: foregroundTimeout.timeoutMs,
+			timeoutMs: runTimeout.timeoutMs,
 			turnBudget: turnBudget.turnBudget,
 			toolBudget: runToolBudget.toolBudget,
 			usageBudget: usageBudget.budget,

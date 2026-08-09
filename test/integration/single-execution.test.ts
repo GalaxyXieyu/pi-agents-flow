@@ -246,7 +246,6 @@ interface ExecutorModule {
 		execute: (...args: unknown[]) => Promise<ExecutorToolResult>;
 		executeDelegated: (...args: unknown[]) => Promise<ExecutorToolResult>;
 	};
-	DEFAULT_FOREGROUND_TIMEOUT_MS?: number;
 }
 
 const execution = await tryImport<ExecutionModule>("./src/runs/foreground/execution.ts");
@@ -2523,8 +2522,8 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.equal(mockPi.callCount(), 0);
 	});
 
-	it("applies the foreground timeout default without overriding explicit or agent values", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
-		mockPi.onCall({ output: "package default" });
+	it("leaves runs unbounded by default without overriding explicit or agent timeouts", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		mockPi.onCall({ output: "unbounded default" });
 		mockPi.onCall({ output: "explicit timeout" });
 		mockPi.onCall({ output: "max runtime alias" });
 		mockPi.onCall({ output: "agent timeout" });
@@ -2537,8 +2536,18 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			undefined,
 			makeMinimalCtx(tempDir),
 		);
-		assert.equal(defaultResult.details?.timeoutMs, executorMod?.DEFAULT_FOREGROUND_TIMEOUT_MS);
-		assert.equal(defaultResult.details?.timeoutMs, 30 * 60 * 1000);
+		assert.equal(defaultResult.details?.timeoutMs, undefined);
+
+		const asyncResult = await defaultExecutor.execute(
+			"async-timeout-default",
+			{ agent: "echo", task: "Task", async: true },
+			new AbortController().signal,
+			undefined,
+			makeMinimalCtx(tempDir),
+		);
+		assert.equal(asyncResult.isError, undefined);
+		assert.equal(typeof asyncResult.details?.asyncId, "string");
+		assert.equal(asyncResult.details?.timeoutMs, undefined);
 
 		const explicitResult = await defaultExecutor.execute(
 			"foreground-timeout-explicit",
