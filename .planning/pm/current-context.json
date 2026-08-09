@@ -1,0 +1,110 @@
+{
+  "generated_at": "2026-08-09T22:16:50+08:00",
+  "project": {
+    "name": "CodingAgents",
+    "repo_root": "/Users/hb00156/Documents/coding/pi-agents-flow",
+    "config_path": "/Users/hb00156/Documents/coding/pi-agents-flow/.planning/pm/pm.json",
+    "tasklist_name": "CodingAgents",
+    "tasklist_guid": "a3894c51-137e-4e7c-9c1d-abe72179b818",
+    "task_prefix": "T",
+    "kind": "task",
+    "task_backend": "feishu",
+    "doc_backend": "feishu"
+  },
+  "repo_scan": {
+    "root": "/Users/hb00156/Documents/coding/pi-agents-flow",
+    "exists": true,
+    "name": "pi-agents-flow",
+    "markers": {
+      "git": true,
+      "package_json": true,
+      "pnpm_lock": false,
+      "yarn_lock": false,
+      "npm_lock": true,
+      "pyproject": false,
+      "requirements_txt": false,
+      "go_mod": false,
+      "cargo_toml": false,
+      "miniapp_app_json": false,
+      "miniapp_project_config": false,
+      "src_dir": true,
+      "pages_dir": false,
+      "components_dir": false
+    },
+    "package_manager": "npm",
+    "framework_hints": []
+  },
+  "bootstrap": {
+    "project_mode": "brownfield",
+    "recommended_action": "map-codebase",
+    "task_backend": "feishu",
+    "doc_backend": "feishu",
+    "doc_folder_name": "CodingAgents",
+    "doc_folder_token": "DTccfPZBble2LGd5taXcQ03knfe",
+    "doc_folder_url": "https://xcn8w8gj1s4u.feishu.cn/drive/folder/DTccfPZBble2LGd5taXcQ03knfe",
+    "project_doc_token": "QJt6dVTKhoJkjJxFsn5cAzIgniT",
+    "project_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/QJt6dVTKhoJkjJxFsn5cAzIgniT",
+    "requirements_doc_token": "JMGGdAdYMo6gZUxBQH9cxQkgnAy",
+    "requirements_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/JMGGdAdYMo6gZUxBQH9cxQkgnAy",
+    "roadmap_doc_token": "LaJcdgHeNodDWwxs198cXYv7nmc",
+    "roadmap_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/LaJcdgHeNodDWwxs198cXYv7nmc",
+    "state_doc_token": "VunrdZrHtojfnYxLjAzcP9longU",
+    "state_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/VunrdZrHtojfnYxLjAzcP9longU",
+    "notes": [
+      "brownfield 项目优先做 map-codebase，再补项目/路线图/状态文档。",
+      "greenfield 项目优先做 new-project，再进入任务拆解。",
+      "当前 task backend=feishu，doc backend=feishu。"
+    ]
+  },
+  "doc_index": {
+    "folder_name": "CodingAgents",
+    "folder_token": "DTccfPZBble2LGd5taXcQ03knfe",
+    "folder_url": "https://xcn8w8gj1s4u.feishu.cn/drive/folder/DTccfPZBble2LGd5taXcQ03knfe",
+    "project_doc_token": "QJt6dVTKhoJkjJxFsn5cAzIgniT",
+    "project_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/QJt6dVTKhoJkjJxFsn5cAzIgniT",
+    "requirements_doc_token": "JMGGdAdYMo6gZUxBQH9cxQkgnAy",
+    "requirements_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/JMGGdAdYMo6gZUxBQH9cxQkgnAy",
+    "roadmap_doc_token": "LaJcdgHeNodDWwxs198cXYv7nmc",
+    "roadmap_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/LaJcdgHeNodDWwxs198cXYv7nmc",
+    "state_doc_token": "VunrdZrHtojfnYxLjAzcP9longU",
+    "state_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/VunrdZrHtojfnYxLjAzcP9longU"
+  },
+  "open_tasks": [
+    {
+      "task_id": "T1",
+      "summary": "[T1] Surface machine-readable recommendedAction from workflow evaluate/quality",
+      "status": "todo",
+      "guid": "03e3228c-18ab-4fe9-b53e-eb8d79112b55",
+      "url": "https://applink.feishu.cn/client/todo/detail?guid=03e3228c-18ab-4fe9-b53e-eb8d79112b55&suite_entity_num=t101023",
+      "updated_at": "1786285007050",
+      "created_at": "1786285007007"
+    }
+  ],
+  "next_task": {
+    "task_id": "T1",
+    "summary": "[T1] Surface machine-readable recommendedAction from workflow evaluate/quality",
+    "status": "todo",
+    "guid": "03e3228c-18ab-4fe9-b53e-eb8d79112b55",
+    "url": "https://applink.feishu.cn/client/todo/detail?guid=03e3228c-18ab-4fe9-b53e-eb8d79112b55&suite_entity_num=t101023",
+    "updated_at": "1786285007050",
+    "created_at": "1786285007007"
+  },
+  "current_task": {
+    "task_id": "T1",
+    "summary": "[T1] Surface machine-readable recommendedAction from workflow evaluate/quality",
+    "status": "todo",
+    "guid": "03e3228c-18ab-4fe9-b53e-eb8d79112b55",
+    "url": "https://applink.feishu.cn/client/todo/detail?guid=03e3228c-18ab-4fe9-b53e-eb8d79112b55&suite_entity_num=t101023",
+    "description": "任务编号：T1\n创建时间：2026-08-09 22:16:46 CST\n类型：task\nRepo：/Users/hb00156/Documents/coding/pi-agents-flow\n\n需求：\n基于 optimization-report.md 的 P0 项。workflow.evaluate 和 workflow.quality 目前只返回自然语言 repair guidance，Supervisor 需要从多条 hint 里猜下一步。已完成 guidance.ts 的 recommendedAction 字段；需要 1) 贯通到 WorkflowControllerDetails 和 evaluate/quality 工具结果；2) 补单测验证 recommendedAction 的 kind/target/reason 与 nextAction 一致；3) 不破坏现有 guidance 文本输出。\n\n执行要求：\n- 以 task/doc 为主，不再依赖本地 task/context/state 文件。\n- 进度默认写评论，验收证据优先回填附件或评论。",
+    "updated_at": "1786285007050",
+    "completed_at": "0",
+    "attachments": [],
+    "tasklists": [
+      {
+        "section_guid": "0555dc98-7c33-576b-7db0-c43519a48ee1",
+        "tasklist_guid": "a3894c51-137e-4e7c-9c1d-abe72179b818"
+      }
+    ]
+  },
+  "recent_comments": []
+}

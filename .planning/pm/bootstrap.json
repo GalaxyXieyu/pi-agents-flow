@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-08-09T22:16:50+08:00",
+  "project": {
+    "name": "CodingAgents",
+    "repo_root": "/Users/hb00156/Documents/coding/pi-agents-flow",
+    "config_path": "/Users/hb00156/Documents/coding/pi-agents-flow/.planning/pm/pm.json",
+    "tasklist_name": "CodingAgents",
+    "tasklist_guid": "a3894c51-137e-4e7c-9c1d-abe72179b818",
+    "task_prefix": "T",
+    "kind": "task",
+    "task_backend": "feishu",
+    "doc_backend": "feishu"
+  },
+  "bootstrap": {
+    "project_mode": "brownfield",
+    "recommended_action": "map-codebase",
+    "task_backend": "feishu",
+    "doc_backend": "feishu",
+    "doc_folder_name": "CodingAgents",
+    "doc_folder_token": "DTccfPZBble2LGd5taXcQ03knfe",
+    "doc_folder_url": "https://xcn8w8gj1s4u.feishu.cn/drive/folder/DTccfPZBble2LGd5taXcQ03knfe",
+    "project_doc_token": "QJt6dVTKhoJkjJxFsn5cAzIgniT",
+    "project_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/QJt6dVTKhoJkjJxFsn5cAzIgniT",
+    "requirements_doc_token": "JMGGdAdYMo6gZUxBQH9cxQkgnAy",
+    "requirements_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/JMGGdAdYMo6gZUxBQH9cxQkgnAy",
+    "roadmap_doc_token": "LaJcdgHeNodDWwxs198cXYv7nmc",
+    "roadmap_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/LaJcdgHeNodDWwxs198cXYv7nmc",
+    "state_doc_token": "VunrdZrHtojfnYxLjAzcP9longU",
+    "state_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/VunrdZrHtojfnYxLjAzcP9longU",
+    "notes": [
+      "brownfield 项目优先做 map-codebase，再补项目/路线图/状态文档。",
+      "greenfield 项目优先做 new-project，再进入任务拆解。",
+      "当前 task backend=feishu，doc backend=feishu。"
+    ]
+  }
+}

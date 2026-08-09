@@ -1,0 +1,26 @@
+{
+  "generated_at": "2026-08-09T22:16:50+08:00",
+  "repo_scan": {
+    "root": "/Users/hb00156/Documents/coding/pi-agents-flow",
+    "exists": true,
+    "name": "pi-agents-flow",
+    "markers": {
+      "git": true,
+      "package_json": true,
+      "pnpm_lock": false,
+      "yarn_lock": false,
+      "npm_lock": true,
+      "pyproject": false,
+      "requirements_txt": false,
+      "go_mod": false,
+      "cargo_toml": false,
+      "miniapp_app_json": false,
+      "miniapp_project_config": false,
+      "src_dir": true,
+      "pages_dir": false,
+      "components_dir": false
+    },
+    "package_manager": "npm",
+    "framework_hints": []
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "project": {
+    "name": "CodingAgents"
+  },
+  "repo_root": "/Users/hb00156/Documents/coding/pi-agents-flow",
+  "task": {
+    "backend": "feishu",
+    "tasklist_name": "CodingAgents",
+    "prefix": "T",
+    "kind": "task",
+    "tasklist_guid": "a3894c51-137e-4e7c-9c1d-abe72179b818",
+    "tasklist_url": "https://applink.feishu.cn/client/todo/task_list?guid=a3894c51-137e-4e7c-9c1d-abe72179b818",
+    "default_assignee": "ou_e259415b8f68b3007c23920aa2f80ca2"
+  },
+  "doc": {
+    "backend": "feishu",
+    "folder_name": "CodingAgents",
+    "project_title": "PROJECT",
+    "requirements_title": "REQUIREMENTS",
+    "roadmap_title": "ROADMAP",
+    "state_title": "STATE",
+    "dry_run": false,
+    "folder_token": "DTccfPZBble2LGd5taXcQ03knfe",
+    "folder_url": "https://xcn8w8gj1s4u.feishu.cn/drive/folder/DTccfPZBble2LGd5taXcQ03knfe",
+    "folder_created": true,
+    "folder_status": "created",
+    "project": "PROJECT",
+    "requirements": "REQUIREMENTS",
+    "roadmap": "ROADMAP",
+    "state": "STATE",
+    "project_doc_token": "QJt6dVTKhoJkjJxFsn5cAzIgniT",
+    "requirements_doc_token": "JMGGdAdYMo6gZUxBQH9cxQkgnAy",
+    "roadmap_doc_token": "LaJcdgHeNodDWwxs198cXYv7nmc",
+    "state_doc_token": "VunrdZrHtojfnYxLjAzcP9longU",
+    "project_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/QJt6dVTKhoJkjJxFsn5cAzIgniT",
+    "requirements_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/JMGGdAdYMo6gZUxBQH9cxQkgnAy",
+    "roadmap_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/LaJcdgHeNodDWwxs198cXYv7nmc",
+    "state_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/VunrdZrHtojfnYxLjAzcP9longU",
+    "project_doc_status": "created",
+    "requirements_doc_status": "created",
+    "roadmap_doc_status": "created",
+    "state_doc_status": "created"
+  },
+  "feishu": {
+    "provider": "lark-cli",
+    "cli_profile": "",
+    "as": "user"
+  },
+  "coder": {
+    "backend": "acp",
+    "agent_id": "codex",
+    "timeout": 900,
+    "thinking": "high",
+    "session_key": "main"
+  },
+  "tasklist_name": "",
+  "task_prefix": "T",
+  "kind": "task",
+  "description_requirements": [
+    "以 task/doc 为主，不再依赖本地 task/context/state 文件。",
+    "进度默认写评论，验收证据优先回填附件或评论。"
+  ],
+  "repo": {
+    "root": "/Users/hb00156/Documents/coding/pi-agents-flow"
+  }
+}

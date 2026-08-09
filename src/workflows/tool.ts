@@ -201,6 +201,7 @@ const WorkflowParams = Type.Object({
 	language: Type.Optional(Type.String({ enum: ["auto", "zh", "en"], description: "Workflow UI/output language for action=start. Auto detects from the goal." })),
 	policy: Type.Optional(Type.Object({}, { additionalProperties: true, description: "Optional gate/evidence/quality policy overrides for action=start." })),
 	maxNodes: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_WORKFLOW_MAX_NODES, description: "Hard cumulative work-unit budget for the workflow (default 64)." })),
+	codingStage: Type.Optional(Type.String({ enum: ["plan", "build", "verify", "full"], description: "Coding preset stage for action=start. Loads the persisted Coding DAG (assumptions/planner/plan-check/executor/reviewer/verifier) instead of a free-form plan." })),
 	goal: Type.Optional(Type.String({ description: "User goal for action=start." })),
 	questions: Type.Optional(Type.Array(ClarificationQuestionParams, { minItems: 1, maxItems: 5 })),
 	brief: Type.Optional(ResearchBriefParams),
@@ -442,6 +443,7 @@ export function parseWorkflowActionParams(value: unknown): WorkflowActionParams 
 				...(value.language === "auto" || value.language === "zh" || value.language === "en" ? { language: value.language } : {}),
 				...(policy ? { policy } : {}),
 				...(typeof value.maxNodes === "number" ? { maxNodes: value.maxNodes } : {}),
+			...(value.codingStage === "plan" || value.codingStage === "build" || value.codingStage === "verify" || value.codingStage === "full" ? { codingStage: value.codingStage } : {}),
 			};
 		}
 		case "set_brief":

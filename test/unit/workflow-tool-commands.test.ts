@@ -490,6 +490,13 @@ describe("workflow tool and commands", () => {
 		assert.deepEqual(parseWorkflowActionParams({ action: "start", goal: "中文", language: "en" }), { action: "start", goal: "中文", language: "en" });
 	});
 
+	it("parses codingStage so the workflow tool can start the Coding preset", () => {
+		assert.deepEqual(parseWorkflowActionParams({ action: "start", goal: "修复认证流程", codingStage: "full" }), { action: "start", goal: "修复认证流程", codingStage: "full" });
+		assert.deepEqual(parseWorkflowActionParams({ action: "start", goal: "plan only", codingStage: "plan" }), { action: "start", goal: "plan only", codingStage: "plan" });
+		// Unknown stage is dropped, not coerced.
+		assert.deepEqual(parseWorkflowActionParams({ action: "start", goal: "bad", codingStage: "bogus" }), { action: "start", goal: "bad" });
+	});
+
 	it("parses persisted research briefs and detailed outlines", () => {
 		const brief = {
 			version: 0 as const,
