@@ -407,20 +407,40 @@ describe("subagent prompt runtime", () => {
 			assert.ok(execute, "structured_output tool should be registered");
 			assert.deepEqual(parameters, {
 				type: "object",
-				properties: {
-					value: { type: "object", required: ["ok"], properties: { ok: { type: "boolean" } } },
-					path: { type: "string", minLength: 1, description: "Absolute or current-working-directory-relative path to a JSON file containing the complete result." },
-					sha256: { type: "string", pattern: "^[A-Fa-f0-9]{64}$", description: "Optional SHA-256 digest of the referenced JSON file." },
-				},
-				oneOf: [
-					{ required: ["value"], not: { anyOf: [{ required: ["path"] }, { required: ["sha256"] }] } },
-					{ required: ["path"], not: { required: ["value"] } },
+				description: "Preferred shape: {value: <complete result>}. Compatibility also accepts a direct object result and JSON text in value; the runtime normalizes both before strict validation.",
+				anyOf: [
+					{
+						type: "object",
+						properties: {
+							value: {
+								description: "Complete inline result. Pass the JSON value directly, not encoded text.",
+								anyOf: [{ type: "object", required: ["ok"], properties: { ok: { type: "boolean" } } }, { type: "string" }],
+							},
+							path: { type: "string", minLength: 1, description: "Path to a JSON file containing the complete result. The file must already exist inside this run's submission directory." },
+							sha256: { type: "string", pattern: "^[A-Fa-f0-9]{64}$", description: "Optional SHA-256 digest of the referenced JSON file. Omit it unless computed from the actual file." },
+						},
+						oneOf: [
+							{ required: ["value"], not: { anyOf: [{ required: ["path"] }, { required: ["sha256"] }] } },
+							{ required: ["path"], not: { required: ["value"] } },
+						],
+						additionalProperties: false,
+					},
+					{ type: "object", required: ["ok"], properties: { ok: { type: "boolean" } } },
 				],
-				additionalProperties: false,
 			});
 			const result = await execute("tool-1", { value: { ok: true } });
 			assert.equal(result.terminate, true);
 			assert.deepEqual(JSON.parse(fs.readFileSync(outputPath, "utf-8")), { ok: true });
+
+			await execute("tool-compat-direct", { ok: true } as never);
+			assert.deepEqual(JSON.parse(fs.readFileSync(outputPath, "utf-8")), { ok: true });
+
+			await execute("tool-compat-string", { value: JSON.stringify({ ok: true }) });
+			assert.deepEqual(JSON.parse(fs.readFileSync(outputPath, "utf-8")), { ok: true });
+			await assert.rejects(
+				() => execute!("tool-compat-bad-string", { value: "{bad-json}" }),
+				/Pass the parsed JSON object directly/,
+			);
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}
@@ -478,7 +498,7 @@ describe("subagent prompt runtime", () => {
 			} as never);
 			assert.ok(execute);
 			await execute("tool-3", { path: sourcePath });
-			await assert.rejects(() => execute!("tool-4", { path: path.join(dir, "missing.json") }), /Failed to resolve structured output file/);
+			await assert.rejects(() => execute!("tool-4", { path: path.join(dir, "missing.json") }), /Structured output file not found/);
 			await assert.rejects(() => execute!("tool-5", { path: sourcePath, sha256: "0".repeat(64) }), /SHA-256 mismatch/);
 			await assert.rejects(() => execute!("tool-6", { value: { ok: true }, path: sourcePath }), /exactly one/);
 			fs.writeFileSync(sourcePath, JSON.stringify({ ok: "invalid" }), "utf-8");
@@ -510,7 +530,7 @@ describe("subagent prompt runtime", () => {
 				on() {},
 			} as never);
 			assert.ok(execute);
-			await assert.rejects(() => execute!("tool-8", { path: sourcePath }), /must be inside/);
+			await assert.rejects(() => execute!("tool-8", { path: sourcePath }), /outside this run's submission directory/);
 		} finally {
 			try { fs.unlinkSync(path.join(os.tmpdir(), `structured-outside-${process.pid}.json`)); } catch {}
 			fs.rmSync(dir, { recursive: true, force: true });
@@ -535,7 +555,7 @@ describe("subagent prompt runtime", () => {
 			}), "utf-8");
 			process.env[STRUCTURED_OUTPUT_SCHEMA_ENV] = schemaPath;
 			process.env[STRUCTURED_OUTPUT_CAPTURE_ENV] = outputPath;
-			let parameters = {} as { properties?: { value?: { properties?: { name?: { $ref?: string }; nested?: { properties?: { label?: { $ref?: string } } } } } } };
+			let parameters = {} as { anyOf?: Array<{ properties?: { value?: { anyOf?: Array<{ properties?: { name?: { $ref?: string }; nested?: { properties?: { label?: { $ref?: string } } } } }> } } }> };
 
 			registerSubagentPromptRuntime({
 				registerTool(tool: { name: string; parameters: unknown }) {
@@ -544,8 +564,8 @@ describe("subagent prompt runtime", () => {
 				on() {},
 			} as { registerTool(tool: { name: string; parameters: unknown }): void; on(): void });
 
-			assert.equal(parameters.properties?.value?.properties?.name?.$ref, "#/properties/value/$defs/item");
-			assert.equal(parameters.properties?.value?.properties?.nested?.properties?.label?.$ref, "#/properties/value/$defs/item");
+			assert.equal(parameters.anyOf?.[0]?.properties?.value?.anyOf?.[0]?.properties?.name?.$ref, "#/anyOf/0/properties/value/anyOf/0/$defs/item");
+			assert.equal(parameters.anyOf?.[0]?.properties?.value?.anyOf?.[0]?.properties?.nested?.properties?.label?.$ref, "#/anyOf/0/properties/value/anyOf/0/$defs/item");
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}

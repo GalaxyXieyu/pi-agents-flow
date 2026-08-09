@@ -83,7 +83,13 @@ function buildOutputContractGuide(contract: WorkflowDataContract, formatError?: 
 		"## Output contract — you MUST submit via structured_output",
 	];
 	if (formatError) {
-		lines.push("", `⚠️ PREVIOUS SUBMISSION FAILED FORMAT VALIDATION: ${formatError}`, "" ,"Fix the issues above and re-submit. Do NOT change the overall structure.");
+		lines.push(
+			"",
+			`PREVIOUS SUBMISSION FAILED FORMAT VALIDATION: ${formatError}`,
+			"",
+			"Do not repeat the invalid envelope. Keep the task content, but repair the submission shape and re-submit only through structured_output.",
+			"Use this exact outer shape: {\"value\":{\"version\":1,\"summary\":{...},\"outputs\":{...},\"diagnostics\":{...},\"recommendations\":[],\"evidence\":{...}}}",
+		);
 	}
 	for (const [name, port] of ports) {
 		const req = port.required ? "REQUIRED" : "optional";

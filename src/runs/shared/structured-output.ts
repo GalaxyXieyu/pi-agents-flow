@@ -34,6 +34,38 @@ export interface StructuredOutputCaptureDetails {
 	sha256: string;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Repair two common provider mistakes before the strict result validator runs:
+ * 1. submitting an object-schema result directly instead of under tool-level `value`;
+ * 2. JSON-encoding the result inside `value`.
+ *
+ * Canonical callers remain unchanged. File transport and ambiguous envelope-shaped
+ * inputs are never guessed.
+ */
+export function normalizeStructuredOutputSubmission(params: unknown): StructuredOutputSubmission {
+	if (!isRecord(params)) return { value: params };
+	const hasEnvelopeKey = ["value", "path", "sha256"].some((key) => Object.prototype.hasOwnProperty.call(params, key));
+	if (!hasEnvelopeKey) return { value: params };
+	const submission = { ...params } as StructuredOutputSubmission;
+	if (typeof submission.value !== "string") return submission;
+	const encoded = submission.value.trim();
+	if (!encoded.startsWith("{") && !encoded.startsWith("[")) return submission;
+	try {
+		submission.value = JSON.parse(encoded) as unknown;
+	} catch (error) {
+		throw new Error([
+			"Structured output `value` looks like JSON text but is not valid JSON.",
+			"Pass the parsed JSON object directly, not a quoted/JSON-encoded string.",
+			`Parse error: ${error instanceof Error ? error.message : String(error)}`,
+		].join(" "));
+	}
+	return submission;
+}
+
 const SCHEMA_MAP_KEYWORDS = ["properties", "patternProperties", "$defs", "definitions", "dependentSchemas"] as const;
 const SCHEMA_SINGLE_KEYWORDS = ["additionalItems", "additionalProperties", "contains", "not", "propertyNames", "if", "then", "else", "unevaluatedItems", "unevaluatedProperties", "contentSchema"] as const;
 const SCHEMA_ARRAY_KEYWORDS = ["allOf", "anyOf", "oneOf", "prefixItems"] as const;
@@ -78,26 +110,38 @@ function rewriteLocalJsonPointerRefs(schema: unknown, pointerPrefix: string, inh
 }
 
 export function createStructuredOutputToolParameters(schema: JsonSchemaObject): JsonSchemaObject {
+	const inlineSchema = rewriteLocalJsonPointerRefs(schema, "#/anyOf/0/properties/value/anyOf/0") as JsonSchemaObject;
+	const directSchema = rewriteLocalJsonPointerRefs(schema, "#/anyOf/1") as JsonSchemaObject;
 	return {
 		type: "object",
-		properties: {
-			value: rewriteLocalJsonPointerRefs(schema, "#/properties/value") as JsonSchemaObject,
-			path: {
-				type: "string",
-				minLength: 1,
-				description: "Absolute or current-working-directory-relative path to a JSON file containing the complete result.",
+		description: "Preferred shape: {value: <complete result>}. Compatibility also accepts a direct object result and JSON text in value; the runtime normalizes both before strict validation.",
+		anyOf: [
+			{
+				type: "object",
+				properties: {
+					value: {
+						description: "Complete inline result. Pass the JSON value directly, not encoded text.",
+						anyOf: [inlineSchema, { type: "string" }],
+					},
+					path: {
+						type: "string",
+						minLength: 1,
+						description: "Path to a JSON file containing the complete result. The file must already exist inside this run's submission directory.",
+					},
+					sha256: {
+						type: "string",
+						pattern: "^[A-Fa-f0-9]{64}$",
+						description: "Optional SHA-256 digest of the referenced JSON file. Omit it unless computed from the actual file.",
+					},
+				},
+				oneOf: [
+					{ required: ["value"], not: { anyOf: [{ required: ["path"] }, { required: ["sha256"] }] } },
+					{ required: ["path"], not: { required: ["value"] } },
+				],
+				additionalProperties: false,
 			},
-			sha256: {
-				type: "string",
-				pattern: "^[A-Fa-f0-9]{64}$",
-				description: "Optional SHA-256 digest of the referenced JSON file.",
-			},
-		},
-		oneOf: [
-			{ required: ["value"], not: { anyOf: [{ required: ["path"] }, { required: ["sha256"] }] } },
-			{ required: ["path"], not: { required: ["value"] } },
+			directSchema,
 		],
-		additionalProperties: false,
 	};
 }
 
@@ -170,6 +214,31 @@ export function createStructuredOutputRuntime(schema: JsonSchemaObject, baseDir?
 	return { schema, schemaPath, outputPath, submissionDir };
 }
 
+function structuralValidationHints(schema: unknown, value: unknown, valuePath = "root", hints: string[] = []): string[] {
+	if (hints.length >= 4 || !isRecord(schema)) return hints;
+	if (isRecord(value) && isRecord(schema.properties)) {
+		const properties = schema.properties;
+		if (schema.additionalProperties === false) {
+			const unexpected = Object.keys(value).filter((key) => !Object.prototype.hasOwnProperty.call(properties, key));
+			if (unexpected.length > 0) {
+				hints.push(`${valuePath}: unexpected field${unexpected.length === 1 ? "" : "s"} ${unexpected.map((key) => `'${key}'`).join(", ")}; allowed fields: ${Object.keys(properties).join(", ") || "none"}`);
+			}
+		}
+		if (Array.isArray(schema.required)) {
+			const missing = schema.required.filter((key): key is string => typeof key === "string" && !Object.prototype.hasOwnProperty.call(value, key));
+			if (missing.length > 0) hints.push(`${valuePath}: missing required field${missing.length === 1 ? "" : "s"} ${missing.map((key) => `'${key}'`).join(", ")}`);
+		}
+		for (const [key, nestedSchema] of Object.entries(properties)) {
+			if (hints.length >= 4) break;
+			if (Object.prototype.hasOwnProperty.call(value, key)) structuralValidationHints(nestedSchema, value[key], valuePath === "root" ? key : `${valuePath}.${key}`, hints);
+		}
+	}
+	if (Array.isArray(value) && isRecord(schema.items)) {
+		for (let index = 0; index < value.length && hints.length < 4; index++) structuralValidationHints(schema.items, value[index], `${valuePath}.${index}`, hints);
+	}
+	return hints;
+}
+
 export async function validateStructuredOutputValue(schema: JsonSchemaObject, value: unknown): Promise<{ status: "valid" } | { status: "invalid"; message: string }> {
 	const compile = await loadCompile();
 	let validator: CompiledJsonSchema;
@@ -179,13 +248,14 @@ export async function validateStructuredOutputValue(schema: JsonSchemaObject, va
 		return { status: "invalid", message: `invalid outputSchema: ${error instanceof Error ? error.message : String(error)}` };
 	}
 	if (validator.Check(value)) return { status: "valid" };
+	const hints = structuralValidationHints(schema, value);
 	const errors = [...validator.Errors(value)]
 		.slice(0, 8)
 		.map((error) => {
 			const pathText = error.instancePath ? error.instancePath.replace(/^\//, "").replace(/\//g, ".") : "root";
 			return `${pathText}: ${error.message}`;
 		});
-	return { status: "invalid", message: errors.join("; ") || "schema validation failed" };
+	return { status: "invalid", message: [...hints, ...errors].join("; ") || "schema validation failed" };
 }
 
 function isWithinRoot(filePath: string, rootPath: string): boolean {
@@ -218,9 +288,9 @@ export async function captureStructuredOutputSubmission(
 ): Promise<StructuredOutputCaptureDetails> {
 	const hasValue = Object.prototype.hasOwnProperty.call(submission, "value") && submission.value !== undefined;
 	const hasPath = Object.prototype.hasOwnProperty.call(submission, "path") && submission.path !== undefined;
-	if (hasValue && hasPath) throw new Error("Structured output must provide exactly one of `value` (inline result) or `path` (JSON file result), not both.");
-	if (!hasValue && !hasPath) throw new Error("Structured output must provide `value` (inline result) or a JSON file `path` (large result).");
-	if (!hasPath && submission.sha256 !== undefined) throw new Error("Structured output `sha256` is only valid with `path`.");
+	if (hasValue && hasPath) throw new Error("Structured output transport error: provide exactly one of `value` (the complete inline result) or `path` (a file containing the complete result), not both. Do not send `value: null` with `path`.");
+	if (!hasValue && !hasPath) throw new Error("Structured output transport error: provide exactly one top-level transport field: `value` for the complete inline result, or `path` for a complete-result JSON file.");
+	if (!hasPath && submission.sha256 !== undefined) throw new Error("Structured output transport error: `sha256` is only valid with `path`; omit it for inline `value` submissions.");
 
 	let value: unknown;
 	let content: string | Buffer;
@@ -228,13 +298,13 @@ export async function captureStructuredOutputSubmission(
 	if (hasPath) {
 		if (typeof submission.path !== "string" || !submission.path.trim()) throw new Error("Structured output `path` must be a non-empty string.");
 		const requestedPath = path.resolve(process.cwd(), submission.path);
+		const submissionRoot = fs.realpathSync(runtime.submissionDir ?? path.join(path.dirname(runtime.outputPath), "submissions"));
 		try {
 			sourcePath = fs.realpathSync(requestedPath);
 		} catch (error) {
-			throw new Error(`Failed to resolve structured output file: ${error instanceof Error ? error.message : String(error)}`);
+			throw new Error(`Structured output file not found at '${requestedPath}'. First write one JSON file containing the complete result inside '${submissionRoot}', then submit that existing file's path. Do not submit an output-slot path or a guessed staging path. Cause: ${error instanceof Error ? error.message : String(error)}`);
 		}
-		const submissionRoot = fs.realpathSync(runtime.submissionDir ?? path.join(path.dirname(runtime.outputPath), "submissions"));
-		if (!isWithinRoot(sourcePath, submissionRoot)) throw new Error("Structured output file must be inside this run's structured-output submission directory.");
+		if (!isWithinRoot(sourcePath, submissionRoot)) throw new Error(`Structured output file '${sourcePath}' is outside this run's submission directory '${submissionRoot}'. Tool-level path must reference a complete-result JSON file inside that directory, not a workflow output-slot file.`);
 		let descriptor: number | undefined;
 		try {
 			descriptor = fs.openSync(sourcePath, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));

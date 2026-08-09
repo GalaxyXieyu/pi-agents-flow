@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { resolveCompileFromPackageRoot, validateStructuredOutputValue } from "../../src/runs/shared/structured-output.ts";
+import { createStructuredOutputToolParameters, normalizeStructuredOutputSubmission, resolveCompileFromPackageRoot, validateStructuredOutputValue } from "../../src/runs/shared/structured-output.ts";
 import type { JsonSchemaObject } from "../../src/shared/types.ts";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -153,5 +153,50 @@ test("validateStructuredOutputValue validates values against a JSON Schema", asy
 	};
 	const invalid = await validateStructuredOutputValue(schema, {});
 	assert.equal(invalid.status, "invalid");
-	assert.ok(invalid.status === "invalid" && invalid.message.length > 0);
+	assert.match(invalid.status === "invalid" ? invalid.message : "", /missing required field 'a'/);
+
+	const unexpected = await validateStructuredOutputValue(schema, { a: 1, extra: true });
+	assert.match(unexpected.status === "invalid" ? unexpected.message : "", /unexpected field 'extra'.*allowed fields: a/);
+});
+
+test("structured_output tool parameters admit canonical and repairable weak-model shapes", async () => {
+	const resultSchema: JsonSchemaObject = {
+		type: "object",
+		properties: { version: { const: 1 } },
+		required: ["version"],
+		additionalProperties: false,
+	};
+	const toolSchema = createStructuredOutputToolParameters(resultSchema);
+	for (const value of [
+		{ value: { version: 1 } },
+		{ value: JSON.stringify({ version: 1 }) },
+		{ version: 1 },
+		{ path: "/submission/result.json" },
+	]) {
+		assert.deepEqual(await validateStructuredOutputValue(toolSchema, value), { status: "valid" });
+	}
+	for (const value of [
+		{},
+		{ sha256: "0".repeat(64) },
+		{ value: { version: 1 }, path: "/submission/result.json" },
+		{ value: { version: 1 }, sha256: "0".repeat(64) },
+	]) {
+		assert.equal((await validateStructuredOutputValue(toolSchema, value)).status, "invalid");
+	}
+});
+
+test("normalizeStructuredOutputSubmission repairs common weak-model envelope mistakes", () => {
+	assert.deepEqual(normalizeStructuredOutputSubmission({ version: 1, summary: {} }), {
+		value: { version: 1, summary: {} },
+	});
+	assert.deepEqual(normalizeStructuredOutputSubmission({ value: JSON.stringify({ version: 1 }) }), {
+		value: { version: 1 },
+	});
+	assert.deepEqual(normalizeStructuredOutputSubmission({ path: "/tmp/result.json" }), {
+		path: "/tmp/result.json",
+	});
+	assert.throws(
+		() => normalizeStructuredOutputSubmission({ value: "{not-json}" }),
+		/looks like JSON text.*Pass the parsed JSON object directly/,
+	);
 });

@@ -5,7 +5,7 @@ import { registerNativeSupervisorClient } from "../../intercom/native-supervisor
 import { consumeSteerRequestsFromDir, steerAckPathFromDir, writeSteerAckAt, writeSteerCapabilityAt, writeSteerRequestToDir, type SteerRequest } from "../background/control-channel.ts";
 import { SUBAGENT_CHILD_AGENT_ENV, SUBAGENT_CHILD_INDEX_ENV, SUBAGENT_FANOUT_CHILD_ENV, SUBAGENT_STEER_ACK_DIR_ENV, SUBAGENT_STEER_CAPABILITY_ENV, SUBAGENT_STEER_INBOX_ENV } from "./pi-args.ts";
 import { RUNTIME_EXTENSION_ACK_EVENT, RUNTIME_EXTENSION_ACK_PATH_ENV, isRuntimeAcknowledgedExtensionId, writeRuntimeAcknowledgedExtensions } from "./runtime-acknowledged-extensions.ts";
-import { captureStructuredOutputSubmission, createStructuredOutputToolParameters, STRUCTURED_OUTPUT_CAPTURE_ENV, STRUCTURED_OUTPUT_SCHEMA_ENV, STRUCTURED_OUTPUT_SUBMISSION_DIR_ENV, type StructuredOutputSubmission } from "./structured-output.ts";
+import { captureStructuredOutputSubmission, createStructuredOutputToolParameters, normalizeStructuredOutputSubmission, STRUCTURED_OUTPUT_CAPTURE_ENV, STRUCTURED_OUTPUT_SCHEMA_ENV, STRUCTURED_OUTPUT_SUBMISSION_DIR_ENV, type StructuredOutputSubmission } from "./structured-output.ts";
 import {
 	CHILD_TOOL_DIAGNOSTIC_PATH_ENV,
 	MCP_DIRECT_CHILD_TOOLS_ENV,
@@ -28,11 +28,13 @@ const SUBAGENT_INHERIT_SKILLS_ENV = "PI_SUBAGENT_INHERIT_SKILLS";
 export const SUBAGENT_INTERCOM_SESSION_NAME_ENV = "PI_SUBAGENT_INTERCOM_SESSION_NAME";
 
 const STRUCTURED_OUTPUT_INSTRUCTIONS = [
-	"This subagent step has a strict structured output contract.",
-	"Your final action must call `structured_output` with its required `value` field.",
-	"For small results, put the result in `value` as a JSON object/array directly — never as a JSON-encoded string. For large results, write one complete schema-valid JSON value under the submission directory named below, then call with only its `path` (omit `value`) and optional `sha256`; do not duplicate long content inside the tool call.",
-	"Match every nested schema shape exactly. In particular, preserve object arrays as objects rather than summarizing them into strings, and use [] when an optional collection has no entries.",
-	"Before submitting, check every required field and nested required field against the tool schema. Do not rely on prose-only completion.",
+	"This subagent step has a strict structured output contract. Your final action must call `structured_output`.",
+	"The tool has a TRANSPORT ENVELOPE. Choose exactly one transport:",
+	"INLINE (preferred): call with {\"value\": <the complete schema-valid result object>}",
+	"FILE (only for a large result): first write one JSON file containing the complete schema-valid result under the submission directory named below, then call with {\"path\": \"<that existing file>\"}. Add sha256 only if you actually computed it.",
+	"Do not place result fields beside tool-level `value` or `path`. Do not pass both. Do not use `value: null` with `path`. Do not JSON-stringify `value`.",
+	"Tool-level `path` is not an output-port path and not a guessed capture/staging path. It must be an existing complete-result JSON file inside the submission directory.",
+	"Match every nested schema shape exactly. Preserve object arrays as objects, use [] for empty collections, and check every required nested field. Do not rely on prose-only completion.",
 ].join("\n");
 
 export const CHILD_SUBAGENT_BOUNDARY_INSTRUCTIONS = [
@@ -443,7 +445,7 @@ export default function registerSubagentPromptRuntime(pi: ExtensionAPI): void {
 		registerTool({
 			name: "structured_output",
 			label: "Structured Output",
-			description: "Submit the required final result as a JSON object/array in `value` (pass it directly, not as a JSON-encoded string). For a large result, omit `value` and instead provide `path` to a schema-valid JSON file under the submission directory plus optional `sha256`. Provide exactly one of `value` or `path`. A valid submission terminates the step.",
+			description: "Submit the complete result through one transport envelope. Preferred: {value: <complete JSON result>} with the JSON object passed directly. For a large result only: {path: <existing complete-result JSON file inside the submission directory>} and optional computed sha256. Never place result fields beside value/path, never pass value and path together, and never guess a capture/output-slot path. A valid submission terminates the step.",
 			parameters: parameters as never,
 			async execute(_id: string, params: StructuredOutputSubmission) {
 				const details = await captureStructuredOutputSubmission({
@@ -451,7 +453,7 @@ export default function registerSubagentPromptRuntime(pi: ExtensionAPI): void {
 					schemaPath: structuredSchemaPath,
 					outputPath: structuredOutputPath,
 					...(structuredSubmissionDir ? { submissionDir: structuredSubmissionDir } : {}),
-				}, params);
+				}, normalizeStructuredOutputSubmission(params));
 				return {
 					content: [{ type: "text", text: "Structured output captured." }],
 					details,

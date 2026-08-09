@@ -2,10 +2,11 @@ import { MAX_WORKFLOW_EXTENSION_BYTES, MAX_WORKFLOW_SUMMARY_BYTES, jsonBytes } f
 import type { WorkflowDataContract, WorkflowFinding, WorkflowJsonValue, WorkflowResult, WorkflowSearchTrace } from "./types.ts";
 
 export const WORKFLOW_RESULT_SUBMISSION_GUIDE = [
-	"Return WorkflowResult through structured_output.",
+	"Return the complete WorkflowResult through the tool-level structured_output envelope: {value:{version:1,summary:{...},outputs:{...},diagnostics:{...},recommendations:[...],evidence:{...}}}.",
+	"The outer tool `value` contains the COMPLETE WorkflowResult. Do not place version, summary, outputs, diagnostics, recommendations, evidence, or extensions beside that outer `value`.",
+	"Inside WorkflowResult.outputs, submit each declared port using {kind:'value', value:...} or {kind:'file', path:'...', sha256:'...'}; these inner port fields are different from the outer tool transport.",
 	"summary.text is a bounded semantic summary, never the complete document or dataset.",
-	"Submit every declared output port in outputs using {kind:'value', value:...} or {kind:'file', path:'...', sha256:'...'}.",
-	"Large text, documents, logs, and datasets must use a file submission written exactly to that port's preallocated output slot path (listed under Output slots); report that path unchanged.",
+	"Large text, documents, logs, and datasets must use an inner file-port submission written exactly to that port's preallocated output slot path (listed under Output slots); report that path unchanged.",
 	"Use diagnostics for gaps, conflicts, and warnings. Research profiles also return evidence.findings and evidence.search.",
 ].join("\n");
 
