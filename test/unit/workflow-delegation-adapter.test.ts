@@ -8,6 +8,7 @@ import {
 	type SubagentDelegationRequest,
 } from "../../src/api/delegation.ts";
 import { CODING_PREAPPROVAL_READONLY_ANNOTATION } from "../../src/workflows/coding-preset.ts";
+import { DEFAULT_WORKFLOW_CHILD_TURN_BUDGET } from "../../src/runs/shared/turn-budget.ts";
 import {
 	buildWorkflowDelegationRequest,
 	createWorkflowDelegationAdapter,
@@ -178,7 +179,7 @@ describe("workflow delegation adapter", () => {
 		const result = await adapter.run(run, nodeWithoutBudget, attempt);
 		assert.equal(result.ok, true);
 		const request = events.emitted.find((entry) => entry.event === SUBAGENT_DELEGATION_REQUEST_EVENT)?.data as SubagentDelegationRequest;
-		assert.deepEqual(request.turnBudget, { maxTurns: 25, graceTurns: 1 });
+		assert.deepEqual(request.turnBudget, { maxTurns: DEFAULT_WORKFLOW_CHILD_TURN_BUDGET, graceTurns: 1 });
 	});
 
 	it("resolves the default turn-budget grace before preflight", async () => {

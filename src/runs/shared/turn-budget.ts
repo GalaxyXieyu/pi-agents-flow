@@ -2,8 +2,20 @@ import type { ResolvedTurnBudget, TurnBudgetState } from "../../shared/types.ts"
 
 export const DEFAULT_TURN_BUDGET_GRACE_TURNS = 1;
 
-/** Conservative default turn budget for workflow child delegations lacking an explicit turnBudget. */
-export const DEFAULT_WORKFLOW_CHILD_TURN_BUDGET = 25;
+/**
+ * Default turn budget for workflow child delegations lacking an explicit
+ * turnBudget.
+ *
+ * Raised from 25 to 100 because 25+1 turns is too tight for substantive
+ * writer nodes: in dynamic-workflow runs, real implementation writers (writing
+ * dependency-cruiser configs, runtime path checkers, diagnostic contracts)
+ * routinely spent all 25 turns reading baseline/design inputs and exploring the
+ * repo before writing any file, then got stopped at turn 26. 100 keeps a soft
+ * budget ceiling in place (guarding against unbounded executors that accumulate
+ * 400k+ tokens and cause the taqu provider to drop the stream) while giving
+ * writers enough headroom.
+ */
+export const DEFAULT_WORKFLOW_CHILD_TURN_BUDGET = 100;
 
 export function resolveTurnBudgetConfig(
 	raw: unknown,
