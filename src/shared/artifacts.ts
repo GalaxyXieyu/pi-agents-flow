@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { TEMP_ARTIFACTS_DIR, type ArtifactPaths, type ArtifactDirPreference } from "./types.ts";
 import { getAgentDir } from "./utils.ts";
 import {
+	ensureProjectRuntimeRoot,
 	getPreferredProjectRuntimeRoot,
 	getProjectArtifactsRoot,
 	getProjectChainRunsRoot,
@@ -12,6 +13,7 @@ const CLEANUP_MARKER_FILE = ".last-cleanup";
 
 /** Project runtime root used for new writes (`<cwd>/.pi/agents-flow`). */
 export function getProjectSubagentsDir(cwd: string): string {
+	ensureProjectRuntimeRoot(cwd);
 	return getPreferredProjectRuntimeRoot(cwd);
 }
 
@@ -21,10 +23,12 @@ export function resolveProjectSubagentsDir(cwd: string): string {
 }
 
 export function getProjectArtifactsDir(cwd: string): string {
+	ensureProjectRuntimeRoot(cwd);
 	return getProjectArtifactsRoot(cwd, "write");
 }
 
 export function getProjectChainRunsDir(cwd: string): string {
+	ensureProjectRuntimeRoot(cwd);
 	return getProjectChainRunsRoot(cwd, "write");
 }
 

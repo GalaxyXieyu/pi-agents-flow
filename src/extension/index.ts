@@ -22,6 +22,7 @@ import { Box, Container, Spacer, Text, truncateToWidth, visibleWidth, wrapTextWi
 import { discoverAgents } from "../agents/agents.ts";
 import { ensureAccessibleDir } from "../shared/accessible-dir.ts";
 import { cleanupAllArtifactDirs, cleanupOldArtifacts, getArtifactsDir } from "../shared/artifacts.ts";
+import { ensureProjectRuntimeRoot } from "../shared/project-runtime.ts";
 import { resolveCurrentSessionId } from "../shared/session-identity.ts";
 import { cleanupOldChainDirs } from "../shared/settings.ts";
 import { clearLegacyResultAnimationTimer, renderSubagentResult } from "../tui/render.ts";
@@ -207,6 +208,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	const asyncByDefault = config.asyncByDefault === true;
 	const tempArtifactsDir = getArtifactsDir(null);
 	cleanupAllArtifactDirs(DEFAULT_ARTIFACT_CONFIG.cleanupDays);
+	// Best-effort migrate legacy project runtime when extension loads in a project cwd.
+	try {
+		if (process.cwd()) ensureProjectRuntimeRoot(process.cwd());
+	} catch {
+		// Non-fatal: later write paths also migrate.
+	}
 
 	const state: SubagentState = {
 		baseCwd: "",

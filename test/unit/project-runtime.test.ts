@@ -5,11 +5,13 @@ import * as path from "node:path";
 import { afterEach, describe, it } from "node:test";
 
 import {
+	ensureProjectRuntimeRoot,
 	getLegacyProjectRuntimeRoot,
 	getPreferredProjectRuntimeRoot,
 	getProjectArtifactsRoot,
 	getProjectCompositionsDir,
 	getProjectWorkflowsDir,
+	migrateLegacyProjectRuntime,
 	resolveProjectRuntimeRoot,
 } from "../../src/shared/project-runtime.ts";
 import {
@@ -59,3 +61,33 @@ describe("project runtime under .pi/agents-flow", () => {
 		assert.equal(resolveProjectRuntimeRoot(cwd), preferred);
 	});
 });
+
+	it("migrates a legacy tree into .pi/agents-flow when preferred is absent", () => {
+		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-runtime-migrate-"));
+		dirs.push(cwd);
+		const legacy = getLegacyProjectRuntimeRoot(cwd);
+		const preferred = getPreferredProjectRuntimeRoot(cwd);
+		fs.mkdirSync(path.join(legacy, "workflows"), { recursive: true });
+		fs.writeFileSync(path.join(legacy, "workflows", "run.json"), "{\"id\":1}");
+		const result = migrateLegacyProjectRuntime(cwd);
+		assert.equal(result.status, "migrated");
+		assert.equal(fs.existsSync(legacy), false);
+		assert.equal(fs.existsSync(path.join(preferred, "workflows", "run.json")), true);
+		// Second call is a no-op.
+		assert.equal(migrateLegacyProjectRuntime(cwd).status, "noop");
+	});
+
+	it("does not clobber an existing preferred tree during migration", () => {
+		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-runtime-keep-"));
+		dirs.push(cwd);
+		const legacy = getLegacyProjectRuntimeRoot(cwd);
+		const preferred = getPreferredProjectRuntimeRoot(cwd);
+		fs.mkdirSync(path.join(legacy, "workflows"), { recursive: true });
+		fs.writeFileSync(path.join(legacy, "workflows", "old.json"), "{}");
+		fs.mkdirSync(path.join(preferred, "workflows"), { recursive: true });
+		fs.writeFileSync(path.join(preferred, "workflows", "new.json"), "{}");
+		const result = ensureProjectRuntimeRoot(cwd);
+		assert.equal(result.status, "noop");
+		assert.equal(fs.existsSync(path.join(preferred, "workflows", "new.json")), true);
+		assert.equal(fs.existsSync(path.join(legacy, "workflows", "old.json")), true);
+	});

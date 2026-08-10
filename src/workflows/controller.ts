@@ -32,7 +32,7 @@ import { createWorkflowScheduler, type WorkflowScheduler } from "./scheduler.ts"
 import { resolveWorkflowPolicy, type WorkflowPolicy } from "./policy.ts";
 import { assessWorkflowQuality, formatWorkflowQualityReport, type WorkflowQualityReport } from "./quality.ts";
 import { createWorkflowStore, type WorkflowStore } from "./store.ts";
-import { getProjectWorkflowsDir } from "../shared/project-runtime.ts";
+import { ensureProjectRuntimeRoot, getProjectWorkflowsDir } from "../shared/project-runtime.ts";
 import type { WorkflowTodoAdapterResult } from "./todo-adapter.ts";
 import { buildWorkflowTodoProjection, type WorkflowTodoProjection } from "./todo-projection.ts";
 import type { DocumentOutline, ResearchBrief, WorkflowResult, WorkflowClarificationQuestion, WorkflowClarificationRound, WorkflowContinuationState, WorkflowEvent, WorkflowMode, WorkflowTaskPlan, WorkflowWorkUnitPlan, WorkflowRun } from "./types.ts";
@@ -73,7 +73,10 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 	const createRunId = options.createRunId ?? (() => randomUUID());
 	const createEventId = options.createEventId ?? (() => randomUUID());
 	const resolveBranch = options.resolveBranch ?? defaultBranch;
-	const rootDir = options.rootDir ?? ((cwd: string) => getProjectWorkflowsDir(cwd, "write"));
+	const rootDir = options.rootDir ?? ((cwd: string) => {
+		ensureProjectRuntimeRoot(cwd);
+		return getProjectWorkflowsDir(cwd, "write");
+	});
 	const storeFor = (cwd: string): WorkflowStore => createWorkflowStore({ rootDir: rootDir(cwd) });
 	// Resolved once: process-level defaults must not drift between transitions.
 	const extensionConfig = loadConfig();

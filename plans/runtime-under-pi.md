@@ -41,3 +41,13 @@ No automatic file move (keeps user data safe). Options:
 ## Why not dump files directly in `.pi/`?
 
 `.pi/` already holds Pi project settings, goals, agents, etc. A dedicated `agents-flow/` leaf keeps plugin runtime separate from Pi core config while still living under the single project `.pi` umbrella the user asked for.
+
+## Automatic migration
+
+On write paths and extension load, `ensureProjectRuntimeRoot(cwd)` calls
+`migrateLegacyProjectRuntime(cwd)`:
+
+1. If `.pi-agents-flow` exists and `.pi/agents-flow` does not → rename (or copy+remove) legacy → preferred.
+2. If preferred already exists → leave both alone (no clobber).
+3. Path preflight does **not** create empty runtime dirs; only real writers mkdir leaves.
+

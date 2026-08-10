@@ -54,6 +54,82 @@ export function getProjectRuntimeRootForWrite(cwd: string): string {
 	return getPreferredProjectRuntimeRoot(cwd);
 }
 
+export type ProjectRuntimeMigrationResult =
+	| { status: "noop"; reason: "no-legacy" | "preferred-exists" | "same-path" }
+	| { status: "migrated"; from: string; to: string }
+	| { status: "failed"; from: string; to: string; error: string };
+
+const migratedCwds = new Set<string>();
+
+/**
+ * Best-effort one-time move of a legacy `.pi-agents-flow` tree into
+ * `.pi/agents-flow` for this process/cwd.
+ *
+ * Safety:
+ * - never overwrites an existing preferred tree
+ * - never deletes the legacy tree unless rename/copy fully succeeds
+ * - failures are non-fatal so runtime can still write to the preferred path
+ */
+export function migrateLegacyProjectRuntime(cwd: string): ProjectRuntimeMigrationResult {
+	const preferred = getPreferredProjectRuntimeRoot(cwd);
+	const legacy = getLegacyProjectRuntimeRoot(cwd);
+	if (preferred === legacy) return { status: "noop", reason: "same-path" };
+
+	const legacyExists = (() => {
+		try { return fs.statSync(legacy).isDirectory(); } catch { return false; }
+	})();
+	if (!legacyExists) {
+		migratedCwds.add(cwd);
+		return { status: "noop", reason: "no-legacy" };
+	}
+
+	const preferredExists = (() => {
+		try { return fs.existsSync(preferred); } catch { return false; }
+	})();
+	if (preferredExists) {
+		migratedCwds.add(cwd);
+		return { status: "noop", reason: "preferred-exists" };
+	}
+
+	// Avoid hammering rename after a successful migrate in this process.
+	if (migratedCwds.has(cwd) && !legacyExists) {
+		return { status: "noop", reason: "no-legacy" };
+	}
+
+	try {
+		fs.mkdirSync(path.dirname(preferred), { recursive: true });
+		fs.renameSync(legacy, preferred);
+		migratedCwds.add(cwd);
+		return { status: "migrated", from: legacy, to: preferred };
+	} catch (renameError) {
+		// Cross-device rename can fail; fall back to recursive copy then remove legacy.
+		try {
+			fs.cpSync(legacy, preferred, { recursive: true, errorOnExist: true, force: false });
+			fs.rmSync(legacy, { recursive: true, force: true });
+			migratedCwds.add(cwd);
+			return { status: "migrated", from: legacy, to: preferred };
+		} catch (copyError) {
+			const error = copyError instanceof Error ? copyError.message : String(copyError);
+			const renameMsg = renameError instanceof Error ? renameError.message : String(renameError);
+			return {
+				status: "failed",
+				from: legacy,
+				to: preferred,
+				error: `rename failed (${renameMsg}); copy failed (${error})`,
+			};
+		}
+	}
+}
+
+/**
+ * Best-effort legacy migration only.
+ * Does not create an empty preferred tree — leaf writers mkdir when they actually persist files,
+ * so path preflight / dry launches do not litter the project with empty runtime dirs.
+ */
+export function ensureProjectRuntimeRoot(cwd: string): ProjectRuntimeMigrationResult {
+	return migrateLegacyProjectRuntime(cwd);
+}
+
 export function getProjectWorkflowsDir(cwd: string, mode: "read" | "write" = "write"): string {
 	const root = mode === "write" ? getProjectRuntimeRootForWrite(cwd) : resolveProjectRuntimeRoot(cwd);
 	return path.join(root, "workflows");

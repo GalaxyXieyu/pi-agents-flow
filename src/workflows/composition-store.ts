@@ -18,6 +18,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
+	ensureProjectRuntimeRoot,
 	getLegacyProjectRuntimeRoot,
 	getPreferredProjectRuntimeRoot,
 } from "../shared/project-runtime.ts";
@@ -90,6 +91,7 @@ export interface RenderedComposition {
 }
 
 export function compositionsDir(cwd: string): string {
+	ensureProjectRuntimeRoot(cwd);
 	return path.join(getPreferredProjectRuntimeRoot(cwd), "compositions");
 }
 
