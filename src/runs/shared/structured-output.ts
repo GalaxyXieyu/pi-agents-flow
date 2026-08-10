@@ -331,7 +331,19 @@ export async function captureStructuredOutputSubmission(
 	}
 
 	const validation = await validateStructuredOutputValue(runtime.schema, value);
-	if (validation.status === "invalid") throw new Error(`Structured output validation failed: ${validation.message}`);
+	if (validation.status === "invalid") {
+		// T2 hardening: when a text/document string is submitted as the inline
+		// `value` but the outputSchema expects a JSON object, surface an explicit
+		// corrective hint instead of a bare "root: must be object". Models (esp.
+		// weaker ones) frequently dump markdown/report prose as the value and need
+		// to be told it must be the JSON object described by outputSchema, not prose.
+		const expectsString = runtime.schema.type === "string" || (Array.isArray(runtime.schema.type) && runtime.schema.type.includes("string"));
+		const proseHint =
+			!expectsString && typeof value === "string" && !value.trim().startsWith("{") && !value.trim().startsWith("[")
+				? " The submitted `value` is a string that does not look like JSON — it appears to be document/prose text. structured_output expects the complete result as the JSON object described by outputSchema (e.g. {summary:{...}, diagnostics:{...}}), never a markdown report or narrative. Provide the structured JSON object directly in `value`."
+				: "";
+		throw new Error(`Structured output validation failed: ${validation.message}${proseHint}`);
+	}
 	const canonicalContent = JSON.stringify(value);
 	if (canonicalContent === undefined) throw new Error("Structured output must be JSON-serializable.");
 	atomicWriteFile(runtime.outputPath, canonicalContent);

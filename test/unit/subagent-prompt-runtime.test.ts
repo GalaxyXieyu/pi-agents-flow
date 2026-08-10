@@ -463,6 +463,13 @@ describe("subagent prompt runtime", () => {
 				() => execute!("tool-compat-bad-string", { value: "{bad-json}" }),
 				/Pass the parsed JSON object directly/,
 			);
+			// T2: a markdown/prose string submitted as `value` must surface an explicit
+			// corrective hint (not a bare "root: must be object") so weaker models stop
+			// dumping report text into the structured result.
+			await assert.rejects(
+				() => execute!("tool-prose", { value: "# pi-coding-agent report\n\n## Abstract\nThis is prose." }),
+				/does not look like JSON.*document\/prose text.*JSON object/,
+			);
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}
