@@ -40,7 +40,10 @@ describe("workflow skills and agents", () => {
 			assert.deepEqual(result.contract.skills.requested, ["deep-research"]);
 			assert.equal(result.contract.skills.resolved[0]?.name, "deep-research");
 			assert.match(result.contract.skills.resolved[0]?.path ?? "", /skills\/deep-research\/SKILL\.md$/);
-			assert.equal(result.contract.tools.effectiveAllowlist.includes("web_search"), false);
+			// Runtime defaults include web tools for every child; research-writer does not declare them.
+			assert.equal(result.contract.tools.effectiveAllowlist.includes("web_search"), true);
+			assert.equal(result.contract.tools.effectiveAllowlist.includes("read"), true);
+			assert.equal(result.contract.tools.effectiveAllowlist.includes("write"), true);
 		}
 	});
 });
