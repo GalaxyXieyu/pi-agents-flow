@@ -10,6 +10,14 @@ export const ACTIVITY_DOCK_WIDGET_KEY = "pi-agents-flow-activity-dock";
 
 const TERMINAL = new Set<ActivityState>(["completed", "accepted", "failed", "cancelled", "superseded"]);
 
+/**
+ * True when the bound workflow run has reached a terminal lifecycle state, i.e.
+ * it is no longer active/paused and no further scheduling can occur.
+ */
+function isWorkflowTerminal(status: string | undefined): boolean {
+	return status === "completed" || status === "stopped" || status === "failed";
+}
+
 type Theme = ExtensionContext["ui"]["theme"];
 
 export interface ActivityDockState {
@@ -152,7 +160,9 @@ function dockSummaryLine(snapshot: ActivitySnapshot, theme: Theme, width: number
 	const zh = snapshot.language === "zh";
 	const parts = [
 		snapshot.workflow ? (zh ? "工作流" : "Workflow") : undefined,
-		`${running} ${zh ? "运行" : "running"}`,
+		// Omit a stale "0 running" once nothing is live — a finished workflow should
+		// read as "Workflow N done", never "Workflow 0 running".
+		running > 0 ? `${running} ${zh ? "运行" : "running"}` : undefined,
 		`${done} ${zh ? "完成" : "done"}`,
 		failed > 0 ? `${failed} ${zh ? "失败" : "failed"}` : undefined,
 	].filter((part): part is string => Boolean(part));
@@ -365,6 +375,14 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 				const hasNewAgent = previousSnapshot !== undefined && nextAgentRows.some((row) => !previousAgentKeys.has(row.key));
 				snapshot = nextSnapshot;
 				if (!perspective) perspective = nextPerspective;
+				// Workflow finished: a terminal run (completed/stopped/failed) should not
+				// leave the dock expanded showing a stale "workflow running" roster.
+				// Auto-collapse to the single-line summary so the dock stops occupying
+				// vertical space once the run is over.
+				if (nextSnapshot.workflow && isWorkflowTerminal(nextSnapshot.workflow.status)) {
+					active = false;
+					expandedKey = undefined;
+				}
 				// Keep the live Agents roster pinned to its newest/highest-priority row
 				// only while the user is already following the head (or the dock is
 				// inactive). Once the user navigates down, refreshes must not steal focus.
