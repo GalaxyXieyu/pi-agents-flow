@@ -282,7 +282,7 @@ export function buildWorkflowRepairGuidance(
 			promptHints: [
 				"Do not call complete until evaluation.readyToComplete is true.",
 				"If the review identifies document defects, add a new editor revision that depends on the accepted editor and review; then add a new reviewer that depends on that editor. Neither node uses replaces because accepted nodes are immutable audit history.",
-				"If residual gaps/conflicts are deliberately acceptable, add a new reviewer of the final editor with extensions.release.release=true and the specific gapsAccepted/conflictsAccepted flags. Do not replace the accepted reviewer.",
+				"If residual gaps/conflicts are deliberately acceptable, add a new reviewer of the final editor and instruct it (in agentSpec.instructions) to return extensions.release={release:true, gapsAccepted?, conflictsAccepted?, rationale} in its result when it passes — do not declare extensions.release on the planning dataContract (that field is decorative and never read for release gating). Do not replace the accepted reviewer.",
 			],
 		});
 	}

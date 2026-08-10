@@ -93,6 +93,9 @@ export function assertWorkflowDataContract(plan: WorkflowWorkUnitPlan): void {
 	}
 	if (contract.extensions) {
 		for (const [name, value] of Object.entries(contract.extensions)) {
+			if (name === "release" || (typeof value === "object" && value !== null && !Array.isArray(value) && (value as Record<string, unknown>).release === true)) {
+				throw new Error(`Work unit '${plan.id}' dataContract.extensions.${name} declares a release gate, but release gates are returned by the Reviewer child in its result (extensions.release={release:true, ...}); plan-level declarations are decorative and never read for release gating. Remove it from the plan and instruct the Reviewer in agentSpec.instructions instead.`);
+			}
 			if (!EXTENSION_NAME.test(name)) throw new Error(`Work unit '${plan.id}' extension '${name}' must use namespace/name@version.`);
 			assertJsonValue(value, `Work unit '${plan.id}' dataContract.extensions.${name}`);
 		}

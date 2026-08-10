@@ -93,6 +93,31 @@ describe("WorkflowDataContract", () => {
 		})));
 	});
 
+	it("rejects a plan-level release gate and points to the Reviewer-result mechanism", () => {
+		const base = { version: 1, profile: "generic" as const, inputs: [], outputs: { result: outputPort() } };
+		// A bare `release` key is both unnamespaced and a release attempt.
+		assert.throws(
+			() => assertWorkflowDataContract(plan("consumer", [], { ...base, extensions: { release: { release: true, gapsAccepted: true } } })),
+			/release gates are returned by the Reviewer child in its result/,
+		);
+		// A namespaced name whose value is release-shaped is also rejected with the same hint.
+		assert.throws(
+			() => assertWorkflowDataContract(plan("consumer", [], { ...base, extensions: { "pi/review@1": { release: true, conflictsAccepted: true } } })),
+			/release gates are returned by the Reviewer child in its result/,
+		);
+	});
+
+	it("still rejects truly unnamespaced metadata keys with the existing message", () => {
+		assert.throws(
+			() => assertWorkflowDataContract(plan("consumer", [], {
+				version: 1, profile: "generic", inputs: [],
+				outputs: { result: outputPort() },
+				extensions: { note: "free-form" },
+			})),
+			/must use namespace\/name@version/,
+		);
+	});
+
 	it("resolves escaped JSON Pointer tokens and rejects missing paths", () => {
 		const value = { data: { "a/b": { "~key": ["zero", "one"] } } };
 		assert.equal(selectJsonPointer(value, "/data/a~1b/~0key/1"), "one");
