@@ -6,11 +6,18 @@
 - Project runtime data now writes under `<cwd>/.pi/agents-flow/` (workflows, compositions, artifacts, chain-runs). Legacy `<cwd>/.pi-agents-flow/` is auto-migrated on extension load / write paths; split trees merge missing entries without overwriting conflicts, partial-copy failures roll back, and persisted legacy absolute paths are remapped to the preferred runtime.
 
 ### Refactor stabilization
+- Raised the default workflow child turn budget from 25 to 100 turns: real implementation writers routinely exhausted 25+1 turns reading inputs and exploring the repo before writing any file. The soft ceiling stays to guard against unbounded executors (400k+ token streams dropped by the provider).
 - Restored deterministic workflow child turn budgets in both preflight and the emitted delegation request.
 - Reduced the extracted executor contract module to type-only dependencies and removed a validation type-import regression.
 - Hardened runtime WorkflowResult parsing to enforce the same nested shapes, enums, unknown-field policy, and SHA-256 format advertised by the structured schema.
 - Fixed compact TUI rendering so only true async-launch cards collapse; errors and explicitly expanded management output remain visible.
 - Closed workflow state-machine gaps for running replacement targets, unrecoverable waiting attempts, and custom `requireWriter` blocker guidance.
+
+### Dependency governance
+- Added architecture dependency governance with `dependency-cruiser@18.1.1`: a repo-level `.dependency-cruiser.cjs` config (7 error + 2 advisory `forbidden` rules for low-noise checks such as unresolved/undeclared modules, `src` importing `test`/`scripts`, production modules importing the extension entrypoint, and `runs/shared` gaining foreground deps), a `check:runtime-paths` script that field-level audits the runtime tree for stale legacy `.pi-agents-flow` path fields (skipping immutable `objects/**` and historical prose), and `check-dependency-baseline.mjs` that pins the three known historical SCCs as an exact-subset baseline (no growth allowed, not a blanket ignore). CI combination is `check:deps:ci`; `typescript` was added as a devDependency because dependency-cruiser needs it to parse `.ts` imports.
+
+### Workflow diagnostics
+- Added a versioned, metadata-only structured diagnostics foundation under `src/workflows/diagnostics/` for Phase 0-1: a 49-code `DiagnosticCode` catalog and TypeBox-validated event envelope (`types.ts`/`schema.ts`), allowlist-first redaction with 24 forbidden keys covering prompt/task/output/stdout/stderr/env/token/secret/raw path (`redaction.ts`), a non-authoritative best-effort sidecar sink with monotonic sequence, deterministic event IDs, hash chaining, corruption tolerance, and an allowlist safety gate before every write (`sink.ts`), a replayable lifecycle projector (`projector.ts`), and a deterministic `RunAuditV1` projection (`audit.ts`). Diagnostic events never enter the authoritative `events.jsonl` and never capture raw content; unit tests cover contract, redaction, sink, and run-audit.
 
 ### Alpha release
 - Renamed the entire project to Pi Agents Flow / `pi-agents-flow`, including the npm package, source and skill directories, `.pi-agents-flow` runtime data, protocol and registry namespaces, profile paths, diagnostics, screenshots, CI paths, and package-discovery metadata. This Alpha does not migrate state written under earlier project names.
