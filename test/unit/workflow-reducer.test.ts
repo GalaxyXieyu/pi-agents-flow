@@ -229,6 +229,25 @@ describe("workflow reducer", () => {
 		}), /must be accepted before supersession/);
 	});
 
+	it("rejects accepting a declarative replacement while its target is still running", () => {
+		let run = reduceWorkflowEvents([started, { ...planned, workUnits: [planned.workUnits[0]!] }]);
+		run = reduceWorkflowEvent(run, {
+			id: "event-plan-running-replacement",
+			type: "workflow.plan_applied",
+			at: 3,
+			tasks: [{ id: "task-replacement", label: "Replacement", order: 1 }],
+			workUnits: [{ ...planned.workUnits[0]!, id: "research-v2", taskId: "task-replacement", label: "Replacement", order: 0, replaces: "research-a", agentSpec: agentSpec("agent-research-v2", "researcher"), dataContract: researchContract() }],
+		});
+		run = reduceWorkflowEvent(run, { id: "event-start-old-running", type: "node.started", at: 4, nodeId: "research-a", attempt: { attemptId: "research-a:1", requestId: "request-old", number: 1, startedAt: 4 } });
+		run = reduceWorkflowEvent(run, { id: "event-start-v2-running-target", type: "node.started", at: 5, nodeId: "research-v2", attempt: { attemptId: "research-v2:1", requestId: "request-v2", number: 1, startedAt: 5 } });
+		run = reduceWorkflowEvent(run, { id: "event-complete-v2-running-target", type: "node.completed", at: 6, nodeId: "research-v2", attemptId: "research-v2:1", result: makeResult("replacement") });
+		assert.throws(
+			() => reduceWorkflowEvent(run, { id: "event-accept-v2-running-target", type: "node.accepted", at: 7, nodeId: "research-v2", decision: "accepted" }),
+			/stop the running attempt before accepting its replacement/,
+		);
+		assert.equal(run.nodes["research-a"]?.status, "running");
+	});
+
 	it("rejects dependency cycles before mutating the run", () => {
 		const run = reduceWorkflowEvents([started]);
 		assert.throws(

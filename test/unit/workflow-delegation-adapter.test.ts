@@ -141,7 +141,44 @@ describe("workflow delegation adapter", () => {
 			assert.equal(result.launchContractDigest, "digest-1");
 			assert.equal(result.response.status, "completed");
 		}
+		const emittedRequest = events.emitted.find((entry) => entry.event === SUBAGENT_DELEGATION_REQUEST_EVENT)?.data as SubagentDelegationRequest;
+		assert.deepEqual(emittedRequest.turnBudget, { maxTurns: 8, graceTurns: 1 });
 		assert.equal(events.emitted.filter((entry) => entry.event === SUBAGENT_DELEGATION_REQUEST_EVENT).length, 1);
+	});
+
+	it("emits the normalized default workflow child turn budget", async () => {
+		const events = new FakeEvents();
+		const adapter = createWorkflowDelegationAdapter({
+			events,
+			preflight: async () => ({ ok: true, agent: "researcher", launchContractDigest: "digest-default-budget" }),
+		});
+		events.on(SUBAGENT_DELEGATION_REQUEST_EVENT, (data) => {
+			const request = data as SubagentDelegationRequest;
+			queueMicrotask(() => events.emit(SUBAGENT_DELEGATION_RESPONSE_EVENT, {
+				version: 2,
+				requestId: request.requestId,
+				ownerRunId: request.ownerRunId,
+				nodeId: request.nodeId,
+				status: "completed",
+				result: { kind: "structured", value: {
+					version: 1,
+					summary: { text: "done", covers: [], omissions: [], confidence: "high" },
+					outputs: { result: { kind: "value", value: "done" } },
+					diagnostics: { gaps: [], conflicts: [], warnings: [] },
+					recommendations: [],
+					evidence: { findings: [] },
+				} },
+			}));
+		});
+		const nodeWithoutBudget: WorkflowNode = {
+			...node,
+			agentSpec: { ...node.agentSpec, turnBudget: undefined },
+		};
+
+		const result = await adapter.run(run, nodeWithoutBudget, attempt);
+		assert.equal(result.ok, true);
+		const request = events.emitted.find((entry) => entry.event === SUBAGENT_DELEGATION_REQUEST_EVENT)?.data as SubagentDelegationRequest;
+		assert.deepEqual(request.turnBudget, { maxTurns: 25, graceTurns: 1 });
 	});
 
 	it("resolves the default turn-budget grace before preflight", async () => {

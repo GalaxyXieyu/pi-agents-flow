@@ -104,6 +104,38 @@ describe("workflow store", () => {
 		assert.deepEqual(registered.eventResult.extensions, result.extensions);
 	});
 
+	it("remaps legacy runtime paths when hydrating immutable result artifacts", () => {
+		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-store-remap-"));
+		tempDirs.push(cwd);
+		const rootDir = path.join(cwd, ".pi", "agents-flow", "workflows");
+		const store = createWorkflowStore({ rootDir });
+		store.create({ id: "workflow-remap", mode: "general", goal: "Remap", cwd, sessionId: "session-1", branch: "main", at: 1 });
+		const workUnit = {
+			id: "worker", taskId: "task-main", kind: "custom" as const, label: "worker", order: 0, dependsOn: [],
+			agentSpec: { id: "agent-worker", baseAgent: "worker", role: "worker", objective: "work", instructions: "work", context: "fresh" as const },
+			dataContract: { version: 1 as const, profile: "generic" as const, inputs: [], outputs: { result: { mediaType: "application/json", description: "result", storage: "artifact" as const, required: true, classification: "internal" as const } } },
+		};
+		store.append("workflow-remap", { id: "plan", type: "workflow.plan_applied", at: 2, tasks: [{ id: "task-main", label: "Main", order: 0 }], workUnits: [workUnit] });
+		store.append("workflow-remap", { id: "started", type: "node.started", at: 3, nodeId: "worker", attempt: { attemptId: "worker:1", requestId: "request-worker", number: 1, startedAt: 3 } });
+		const legacyRoot = path.join(cwd, ".pi-agents-flow");
+		const result: WorkflowResult = {
+			version: 1,
+			summary: { text: `${legacyRoot}-backup must not be rewritten`, covers: [], omissions: [], confidence: "high" },
+			outputs: { result: { kind: "file", path: path.join(legacyRoot, "workflows", "workflow-remap", "artifacts", "staging", "result") } },
+			diagnostics: { gaps: [], conflicts: [], warnings: [] },
+			recommendations: [],
+		};
+		const artifactStore = createLocalWorkflowArtifactStore(store.paths("workflow-remap").artifacts);
+		const resultArtifact = artifactStore.put({ workflowId: "workflow-remap", nodeId: "worker", attemptId: "worker:1", port: "workflow-result", mediaType: "application/json", content: JSON.stringify(result) });
+		const originalBytes = fs.readFileSync(resultArtifact.storage.materializedPath);
+		store.append("workflow-remap", { id: "completed", type: "node.completed", at: 4, nodeId: "worker", attemptId: "worker:1", result: { ...result, outputs: {} }, resultArtifact, outputs: {} });
+		const loaded = store.load("workflow-remap");
+		assert.match(loaded.nodes.worker?.result?.outputs.result?.path ?? "", /\.pi\/agents-flow/);
+		assert.doesNotMatch(loaded.nodes.worker?.result?.outputs.result?.path ?? "", /\.pi-agents-flow/);
+		assert.match(loaded.nodes.worker?.result?.summary.text ?? "", /\.pi-agents-flow-backup/);
+		assert.deepEqual(fs.readFileSync(resultArtifact.storage.materializedPath), originalBytes);
+	});
+
 	it("fails closed when an event log is missing its workflow.started event", () => {
 		const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-store-invalid-"));
 		tempDirs.push(rootDir);

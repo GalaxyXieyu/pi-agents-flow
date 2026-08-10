@@ -6,6 +6,7 @@ import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import { ASYNC_DIR, INTERCOM_DETACH_REQUEST_EVENT, RESULTS_DIR, SUBAGENT_ASYNC_STARTED_EVENT, SUBAGENT_FOREGROUND_COMPLETE_EVENT } from "../../src/shared/types.ts";
 import { waitForSubagents } from "../../src/runs/background/subagent-wait.ts";
 import { sessionLeaseDir } from "../../src/runs/shared/session-lease.ts";
+import { SUBAGENT_DEFAULT_TOOLS } from "../../src/runs/shared/pi-args.ts";
 import type { MockPi } from "../support/helpers.ts";
 import {
 	createMockPi,
@@ -869,7 +870,7 @@ describe("intercom result delivery cutover", { skip: !available ? "executor not 
 			const args = await readMockCallArgs(0);
 			assert.equal(args[args.indexOf("--session") + 1], sessionFile);
 			assert.equal(args[args.indexOf("--model") + 1], "anthropic/claude-sonnet-4:high");
-			assert.equal(args[args.indexOf("--tools") + 1], "read");
+			assert.equal(args[args.indexOf("--tools") + 1], SUBAGENT_DEFAULT_TOOLS.join(","));
 			assert.equal(args.includes("--system-prompt"), true);
 			assert.equal(args.includes("--append-system-prompt"), false);
 			await waitForFile(path.join(RESULTS_DIR, `${revivedId}.json`));

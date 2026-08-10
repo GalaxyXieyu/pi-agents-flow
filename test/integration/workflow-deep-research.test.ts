@@ -19,7 +19,7 @@ function outputPortForKind(kind: WorkflowNodeKind): "result" | "document" | "rev
 
 function envelope(
 	summary: string,
-	options: { gap?: boolean; conflict?: boolean; findings?: boolean; port?: "result" | "document" | "review" } = {},
+	options: { gap?: boolean; conflict?: boolean; findings?: boolean; port?: "result" | "document" | "review"; release?: boolean } = {},
 ): WorkflowResult {
 	const sourceUrl = `https://example.test/${summary.toLowerCase().replace(/\s+/g, "-")}`;
 	const port = options.port ?? "result";
@@ -41,6 +41,7 @@ function envelope(
 			}],
 			search: { queries: [`${summary} primary source`], fetchedUrls: [sourceUrl], droppedSources: [] },
 		},
+		...(options.release ? { extensions: { release: { release: true, rationale: "Integration reviewer approved the final editor document." } } } : {}),
 	};
 }
 
@@ -120,7 +121,7 @@ describe("dynamic Deep Research workflow integration", () => {
 		mockPi.onCall({ output: "background written", structuredOutput: envelope(backgroundSection, { findings: false, port: "document" }), delay: 30 });
 		mockPi.onCall({ output: "technical written", structuredOutput: envelope(technicalSection, { findings: false, port: "document" }), delay: 30 });
 		mockPi.onCall({ output: "edited", structuredOutput: envelope(finalMarkdown, { findings: false, port: "document" }) });
-		mockPi.onCall({ output: "reviewed", structuredOutput: envelope("Review passed", { port: "review" }) });
+		mockPi.onCall({ output: "reviewed", structuredOutput: envelope("Review passed", { port: "review", release: true }) });
 
 		const events = createEventBus();
 		const runtimeHandlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => Promise<void> | void>>();

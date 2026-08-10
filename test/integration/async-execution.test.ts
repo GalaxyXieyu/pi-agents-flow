@@ -25,6 +25,7 @@ import { registerSubagentCapabilityCeiling } from "../../src/api/capability-ceil
 import { resolveSubagentLaunchContract } from "../../src/api/preflight.ts";
 import { discoverAgents } from "../../src/agents/agents.ts";
 import { runSync } from "../../src/runs/foreground/execution.ts";
+import { SUBAGENT_DEFAULT_TOOLS } from "../../src/runs/shared/pi-args.ts";
 
 interface LaunchResolvedExtensions {
 	version?: number;
@@ -768,7 +769,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			assert.deepEqual(status.capabilityCeiling, payload.capabilityCeiling);
 			assert.deepEqual(status.steps?.[0]?.capabilityCeiling, payload.capabilityCeiling);
 			assert.deepEqual(payload.capabilityAudit?.effectiveTools, ["read"]);
-			assert.deepEqual(payload.capabilityAudit?.removedTools, ["write", "intercom", "contact_supervisor"]);
+			assert.deepEqual(payload.capabilityAudit?.removedTools, [...SUBAGENT_DEFAULT_TOOLS.filter((tool) => tool !== "read"), "intercom"]);
 			assert.equal(payload.capabilityAudit?.extensionsDenied, true);
 			const events = fs.readFileSync(path.join(ASYNC_DIR, asyncId, "events.jsonl"), "utf-8").trim().split("\n").map((line) => JSON.parse(line));
 			assert.ok(events.some((event) => event.type === "subagent.capability-ceiling.applied" && event.stepIndex === 0 && event.capabilityAudit?.removedTools?.includes("write")));
@@ -777,7 +778,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf-8")) as { launchContractDigest?: string; capabilityCeiling?: unknown; capabilityAudit?: { removedTools?: string[] } };
 			assert.equal(metadata.launchContractDigest, payload.results[0]?.launchContractDigest);
 			assert.deepEqual(metadata.capabilityCeiling, payload.capabilityCeiling);
-			assert.deepEqual(metadata.capabilityAudit?.removedTools, ["write", "intercom", "contact_supervisor"]);
+			assert.deepEqual(metadata.capabilityAudit?.removedTools, payload.capabilityAudit?.removedTools);
 		} finally {
 			handle.dispose();
 		}
@@ -2301,7 +2302,12 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.equal(payload.state, "failed");
 		assert.equal(payload.timedOut, true);
 		assert.equal(payload.results.at(-1)?.timedOut, true);
-		assert.equal(payload.results.at(-1)?.acceptance, undefined);
+		const timedOutAcceptance = payload.results.at(-1)?.acceptance;
+		assert.notEqual(timedOutAcceptance?.status, "verified");
+		if (timedOutAcceptance) {
+			assert.equal(timedOutAcceptance.status, "rejected");
+			assert.ok(timedOutAcceptance.runtimeChecks.some((check) => check.id === "timeout" && check.status === "failed"));
+		}
 		assert.equal(dynamicNode?.status, "failed");
 		assert.match(dynamicNode?.error ?? "", /Subagent timed out after 1000ms\./);
 		assert.notEqual(dynamicNode?.acceptanceStatus, "verified");

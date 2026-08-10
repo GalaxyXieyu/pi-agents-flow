@@ -7,9 +7,11 @@ import { afterEach, describe, it } from "node:test";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { WorkflowDelegationAdapter } from "../../src/workflows/delegation-adapter.ts";
 import { createWorkflowBinding } from "../../src/workflows/branch-binding.ts";
+import { createLocalWorkflowArtifactStore } from "../../src/workflows/artifact-store.ts";
 import { buildCodingWorkflowPlan } from "../../src/workflows/coding-preset.ts";
 import { createWorkflowController, WORKFLOW_BINDING_ENTRY_TYPE, type WorkflowController } from "../../src/workflows/controller.ts";
 import { workflowProfileForKind } from "../../src/workflows/plan-rules.ts";
+import { resolveWorkflowPolicy } from "../../src/workflows/policy.ts";
 import { createWorkflowStore } from "../../src/workflows/store.ts";
 import type { WorkflowResult, WorkflowWorkUnitPlan } from "../../src/workflows/types.ts";
 import { evaluateWorkflow } from "../../src/workflows/gates.ts";
@@ -78,6 +80,9 @@ function fakeContext(cwd: string, entries: unknown[]): ExtensionContext {
 			getSessionId: () => "session-1",
 			getSessionFile: () => path.join(cwd, "session.jsonl"),
 			getBranch: () => entries,
+		},
+		modelRegistry: {
+			getAvailable: () => [],
 		},
 	} as unknown as ExtensionContext;
 }
@@ -1168,12 +1173,42 @@ describe("workflow controller", () => {
 		assert.match(recovered?.nodes["research-a"]?.attempts[0]?.error ?? "", /wait deadline/i);
 	});
 
+	it("fails closed when a waiting child has neither recovery metadata nor a deadline", () => {
+		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-controller-wait-metadata-"));
+		tempDirs.push(cwd);
+		const rootDir = path.join(cwd, ".pi/agents-flow", "workflows");
+		const store = createWorkflowStore({ rootDir });
+		store.create({ id: "workflow-wait-metadata", mode: "general", goal: "Recover safely", cwd, sessionId: "session-1", branch: "main", at: 1 });
+		store.append("workflow-wait-metadata", { id: "plan", type: "workflow.plan_applied", at: 2, tasks: [{ id: "task-main", label: "Main", order: 0 }], workUnits: [planNode("research-a")] });
+		store.append("workflow-wait-metadata", { id: "started", type: "node.started", at: 3, nodeId: "research-a", attempt: { attemptId: "research-a:1", requestId: "request-metadata", number: 1, startedAt: 3 } });
+		const waiting = store.append("workflow-wait-metadata", { id: "waiting", type: "node.waiting", at: 4, nodeId: "research-a", attemptId: "research-a:1", reason: "detached", childRunId: "child-without-metadata" });
+		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [{ type: "custom", customType: WORKFLOW_BINDING_ENTRY_TYPE, data: createWorkflowBinding(waiting) }];
+		const controller = createWorkflowController({
+			adapter: { async run() { return { ok: false, stage: "transport", error: "unused" }; } },
+			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
+			now: () => 50,
+			resolveBranch: () => "main",
+		});
+		const recovered = controller.recover(fakeContext(cwd, entries));
+		assert.equal(recovered?.nodes["research-a"]?.status, "failed");
+		assert.match(recovered?.nodes["research-a"]?.attempts[0]?.error ?? "", /without a recovery metadata path or wait deadline/);
+	});
+
 	it("preserves the last editor draft when Deep Research auto-stops after 3 quality-gate failures", async () => {
 		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-draft-stop-"));
 		tempDirs.push(cwd);
 		const rootDir = path.join(cwd, ".pi/agents-flow", "workflows");
 		const store = createWorkflowStore({ rootDir });
-		const run = store.create({ id: "workflow-draft", mode: "deep-research", goal: "Draft preservation", cwd, sessionId: "session-1", branch: "main", at: 1 });
+		const run = store.create({
+			id: "workflow-draft",
+			mode: "deep-research",
+			goal: "Draft preservation",
+			cwd,
+			sessionId: "session-1",
+			branch: "main",
+			at: 1,
+			policy: resolveWorkflowPolicy("deep-research", { qualityEnforcement: "strict", evidenceMode: "web" }),
+		});
 		const runId = run.id;
 		store.append(runId, { id: "brief", type: "workflow.brief_set", at: 2, brief: {
 			version: 0, audience: "Engineers", purpose: "Decision", scope: "Architecture", depth: "deep", deliverable: "research-report",
@@ -1203,7 +1238,8 @@ describe("workflow controller", () => {
 		acceptNode("research-c", "research", researchResult("research-c"), []);
 		const shortDoc = "# Report\n\n## Background\n\nShort background.\n\n## Mechanism\n\nShort mechanism.";
 		const editorResult: WorkflowResult = { version: 1, summary: { text: shortDoc, covers: [], omissions: [], confidence: "high" }, outputs: { document: { kind: "value", value: shortDoc } }, diagnostics: { gaps: [], conflicts: [], warnings: [] }, recommendations: [], evidence: { findings: [] } };
-		const editorAttemptOutputs = { document: { kind: "inline" as const, mediaType: "text/markdown", bytes: shortDoc.length, classification: "internal" as const, value: shortDoc } };
+		const editorDocument = createLocalWorkflowArtifactStore(store.paths(runId).artifacts).put({ workflowId: runId, nodeId: "editor", attemptId: "editor:1", port: "document", mediaType: "text/markdown", classification: "internal", content: shortDoc });
+		const editorAttemptOutputs = { document: { kind: "artifact" as const, artifact: editorDocument } };
 		acceptNode("section-a", "section-writer", { ...editorResult }, ["research-a", "research-b"]);
 		acceptNode("section-b", "section-writer", { ...editorResult }, ["research-a", "research-c"]);
 		acceptNode("editor", "editor", editorResult, ["section-a", "section-b"], editorAttemptOutputs);
@@ -1218,7 +1254,7 @@ describe("workflow controller", () => {
 		let stopped = false;
 		let lastError = "";
 		for (let i = 0; i < 3 && !stopped; i++) {
-			try { await controller.execute({ action: "complete", runId, nodeId: "editor", port: "document", digest: "x" }, ctx); }
+			try { await controller.execute({ action: "complete", runId, nodeId: "editor", port: "document", digest: editorDocument.sha256 }, ctx); }
 			catch (error) { lastError = String(error); if (/auto-stopped/i.test(lastError)) stopped = true; }
 		}
 		assert.equal(stopped, true, `expected auto-stop, last error: ${lastError}`);

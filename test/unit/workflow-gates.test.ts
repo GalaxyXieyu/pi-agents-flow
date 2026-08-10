@@ -59,6 +59,31 @@ describe("workflow completion gates", () => {
 		assert.equal(evaluateWorkflow(workflow).nextAction, "wait_for_subagents");
 	});
 
+	it("reports the missing accepted Writer when a custom policy requires one", () => {
+		const research = node("research", "research", "accepted");
+		const workflow: WorkflowRun = {
+			version: 1,
+			id: "workflow-require-writer",
+			mode: "general",
+			goal: "Synthesize",
+			cwd: "/repo",
+			sessionId: "session-1",
+			branch: "main",
+			status: "active",
+			revision: 1,
+			createdAt: 1,
+			updatedAt: 1,
+			nodes: { research },
+			decisions: [],
+			appliedEventIds: ["started"],
+		};
+		const base = evaluateWorkflow(workflow).policy;
+		workflow.policy = { ...base, gates: { ...base.gates, requireWriter: true } };
+		const evaluation = evaluateWorkflow(workflow);
+		assert.equal(evaluation.readyToComplete, false);
+		assert.ok(evaluation.completionBlockers.includes("an accepted Writer is required by policy"));
+	});
+
 	it("allows explicitly rejected obsolete nodes when replacement section Writers, Editor, and Reviewer are accepted", () => {
 		const nodes = [
 			node("research-a", "research", "accepted"),

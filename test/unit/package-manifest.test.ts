@@ -18,10 +18,10 @@ const hostPeerPackages = [
 	"@earendil-works/pi-tui",
 ] as const;
 const expectedHostPeerRanges = {
-	"@earendil-works/pi-agent-core": ">=0.81.0 <0.82.0",
-	"@earendil-works/pi-ai": ">=0.81.0 <0.82.0",
-	"@earendil-works/pi-coding-agent": ">=0.81.0 <0.82.0",
-	"@earendil-works/pi-tui": ">=0.81.0 <0.82.0",
+	"@earendil-works/pi-agent-core": ">=0.81.0",
+	"@earendil-works/pi-ai": ">=0.81.0",
+	"@earendil-works/pi-coding-agent": ">=0.81.0",
+	"@earendil-works/pi-tui": ">=0.81.0",
 } satisfies Record<(typeof hostPeerPackages)[number], string>;
 const expectedHostDevVersions = {
 	"@earendil-works/pi-agent-core": "0.81.0",
