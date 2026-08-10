@@ -113,35 +113,37 @@ function buildBaseline(runs: SearchBenchmarkRun[]): { generatedAt: string; varia
 
 // ── CLI ─────────────────────────────────────────────────────────────────────
 
-const args = process.argv.slice(2);
-const variantIndex = args.indexOf("--variant");
-const jsonIndex = args.indexOf("--json");
-const humanIndex = args.indexOf("--human");
-const variant = variantIndex >= 0 ? args[variantIndex + 1]?.trim() || "runtime-planned" : "runtime-planned";
-const jsonPath = jsonIndex >= 0 ? args[jsonIndex + 1]?.trim() : undefined;
-const wantHuman = humanIndex >= 0;
-const positionalArgs = args.filter((arg, index) => {
-	if (arg === "--variant" || arg === "--json" || arg === "--human") return false;
-	if (index === variantIndex + 1 || index === jsonIndex + 1) return false;
-	return true;
-});
-const runDirs = positionalArgs.map((dir) => path.resolve(dir));
+if (import.meta.main) {
+	const args = process.argv.slice(2);
+	const variantIndex = args.indexOf("--variant");
+	const jsonIndex = args.indexOf("--json");
+	const humanIndex = args.indexOf("--human");
+	const variant = variantIndex >= 0 ? args[variantIndex + 1]?.trim() || "runtime-planned" : "runtime-planned";
+	const jsonPath = jsonIndex >= 0 ? args[jsonIndex + 1]?.trim() : undefined;
+	const wantHuman = humanIndex >= 0;
+	const positionalArgs = args.filter((arg, index) => {
+		if (arg === "--variant" || arg === "--json" || arg === "--human") return false;
+		if (index === variantIndex + 1 || index === jsonIndex + 1) return false;
+		return true;
+	});
+	const runDirs = positionalArgs.map((dir) => path.resolve(dir));
 
-if (runDirs.length === 0) {
-	process.stderr.write("Usage: npm run benchmark:workflow -- [--variant name] [--json <path>] [--human] <workflow-run-dir> [...]\n");
-	process.exitCode = 1;
-} else {
-	const fixtures = questions();
-	const runs = runDirs.map((runDir) => loadRun(runDir, fixtures, variant));
-	if (jsonPath) {
-		fs.writeFileSync(jsonPath, JSON.stringify(buildBaseline(runs), null, 2));
-		process.stdout.write(`Baseline written to ${jsonPath}\n`);
-	}
-	if (wantHuman) {
-		process.stdout.write(`${humanSummary(runs)}\n\n`);
-	}
-	// Default: markdown table + JSON summary to stdout (unless only --json was requested)
-	if (!jsonPath || wantHuman) {
-		process.stdout.write(`${markdown(runs)}\n\n${JSON.stringify(summarizeSearchBenchmarkRuns(runs), null, 2)}\n`);
+	if (runDirs.length === 0) {
+		process.stderr.write("Usage: npm run benchmark:workflow -- [--variant name] [--json <path>] [--human] <workflow-run-dir> [...]\n");
+		process.exitCode = 1;
+	} else {
+		const fixtures = questions();
+		const runs = runDirs.map((runDir) => loadRun(runDir, fixtures, variant));
+		if (jsonPath) {
+			fs.writeFileSync(jsonPath, JSON.stringify(buildBaseline(runs), null, 2));
+			process.stdout.write(`Baseline written to ${jsonPath}\n`);
+		}
+		if (wantHuman) {
+			process.stdout.write(`${humanSummary(runs)}\n\n`);
+		}
+		// Default: markdown table + JSON summary to stdout (unless only --json was requested)
+		if (!jsonPath || wantHuman) {
+			process.stdout.write(`${markdown(runs)}\n\n${JSON.stringify(summarizeSearchBenchmarkRuns(runs), null, 2)}\n`);
+		}
 	}
 }

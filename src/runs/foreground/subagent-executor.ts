@@ -48,6 +48,24 @@ import {
 } from "../../shared/settings.ts";
 import { discoverAvailableSkills, normalizeSkillInput } from "../../agents/skills.ts";
 import { buildAsyncRunnerSteps, executeAsyncChain, executeAsyncSingle, formatAsyncStartedMessage, isAsyncAvailable } from "../background/async-execution.ts";
+import {
+	collectRequestedAgentNames,
+	duplicateNames,
+	escapeRegExp,
+	firstChainAgent,
+	firstRawChainTask,
+	getRequestedModeLabel,
+	isAsyncRunNotFound,
+	isExactResumeError,
+	isResumeAmbiguity,
+	nestedRunAgent,
+	nestedRunSessionFile,
+	pathWithin,
+	resolveAsyncEventGoal,
+	resolveRequestedCwd,
+	resumeTargetExact,
+	canonicalizeAgentName,
+} from "./executor-helpers.ts";
 import type { ScheduledRunAction } from "../background/scheduled-runs.ts";
 import { enqueueChainAppendRequest, readPendingChainAppendRequests, runnerStepOutputNames } from "../background/chain-append.ts";
 import { ChainOutputValidationError, validateChainOutputBindingsWithContext } from "../shared/chain-outputs.ts";
@@ -126,7 +144,6 @@ import {
 	type SubagentState,
 	ASYNC_DIR,
 	DEFAULT_ARTIFACT_CONFIG,
-	DEFAULT_FORK_PREAMBLE,
 	RESULTS_DIR,
 	SUBAGENT_ACTIONS,
 	SUBAGENT_CONTROL_EVENT,
@@ -276,10 +293,6 @@ interface ExecutionContextData {
 	parentModel?: ParentModel;
 	parentSessionId: string | null;
 	capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
-}
-
-function resolveRequestedCwd(runtimeCwd: string, requestedCwd: string | undefined): string {
-	return requestedCwd ? path.resolve(runtimeCwd, requestedCwd) : runtimeCwd;
 }
 
 function removeForegroundControlIfIdle(state: SubagentState, runId: string): boolean {
@@ -661,27 +674,6 @@ type NestedResumeSourceTarget = {
 };
 type ResumeSourceTarget = AsyncResumeSourceTarget | ForegroundResumeSourceTarget | NestedResumeSourceTarget;
 
-function isAsyncRunNotFound(error: unknown): boolean {
-	return error instanceof Error && error.message.startsWith("Async run not found.");
-}
-
-function isResumeAmbiguity(error: unknown): boolean {
-	return error instanceof Error && /Ambiguous .*run id prefix/.test(error.message);
-}
-
-function resumeTargetExact(target: { runId: string } | undefined, requested: string): boolean {
-	return target?.runId === requested;
-}
-
-function escapeRegExp(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function isExactResumeError(error: unknown, source: "async" | "foreground", requested: string): boolean {
-	if (!(error instanceof Error) || !requested) return false;
-	return new RegExp(`\\b${source} run '${escapeRegExp(requested)}'`, "i").test(error.message);
-}
-
 function resolveResumeTarget(params: SubagentParamsLike, state: SubagentState, options: { asyncRequireSessionFile?: boolean } = {}): ResumeSourceTarget {
 	const requested = (params.id ?? params.runId)?.trim() ?? "";
 	let foregroundTarget: ForegroundResumeSourceTarget | undefined;
@@ -820,16 +812,6 @@ function interruptAsyncRun(
 			details: { mode: "management", results: [] },
 		};
 	}
-}
-
-function duplicateNames(names: string[]): string[] {
-	const seen = new Set<string>();
-	const duplicates = new Set<string>();
-	for (const name of names) {
-		if (seen.has(name)) duplicates.add(name);
-		else seen.add(name);
-	}
-	return [...duplicates];
 }
 
 function appendStepToAsyncChain(input: {
@@ -1024,20 +1006,6 @@ function appendStepToAsyncChain(input: {
 			details: { mode: "management", results: [] },
 		};
 	}
-}
-
-function nestedRunSessionFile(run: NestedRunSummary): string | undefined {
-	return run.sessionFile ?? (run.steps?.length === 1 ? run.steps[0]?.sessionFile : undefined);
-}
-
-function nestedRunAgent(run: NestedRunSummary): string | undefined {
-	return run.agent ?? run.agents?.[0] ?? (run.steps?.length === 1 ? run.steps[0]?.agent : undefined);
-}
-
-function pathWithin(base: string, candidate: string): boolean {
-	const resolvedBase = path.resolve(base);
-	const resolvedCandidate = path.resolve(candidate);
-	return resolvedCandidate === resolvedBase || resolvedCandidate.startsWith(`${resolvedBase}${path.sep}`);
 }
 
 function validateNestedSessionFile(run: NestedRunSummary, trustedSessionRoots: string[]): string {
@@ -1599,13 +1567,6 @@ async function maybeBuildForegroundIntercomReceipt(input: {
 	};
 }
 
-function canonicalizeAgentName(name: string, agents: AgentConfig[]): { name?: string; error?: string } {
-	const resolved = resolveAgentName(name, agents);
-	if (resolved.error) return { error: resolved.error };
-	if (!resolved.agent) return { error: `Unknown agent: ${name}` };
-	return { name: resolved.agent.name };
-}
-
 function canonicalizeExecutionParams(params: SubagentParamsLike, agents: AgentConfig[]): { params?: SubagentParamsLike; error?: string } {
 	const resolve = (name: string, location?: string): { name?: string; error?: string } => {
 		const result = canonicalizeAgentName(name, agents);
@@ -1799,13 +1760,6 @@ function validateExecutionChainBindings(params: SubagentParamsLike, dynamicFanou
 	return null;
 }
 
-function getRequestedModeLabel(params: SubagentParamsLike): Details["mode"] {
-	if ((params.chain?.length ?? 0) > 0) return "chain";
-	if ((params.tasks?.length ?? 0) > 0) return "parallel";
-	if (params.agent) return "single";
-	return "single";
-}
-
 interface AgentDefaultContextPolicy {
 	params: SubagentParamsLike;
 	contextForAgent(agentName: string): ContextMode;
@@ -1839,14 +1793,6 @@ function resolveExplicitContextPolicy(params: SubagentParamsLike): AgentDefaultC
 		contextSummary: context,
 		usesFork: context === "fork",
 	};
-}
-
-function collectRequestedAgentNames(params: SubagentParamsLike): string[] {
-	const names: string[] = [];
-	if (params.agent) names.push(params.agent);
-	for (const task of params.tasks ?? []) names.push(task.agent);
-	for (const step of params.chain ?? []) names.push(...getStepAgents(step));
-	return names;
 }
 
 function shouldForkAgent(contextPolicy: AgentDefaultContextPolicy, agentName: string): boolean {
@@ -2077,30 +2023,6 @@ function collectChainThinkingOverrides(
 		flatIndex++;
 	}
 	return thinkingOverrides;
-}
-
-function firstChainAgent(chain: ChainStep[]): string | undefined {
-	const first = chain[0];
-	if (!first) return undefined;
-	if (isParallelStep(first)) return first.parallel[0]?.agent;
-	if (isDynamicParallelStep(first)) return first.parallel.agent;
-	return (first as SequentialStep).agent;
-}
-
-function firstRawChainTask(chain: ChainStep[]): string | undefined {
-	const first = chain[0];
-	if (!first) return undefined;
-	if (isParallelStep(first)) return first.parallel[0]?.task;
-	if (isDynamicParallelStep(first)) return first.parallel.task;
-	return (first as SequentialStep).task;
-}
-
-function resolveAsyncEventGoal(workflowTask: string | undefined, rawChain: ChainStep[], unwrapForkFallback = false): string {
-	if (workflowTask?.trim()) return workflowTask;
-	const fallback = firstRawChainTask(rawChain) || "";
-	if (!unwrapForkFallback) return fallback;
-	const forkPrefix = `${DEFAULT_FORK_PREAMBLE}\n\nTask:\n`;
-	return fallback.startsWith(forkPrefix) ? fallback.slice(forkPrefix.length) : fallback;
 }
 
 function wrapChainTasksForFork(chain: ChainStep[], contextPolicy: AgentDefaultContextPolicy): ChainStep[] {

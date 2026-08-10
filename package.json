@@ -49,6 +49,8 @@
   ],
 	"scripts": {
 		"benchmark:workflow": "node --experimental-strip-types scripts/workflow-benchmark.ts",
+		"benchmark:timings": "node --experimental-strip-types scripts/benchmark-timings.ts",
+		"benchmark:regression": "node scripts/check-benchmark-regression.mjs",
 		"check:rpiv-todo-bridge": "node scripts/check-rpiv-todo-bridge.mjs",
 		"smoke:pack": "node scripts/smoke-pack.mjs",
 		"test": "npm run test:unit",

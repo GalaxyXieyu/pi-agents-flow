@@ -1,0 +1,23 @@
+{
+  "generatedAt": "2026-08-10T01:40:56.563Z",
+  "cwd": "/Volumes/DATABASE/code/learn/pi-agents-flow",
+  "timings": {
+    "discovery": 115,
+    "context-pack": 2,
+    "scheduler-queue": 1
+  },
+  "probes": [
+    {
+      "label": "discovery",
+      "ms": 115
+    },
+    {
+      "label": "context-pack",
+      "ms": 2
+    },
+    {
+      "label": "scheduler-queue",
+      "ms": 1
+    }
+  ]
+}

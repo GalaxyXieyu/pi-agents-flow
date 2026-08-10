@@ -171,6 +171,80 @@ describe("activity board", () => {
 		assert.match(text, /Replacement write \(running\) is handling this/);
 	});
 
+	it("projects non-retryable failure class and replacement guidance into plan details", () => {
+		const now = Date.now();
+		const workflow = run();
+		workflow.nodes.quota = workUnit({
+			id: "quota", taskId: "task-main", kind: "research", label: "Quota-bound research", order: 2, status: "failed",
+			attempts: [{
+				attemptId: "quota:1",
+				requestId: "r-quota",
+				number: 1,
+				startedAt: now - 5_000,
+				completedAt: now,
+				status: "failed",
+				error: "quota exhausted",
+				failure: {
+					failureClass: "provider_quota_exhausted",
+					retryable: false,
+					suggestedAction: "Switch provider or create a same-kind replacement with an explicit model.",
+				},
+			}],
+		});
+		const snapshot = buildActivitySnapshot(state(), workflow);
+		const execution = snapshot.workflow?.tasks
+			.flatMap((task) => task.workUnits)
+			.find((unit) => unit.id === "quota")
+			?.executions.at(-1);
+		// Projection retains the durable failure disposition for downstream consumers.
+		assert.equal(execution?.failureClass, "provider_quota_exhausted");
+		assert.equal(execution?.retryable, false);
+		assert.match(execution?.suggestedAction ?? "", /same-kind replacement/);
+		// Plan details must surface the actionable recovery path even when Agent Activity is height-truncated.
+		const view = board({ perspective: "work", initialKey: "work-unit:quota", getSnapshot: () => snapshot });
+		const text = view.component.render(120).join("\n");
+		assert.match(text, /Next step\s+Create a same-kind replacement for 'quota'\./);
+		assert.match(text, /Why\s+provider_quota_exhausted: Switch provider or create a/);
+		assert.match(text, /same-kind replacement with an explicit model/);
+	});
+
+	it("projects retryable failure guidance with exact run_ready nodeId", () => {
+		const now = Date.now();
+		const workflow = run();
+		workflow.nodes.transport = workUnit({
+			id: "transport", taskId: "task-main", kind: "research", label: "Transport blip", order: 2, status: "failed",
+			attempts: [{
+				attemptId: "transport:1",
+				requestId: "r-transport",
+				number: 1,
+				startedAt: now - 3_000,
+				completedAt: now,
+				status: "failed",
+				error: "stream reset",
+				failure: {
+					failureClass: "provider_transport_failed",
+					retryable: true,
+					suggestedAction: "Retry the same node after the transport recovers.",
+				},
+			}],
+		});
+		const snapshot = buildActivitySnapshot(state(), workflow);
+		const execution = snapshot.workflow?.tasks
+			.flatMap((task) => task.workUnits)
+			.find((unit) => unit.id === "transport")
+			?.executions.at(-1);
+		assert.equal(execution?.failureClass, "provider_transport_failed");
+		assert.equal(execution?.retryable, true);
+		const view = board({ perspective: "work", initialKey: "work-unit:transport", getSnapshot: () => snapshot });
+		// Board wrapping may split the recovery line across frame cells; strip chrome before matching.
+		const text = view.component.render(120)
+			.join("\n")
+			.replace(/\x1B\[[0-9;]*m/g, "")
+			.replace(/[│╭╮╰╯├┤┬┴─]/gu, " ")
+			.replace(/\s+/g, " ");
+		assert.match(text, /Next step Retry only this node \(1\/3\) with run_ready nodeId='transport'\./);
+	});
+
 	it("collapses a Task with Enter and inspects a Work Unit without closing the board", () => {
 		const taskView = board({ perspective: "work", initialKey: "task:task-main" });
 		taskView.component.handleInput("\r");

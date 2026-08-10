@@ -1,0 +1,41 @@
+name: Benchmark regression (advisory)
+
+# Advisory only: timing regressions print warnings and never fail the job.
+# Pass --fail to scripts/check-benchmark-regression.mjs only after a stable baseline exists.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  timing-advisory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.19.0
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Capture current timing baseline
+        run: npm run benchmark:timings -- --json ci/latest-timings.json --human
+      - name: Compare against committed baseline when present
+        run: |
+          if [ -f ci/baseline-timings.json ]; then
+            npm run benchmark:regression -- --baseline ci/baseline-timings.json --current ci/latest-timings.json --threshold 50
+          else
+            echo "No ci/baseline-timings.json yet; writing seed baseline without failing the job."
+            cp ci/latest-timings.json ci/baseline-timings.seed.json
+            echo "Commit ci/baseline-timings.json from a representative machine when ready to track regressions."
+          fi
+      - name: Upload timing artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: timing-baseline
+          path: |
+            ci/latest-timings.json
+            ci/baseline-timings.seed.json
+          if-no-files-found: ignore
