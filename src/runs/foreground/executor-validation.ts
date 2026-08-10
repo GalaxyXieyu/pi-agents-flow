@@ -9,7 +9,6 @@ import {
 	isParallelStep,
 	type ChainStep,
 	type SequentialStep,
-	type TaskParam,
 } from "../../shared/settings.ts";
 import { ChainOutputValidationError, validateChainOutputBindingsWithContext } from "../shared/chain-outputs.ts";
 import { summarizeContextModes, type ContextMode, type ContextSummary } from "../shared/context-mode.ts";
@@ -22,7 +21,7 @@ import type {
 	ResolvedToolBudget,
 	ToolBudgetConfig,
 } from "../../shared/types.ts";
-import type { SubagentParamsLike } from "./executor-types.ts";
+import type { AgentDefaultContextPolicy, SubagentParamsLike, TaskParam } from "./executor-types.ts";
 import {
 	canonicalizeAgentName,
 	collectRequestedAgentNames,
@@ -222,12 +221,7 @@ export function validateExecutionChainBindings(params: SubagentParamsLike, dynam
 	return null;
 }
 
-export interface AgentDefaultContextPolicy {
-	params: SubagentParamsLike;
-	contextForAgent(agentName: string): ContextMode;
-	contextSummary?: ContextSummary;
-	usesFork: boolean;
-}
+export type { AgentDefaultContextPolicy } from "./executor-types.ts";
 
 export function resolveAgentDefaultContextPolicy(params: SubagentParamsLike, agents: AgentConfig[]): AgentDefaultContextPolicy {
 	if (params.context !== undefined) {
