@@ -172,6 +172,10 @@ function dockSummaryLine(snapshot: ActivitySnapshot, theme: Theme, width: number
 }
 
 export function renderActivityDock(snapshot: ActivitySnapshot, width: number, theme: Theme, state: ActivityDockState = {}): string[] {
+	// A finished workflow should no longer occupy the dock at all — not even the
+	// collapsed summary line. Once the run reaches a terminal state the run is
+	// over; keeping a stale "↓/Tab expand" row beneath the editor is noise.
+	if (snapshot.workflow && isWorkflowTerminal(snapshot.workflow.status)) return [];
 	const perspective = state.perspective ?? (snapshot.workflow ? "work" : "agents");
 	const rows = activitySelections(snapshot, perspective);
 	if (rows.length === 0) return [];
@@ -376,12 +380,13 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 				snapshot = nextSnapshot;
 				if (!perspective) perspective = nextPerspective;
 				// Workflow finished: a terminal run (completed/stopped/failed) should not
-				// leave the dock expanded showing a stale "workflow running" roster.
-				// Auto-collapse to the single-line summary so the dock stops occupying
-				// vertical space once the run is over.
+				// leave the dock mounted at all — not even the collapsed summary line.
+				// Unmount the widget so the stale "↓/Tab expand" row disappears entirely.
 				if (nextSnapshot.workflow && isWorkflowTerminal(nextSnapshot.workflow.status)) {
 					active = false;
 					expandedKey = undefined;
+					hide();
+					return;
 				}
 				// Keep the live Agents roster pinned to its newest/highest-priority row
 				// only while the user is already following the head (or the dock is

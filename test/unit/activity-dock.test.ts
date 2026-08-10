@@ -343,7 +343,7 @@ describe("activity dock controller", () => {
 		}
 	});
 
-	it("auto-collapses the expanded dock once the workflow reaches a terminal state", () => {
+	it("unmounts the dock widget once the workflow reaches a terminal state", () => {
 		const ui = fakeUi();
 		const completed = { ...run(), status: "completed" as const, nodes: {
 			...run().nodes,
@@ -364,9 +364,7 @@ describe("activity dock controller", () => {
 			// Simulate the workflow finishing while the dock is expanded.
 			currentRun = completed;
 			controller.refresh();
-			const lines = renderDock(ui);
-			assert.equal(lines.length, 1, "terminal workflow collapses the dock back to the single summary line");
-			assert.doesNotMatch(lines.join("\n"), /\[任务\]|\[Tasks\]/);
+			assert.equal(ui.widgets.has(ACTIVITY_DOCK_WIDGET_KEY), false, "terminal workflow unmounts the dock widget entirely");
 		} finally {
 			controller.dispose();
 		}
@@ -447,16 +445,22 @@ describe("activity dock collapsed summary", () => {
 
 	// A finished workflow must not leave a stale "0 running" (or a live-looking
 	// roster) on the collapsed line — it should read as "Workflow N done".
-	it("omits a stale 0 running once the workflow has completed", () => {
+	it("hides the dock entirely once the workflow has completed", () => {
 		const completed = { ...run(), status: "completed" as const, nodes: {
 			...run().nodes,
 			"vibe": { ...run().nodes["vibe"], status: "completed", attempts: [{ attemptId: "vibe:1", requestId: "r-vibe", number: 1, startedAt: 3, completedAt: 5, status: "completed" as const, childRunId: "child-vibe" }] },
 			"doc": { ...run().nodes["doc"], status: "completed", attempts: [{ attemptId: "doc:1", requestId: "r-doc", number: 1, startedAt: 6, completedAt: 8, status: "completed" as const }] },
 		} };
 		const snapshot = buildActivitySnapshot(liveState(), completed);
+		const lines = renderActivityDock(snapshot, 120, theme as never);
+		assert.equal(lines.length, 0, "a completed workflow renders no dock rows at all");
+	});
+
+	it("renders the collapsed summary while the workflow is still active", () => {
+		const snapshot = buildActivitySnapshot(liveState(), run());
 		const line = renderActivityDock(snapshot, 120, theme as never)[0]!;
 		assert.match(line, /工作流/);
-		assert.doesNotMatch(line, /0 运行|0 running/, "no stale running count after completion");
-		assert.match(line, /完成|done/);
+		assert.match(line, /1 运行/);
+		assert.match(line, /1 完成/);
 	});
 });
