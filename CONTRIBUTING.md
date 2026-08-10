@@ -1,6 +1,6 @@
 # Contributing
 
-Pi Agents Flow is currently developed inside `GalaxyXieyu/pi`. Open an issue before a broad architectural change. Keep changes scoped, preserve upstream attribution, and do not commit generated `.pi-agents-flow/` runtime data.
+Pi Agents Flow is currently developed inside `GalaxyXieyu/pi`. Open an issue before a broad architectural change. Keep changes scoped, preserve upstream attribution, and do not commit generated `.pi/agents-flow/` (or legacy `.pi-agents-flow/`) runtime data.
 
 ## Setup
 

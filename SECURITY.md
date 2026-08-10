@@ -12,6 +12,6 @@ Expect an acknowledgement within 7 days. A fix timeline depends on severity and 
 
 ## Sensitive data
 
-Delegated prompts, model output, transcripts, file paths, and workflow artifacts may be written below `.pi-agents-flow/`, the Pi session directory, or the operating-system temp directory. Treat these as potentially sensitive. Do not commit them, attach them to public issues, or share them without review.
+Delegated prompts, model output, transcripts, file paths, and workflow artifacts may be written below `.pi/agents-flow/` (legacy `.pi-agents-flow/` may still exist during migration), the Pi session directory, or the operating-system temp directory. Treat these as potentially sensitive. Do not commit them, attach them to public issues, or share them without review.
 
 Tool allowlists, capability ceilings, and invocation policy reduce accidental authority; they are not an operating-system sandbox. Run untrusted Agents in an isolated user account, container, or disposable worktree.

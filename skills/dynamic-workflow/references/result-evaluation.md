@@ -28,4 +28,4 @@ Do not concatenate child prose into the final answer. Normalize findings into ac
 
 Before Deep Research completion, call `workflow.quality`. Treat its blockers as release gates. Primary-source ratio, quote coverage, duplicate-source rate, and low-confidence rate are quality warnings that should trigger a focused improvement round when they affect the recommendation.
 
-Never edit `.pi-agents-flow/workflows`, append Workflow events from `bash`, or import the Workflow Store from a Supervisor shell. All state transitions must go through the `workflow` tool. Deep Research quality rejects accepted nodes that lack correlated delegation provenance.
+Never edit `.pi/agents-flow/workflows` (legacy: `.pi-agents-flow/workflows`), append Workflow events from `bash`, or import the Workflow Store from a Supervisor shell. All state transitions must go through the `workflow` tool. Deep Research quality rejects accepted nodes that lack correlated delegation provenance.

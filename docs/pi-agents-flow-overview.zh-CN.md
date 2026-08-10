@@ -238,7 +238,7 @@ reads: context.md
 
 需要数据驱动的动态展开时改用 `.chain.json`（带 `expand` / `collect`），同样用 `/run-chain` 触发。
 
-三是可复用的工作流模板（composition）：把一次跑通的任务图存成带参数的模板，之后带参重放。模板文件在 `<cwd>/.pi-agents-flow/compositions/<name>.json`，可以随项目提交。
+三是可复用的工作流模板（composition）：把一次跑通的任务图存成带参数的模板，之后带参重放。模板文件在 `<cwd>/.pi/agents-flow/compositions/<name>.json`，可以随项目提交。
 
 ```text
 /composition save plan-dev-verify "先规划，再实现，最后验证"   # 从当前 run 存成模板

@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Runtime layout
+- Project runtime data now writes under `<cwd>/.pi/agents-flow/` (workflows, compositions, artifacts, chain-runs). Legacy `<cwd>/.pi-agents-flow/` is auto-migrated on extension load / write paths; split trees merge missing entries without overwriting conflicts, partial-copy failures roll back, and persisted legacy absolute paths are remapped to the preferred runtime.
+
+### Refactor stabilization
+- Restored deterministic workflow child turn budgets in both preflight and the emitted delegation request.
+- Reduced the extracted executor contract module to type-only dependencies and removed a validation type-import regression.
+- Hardened runtime WorkflowResult parsing to enforce the same nested shapes, enums, unknown-field policy, and SHA-256 format advertised by the structured schema.
+- Fixed compact TUI rendering so only true async-launch cards collapse; errors and explicitly expanded management output remain visible.
+- Closed workflow state-machine gaps for running replacement targets, unrecoverable waiting attempts, and custom `requireWriter` blocker guidance.
+
 ### Alpha release
 - Renamed the entire project to Pi Agents Flow / `pi-agents-flow`, including the npm package, source and skill directories, `.pi-agents-flow` runtime data, protocol and registry namespaces, profile paths, diagnostics, screenshots, CI paths, and package-discovery metadata. This Alpha does not migrate state written under earlier project names.
 - Consolidated extension delegation behind one current strict protocol and unversioned public type family while retaining the existing wire version field.
@@ -32,7 +42,7 @@
 - Added automatic phase/node projection into the existing `rpiv-todo`, durable projection snapshots, a Workflow Board TUI, restart scheduling for ready nodes, and a bridge compatibility check for the installed `rpiv-todo`.
 - Added node-scoped cancellation through `workflow({ action: "cancel_node" })` and the Workflow Board `x` key, plus exact Fleet focus for the selected child.
 - Added a read-only `workflow_assets` tool that lists available base Agents, skills, and MCP direct tools so the Supervisor composes plans from discovered names instead of guesses. Scanning is live rather than cached.
-- Added reusable composition templates and a `/composition list|show|save|run` command. Templates persist under `.pi-agents-flow/compositions/<name>.json` as declarative node graphs with `{{param}}` placeholders and optional per-node `enableIf` conditions. Conditions are evaluated once at render time by a hand-written parser (no `eval`, `new Function`, or `vm`), so the graph handed to the execution layer is fully determined; dependencies on pruned nodes are dropped to avoid deadlock. Rendered plans are validated by the same parser used for a model-supplied `apply_plan`.
+- Added reusable composition templates and a `/composition list|show|save|run` command. Templates persist under `.pi/agents-flow/compositions/<name>.json` as declarative node graphs with `{{param}}` placeholders and optional per-node `enableIf` conditions. Conditions are evaluated once at render time by a hand-written parser (no `eval`, `new Function`, or `vm`), so the graph handed to the execution layer is fully determined; dependencies on pruned nodes are dropped to avoid deadlock. Rendered plans are validated by the same parser used for a model-supplied `apply_plan`.
 - Added bounded per-node tool adjustment through `agentSpec.extraTools` and `agentSpec.denyTools`, carried over delegation v2 and applied down to the child launch arguments. Grants merge in before capability-ceiling filtering and revocations apply after, so a node can open a tool its base Agent does not enable by default but can never widen the ceiling. Extension paths are rejected, both fields are bounded at 64 entries/1 KiB per entry/16 KiB aggregate, and both require a base Agent with an explicit tools allowlist. The launch contract now reports `grantedTools` and `revokedTools`.
 
 ### Changed

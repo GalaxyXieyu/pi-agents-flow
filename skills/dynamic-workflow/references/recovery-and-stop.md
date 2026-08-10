@@ -1,6 +1,6 @@
 # Recovery And Stop
 
-- Workflow state is stored under `.pi-agents-flow/workflows/<run-id>/`.
+- Workflow state is stored under `.pi/agents-flow/workflows/<run-id>/` (legacy `.pi-agents-flow/workflows/<run-id>/` remains readable during migration).
 - `events.jsonl` is the recovery source; `manifest.json` is an atomic projection.
 - Session custom entries bind run id, revision, session id, cwd, and Git branch.
 - On reload, continue only when all binding fields match. A mismatch is a hard stop requiring an explicit new run or user decision.

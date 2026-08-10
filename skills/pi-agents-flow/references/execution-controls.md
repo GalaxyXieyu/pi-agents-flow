@@ -278,7 +278,7 @@ The subagent watchdog is an **opt-in** adversarial change reviewer. It is not th
 
 When enabled, it reviews actual repo edits at safe `agent_end` boundaries only if
 the final worktree state changed during that turn. Unchanged or reverted diffs and
-generated `.pi-agents-flow/` / temp artifacts do not trigger review. Writing children
+generated `.pi/agents-flow/` (legacy `.pi-agents-flow/`) / temp artifacts do not trigger review. Writing children
 can review their own worktree; the parent can still review the aggregate diff after
 child changes land. Enabled watchdogs also run changed-file TypeScript/JavaScript
 LSP diagnostics before the model pass when `typescript-language-server` is available.

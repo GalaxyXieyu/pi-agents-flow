@@ -26,4 +26,4 @@ Temporary configuration handling:
 .pi/settings.json was temporarily changed and then restored byte-for-byte from the pre-Goal backup /tmp/pi-final/settings.json.bak. It is not an owned deliverable and its pre-existing Git diff remains untouched.
 
 Explicitly not owned by this Goal:
-All other modified or untracked files in the shared worktree, including packages/pi-web-access, pi-agents-flow activity/TUI/agent/foreground-runner files, .pi-agents-flow workflow records, and the completed research delivery.
+All other modified or untracked files in the shared worktree, including packages/pi-web-access, pi-agents-flow activity/TUI/agent/foreground-runner files, .pi/agents-flow workflow records, and the completed research delivery.

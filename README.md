@@ -1891,7 +1891,7 @@ stdin is a JSON object with `repoRoot`, `worktreePath`, `agentCwd`, `branch`, `i
 }
 ```
 
-Controls where subagent artifact files (inputs, outputs, transcripts, metadata) are stored. Defaults to `"project"`, which writes to `<cwd>/.pi-agents-flow/artifacts/`. Set to `"session"` to store artifacts under pi's session directory (`~/.pi/agent/sessions/<session>/subagent-artifacts/`), keeping the working directory clean. Set to `"temp"` to use the OS temp directory.
+Controls where subagent artifact files (inputs, outputs, transcripts, metadata) are stored. Defaults to `"project"`, which writes to `<cwd>/.pi/agents-flow/artifacts/` (legacy `<cwd>/.pi-agents-flow/artifacts/` remains readable during migration). Set to `"session"` to store artifacts under pi's session directory (`~/.pi/agent/sessions/<session>/subagent-artifacts/`), keeping the working directory clean. Set to `"temp"` to use the OS temp directory.
 
 The `"session"` option uses the same directory that `cleanupAllArtifactDirs` already scans for age-based cleanup, so artifacts are still cleaned up automatically.
 
@@ -1924,7 +1924,7 @@ Each chain run creates a user-scoped temp directory like:
 
 It may contain files such as `context.md`, `plan.md`, `progress.md`, and `parallel-{stepIndex}/.../output.md`. Directories older than 24 hours are cleaned up on extension startup.
 
-Debug artifacts live under `{sessionDir}/subagent-artifacts/`, `.pi-agents-flow/artifacts/` for project-scoped runs, or a user-scoped temp artifact directory. Single-run relative `output` files are saved under `{artifactsDir}/outputs/{runId}/` unless `singleRunOutputBaseDir` is configured. Per task you may see:
+Debug artifacts live under `{sessionDir}/subagent-artifacts/`, `.pi/agents-flow/artifacts/` for project-scoped runs (legacy `.pi-agents-flow/artifacts/` remains readable), or a user-scoped temp artifact directory. Single-run relative `output` files are saved under `{artifactsDir}/outputs/{runId}/` unless `singleRunOutputBaseDir` is configured. Per task you may see:
 
 - `{runId}_{agent}_input.md`
 - `{runId}_{agent}_output.md`
