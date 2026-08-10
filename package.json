@@ -47,13 +47,16 @@
     "docs/pi-agents-flow-overview.zh-CN.md",
     "docs/images/*"
   ],
-	"scripts": {
-		"benchmark:workflow": "node --experimental-strip-types scripts/workflow-benchmark.ts",
-		"benchmark:timings": "node --experimental-strip-types scripts/benchmark-timings.ts",
-		"benchmark:regression": "node scripts/check-benchmark-regression.mjs",
-		"check:rpiv-todo-bridge": "node scripts/check-rpiv-todo-bridge.mjs",
-		"smoke:pack": "node scripts/smoke-pack.mjs",
-		"test": "npm run test:unit",
+  "scripts": {
+    "benchmark:workflow": "node --experimental-strip-types scripts/workflow-benchmark.ts",
+    "benchmark:timings": "node --experimental-strip-types scripts/benchmark-timings.ts",
+    "benchmark:regression": "node scripts/check-benchmark-regression.mjs",
+    "check:rpiv-todo-bridge": "node scripts/check-rpiv-todo-bridge.mjs",
+    "check:runtime-paths": "node scripts/check-runtime-paths.mjs",
+    "check:deps": "depcruise src --config .dependency-cruiser.cjs",
+    "check:deps:ci": "npm run check:deps && node scripts/check-dependency-baseline.mjs",
+    "smoke:pack": "node scripts/smoke-pack.mjs",
+    "test": "npm run test:unit",
     "test:unit": "node --experimental-strip-types --test test/unit/*.test.ts",
     "test:integration": "node --experimental-strip-types --import ./test/support/register-loader.mjs --test test/integration/*.test.ts",
     "test:e2e": "node --experimental-strip-types --import ./test/support/register-loader.mjs --test test/e2e/*.test.ts",
@@ -107,6 +110,8 @@
     "@earendil-works/pi-agent-core": "0.81.0",
     "@earendil-works/pi-ai": "0.81.0",
     "@earendil-works/pi-coding-agent": "0.81.0",
-    "@earendil-works/pi-tui": "0.81.0"
+    "@earendil-works/pi-tui": "0.81.0",
+    "dependency-cruiser": "18.1.1",
+    "typescript": "5.9.3"
   }
 }
