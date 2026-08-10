@@ -738,7 +738,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		const outputPath = payload.results[0]?.artifactPaths?.outputPath;
 		assert.ok(outputPath?.startsWith(`${expectedDir}${path.sep}`));
 		assert.equal(fs.readFileSync(outputPath, "utf-8"), "async session artifact");
-		assert.equal(fs.existsSync(path.join(tempDir, ".pi-agents-flow", "artifacts")), false);
+		assert.equal(fs.existsSync(path.join(tempDir, ".pi/agents-flow", "artifacts")), false);
 	});
 
 	it("persists async capability ceiling audit to status, results, events, and metadata", { skip: !isAsyncAvailable() || !createSubagentExecutor ? "jiti or executor not available" : undefined }, async () => {
@@ -792,7 +792,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			agentConfig: makeAgent("worker", { completionGuard: false }),
 			ctx: { pi: { events: { emit() {} } }, cwd: tempDir, currentSessionId: "session-1" },
 			artifactConfig: { enabled: true, includeInput: true, includeOutput: true, includeJsonl: false, includeMetadata: true, cleanupDays: 7 },
-			artifactsDir: path.join(tempDir, ".pi-agents-flow", "artifacts"),
+			artifactsDir: path.join(tempDir, ".pi/agents-flow", "artifacts"),
 			shareEnabled: false,
 			maxSubagentDepth: 2,
 			acceptance: false,
@@ -1120,7 +1120,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 				includeMetadata: true,
 				cleanupDays: 7,
 			},
-			artifactsDir: path.join(tempDir, ".pi-agents-flow", "artifacts"),
+			artifactsDir: path.join(tempDir, ".pi/agents-flow", "artifacts"),
 			shareEnabled: false,
 			maxSubagentDepth: 2,
 			timeoutMs,
@@ -1589,7 +1589,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.equal(status.sessionId, "session-123");
 		assert.equal(status.steps?.[0]?.acceptance?.status, "review-required");
 		assert.equal(status.steps?.[0]?.acceptance?.evidenceStatus, "checked");
-		const outputPath = path.join(tempDir, ".pi-agents-flow", "artifacts", "outputs", asyncId, "async-top-output.md");
+		const outputPath = path.join(tempDir, ".pi/agents-flow", "artifacts", "outputs", asyncId, "async-top-output.md");
 		const outputDeadline = Date.now() + 5_000;
 		while (!fs.existsSync(outputPath)) {
 			if (Date.now() > outputDeadline) {
@@ -1602,7 +1602,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.ok(callFile, "expected a recorded mock pi call");
 		const args = JSON.parse(fs.readFileSync(path.join(mockPi.dir, callFile), "utf-8")).args as string[];
 		const taskArg = args.at(-1) ?? "";
-		const progressPath = path.join(tempDir, ".pi-agents-flow", "artifacts", "progress", asyncId, "progress.md");
+		const progressPath = path.join(tempDir, ".pi/agents-flow", "artifacts", "progress", asyncId, "progress.md");
 		assert.ok(taskArg.includes(`[Read from: ${path.join(tempDir, "input.md")}]`));
 		assert.ok(taskArg.includes(`Update progress at: ${progressPath}`));
 		assert.ok(taskArg.includes(`Write your findings to exactly this path: ${outputPath}`));
@@ -1633,7 +1633,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			assert.equal(payload.success, true);
 			assert.equal(payload.results[0]?.output?.split("\n\nOutput saved to:")[0], "first async report");
 			assert.equal(payload.results[1]?.output?.split("\n\nOutput saved to:")[0], "second async report");
-			const outputDir = path.join(tempDir, ".pi-agents-flow", "artifacts", "outputs", launch.details?.asyncId as string);
+			const outputDir = path.join(tempDir, ".pi/agents-flow", "artifacts", "outputs", launch.details?.asyncId as string);
 			const authoritativePaths = [
 				path.join(outputDir, "parallel-0", "0-worker", "context.md"),
 				path.join(outputDir, "parallel-0", "1-worker", "context.md"),
@@ -1702,7 +1702,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 
 		const payload = await readAsyncPayload(launch.details?.asyncId as string);
 		assert.equal(payload.success, true);
-		const outputDir = path.join(tempDir, ".pi-agents-flow", "artifacts", "outputs", launch.details?.asyncId as string);
+		const outputDir = path.join(tempDir, ".pi/agents-flow", "artifacts", "outputs", launch.details?.asyncId as string);
 		assert.equal(fs.readFileSync(path.join(outputDir, "first.md"), "utf-8"), "first explicit report");
 		assert.equal(fs.readFileSync(path.join(outputDir, "second.md"), "utf-8"), "second explicit report");
 		assert.ok(payload.results[0]?.artifactPaths?.outputPath?.endsWith("_worker_0_output.md"));
@@ -1718,7 +1718,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			agents: [makeAgent("worker", { output: "context.md" })],
 			ctx: { pi: { events: { emit() {} } }, cwd: tempDir, currentSessionId: "session-chain-output" },
 			artifactConfig: { enabled: true, includeInput: false, includeOutput: true, includeJsonl: false, includeMetadata: false, cleanupDays: 7 },
-			artifactsDir: path.join(tempDir, ".pi-agents-flow", "artifacts"),
+			artifactsDir: path.join(tempDir, ".pi/agents-flow", "artifacts"),
 			shareEnabled: false,
 			maxSubagentDepth: 2,
 		});
@@ -1726,7 +1726,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.equal(launch.isError, undefined);
 		const payload = await readAsyncPayload(id);
 		assert.equal(payload.success, true);
-		const outputDir = path.join(tempDir, ".pi-agents-flow", "artifacts", "outputs", id);
+		const outputDir = path.join(tempDir, ".pi/agents-flow", "artifacts", "outputs", id);
 		const authoritativePaths = [
 			path.join(outputDir, "parallel-0", "0-worker", "context.md"),
 			path.join(outputDir, "parallel-0", "1-worker", "context.md"),
@@ -2030,7 +2030,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			agents: [makeAgent("producer"), makeAgent("reviewer", { output: "context.md" }), makeAgent("consumer")],
 			ctx: { pi: { events: { emit() {} } }, cwd: tempDir, currentSessionId: "session-dynamic" },
 			artifactConfig: { enabled: true, includeInput: false, includeOutput: true, includeJsonl: false, includeMetadata: false, cleanupDays: 7 },
-			artifactsDir: path.join(tempDir, ".pi-agents-flow", "artifacts"),
+			artifactsDir: path.join(tempDir, ".pi/agents-flow", "artifacts"),
 			shareEnabled: false,
 			maxSubagentDepth: 2,
 		});
@@ -2047,7 +2047,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		const collected = payload.outputs?.reviews?.structured as Array<{ key: string; structured: unknown }>;
 		assert.deepEqual(collected.map((item) => item.key), ["src/a.ts", "src/b.ts"]);
 		assert.deepEqual(collected.map((item) => item.structured), [{ ok: "a" }, { ok: "b" }]);
-		const outputDir = path.join(tempDir, ".pi-agents-flow", "artifacts", "outputs", id);
+		const outputDir = path.join(tempDir, ".pi/agents-flow", "artifacts", "outputs", id);
 		const dynamicOutputPaths = [
 			path.join(outputDir, "dynamic-1", "0-reviewer", "context.md"),
 			path.join(outputDir, "dynamic-1", "1-reviewer", "context.md"),
@@ -2441,7 +2441,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			const args = await waitForMockPiArgs(mockPi, 0);
 			const taskArg = args.at(-1) ?? "";
 			assert.ok(taskArg.includes(`[Read from: ${path.join(worktreeCwd, "input.md")}]`));
-			assert.ok(taskArg.includes(`Write your findings to exactly this path: ${path.join(repoDir, ".pi-agents-flow", "artifacts", "outputs", asyncId, "report.md")}`));
+			assert.ok(taskArg.includes(`Write your findings to exactly this path: ${path.join(repoDir, ".pi/agents-flow", "artifacts", "outputs", asyncId, "report.md")}`));
 			const resultPath = await waitForAsyncResultFile(asyncId, 90_000);
 			const payload = JSON.parse(fs.readFileSync(resultPath, "utf-8")) as AsyncResultPayload;
 			const status = JSON.parse(fs.readFileSync(path.join(result.details!.asyncDir!, "status.json"), "utf-8")) as AsyncStatusPayload;

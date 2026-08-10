@@ -79,7 +79,7 @@ describe("composition store", () => {
 			saveComposition(cwd, template({ description: "second revision" }));
 			assert.deepEqual(listCompositions(cwd), ["plan-dev-verify"]);
 			assert.equal(loadComposition(cwd, "plan-dev-verify").description, "second revision");
-			assert.deepEqual(fs.readdirSync(path.join(cwd, ".pi-agents-flow", "compositions")), ["plan-dev-verify.json"]);
+			assert.deepEqual(fs.readdirSync(path.join(cwd, ".pi/agents-flow", "compositions")), ["plan-dev-verify.json"]);
 		});
 
 		it("returns an empty list when nothing is saved", () => {

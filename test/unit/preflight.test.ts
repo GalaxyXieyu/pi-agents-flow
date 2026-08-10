@@ -127,7 +127,7 @@ Project prompt.
 			assert.equal(result.contract.tools.capabilityAudit?.removedExtensionCount, 1);
 			assert.equal(result.contract.tools.disableAmbientExtensions, true);
 			assert.equal(result.contract.roots.sessionFile, path.join(sessionRoot, "run-123", "run-0", "session.jsonl"));
-			assert.equal(result.contract.roots.outputPath, path.join(cwd, ".pi-agents-flow", "artifacts", "outputs", "run-123", "report.md"));
+			assert.equal(result.contract.roots.outputPath, path.join(cwd, ".pi/agents-flow", "artifacts", "outputs", "run-123", "report.md"));
 			assert.equal(result.contract.roots.lifecycle?.statusPath.endsWith(path.join("run-123", "status.json")), true);
 			assert.equal(result.contract.roots.lifecycle?.eventsPath.endsWith(path.join("run-123", "events.jsonl")), true);
 			assert.equal(result.contract.roots.lifecycle?.processTerminalPath.endsWith(path.join("run-123", "process-terminal.json")), true);
@@ -148,7 +148,7 @@ Project prompt.
 			assert.equal(repeated.ok, true);
 			assert.equal(repeated.contract.digest, result.contract.digest);
 			assert.equal(fs.existsSync(sessionRoot), false);
-			assert.equal(fs.existsSync(path.join(cwd, ".pi-agents-flow")), false);
+			assert.equal(fs.existsSync(path.join(cwd, ".pi/agents-flow")), false);
 		} finally {
 			handle.dispose();
 		}

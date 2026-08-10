@@ -17,6 +17,10 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {
+	getLegacyProjectRuntimeRoot,
+	getPreferredProjectRuntimeRoot,
+} from "../shared/project-runtime.ts";
 
 import { writeAtomicJson } from "../shared/atomic-json.ts";
 import { evaluateCompositionExpr, type CompositionParamValue } from "./composition-expr.ts";
@@ -86,7 +90,11 @@ export interface RenderedComposition {
 }
 
 export function compositionsDir(cwd: string): string {
-	return path.join(cwd, ".pi-agents-flow", "compositions");
+	return path.join(getPreferredProjectRuntimeRoot(cwd), "compositions");
+}
+
+function legacyCompositionsDir(cwd: string): string {
+	return path.join(getLegacyProjectRuntimeRoot(cwd), "compositions");
 }
 
 function assertCompositionName(name: string): void {
@@ -100,18 +108,26 @@ export function compositionPath(cwd: string, name: string): string {
 	return path.join(compositionsDir(cwd), `${name}.json`);
 }
 
-export function listCompositions(cwd: string): string[] {
+function listCompositionNamesIn(dir: string): string[] {
 	let entries: string[];
 	try {
-		entries = fs.readdirSync(compositionsDir(cwd));
+		entries = fs.readdirSync(dir);
 	} catch {
 		return [];
 	}
 	return entries
 		.filter((entry) => entry.endsWith(".json"))
 		.map((entry) => entry.slice(0, -".json".length))
-		.filter((name) => COMPOSITION_NAME_PATTERN.test(name))
-		.sort((a, b) => a.localeCompare(b));
+		.filter((name) => COMPOSITION_NAME_PATTERN.test(name));
+}
+
+export function listCompositions(cwd: string): string[] {
+	// Union preferred + legacy trees so older committed compositions remain visible.
+	const names = new Set([
+		...listCompositionNamesIn(compositionsDir(cwd)),
+		...listCompositionNamesIn(legacyCompositionsDir(cwd)),
+	]);
+	return [...names].sort((a, b) => a.localeCompare(b));
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -285,12 +301,15 @@ export function parseCompositionTemplate(value: unknown, fallbackName?: string):
 }
 
 export function loadComposition(cwd: string, name: string): CompositionTemplate {
-	const filePath = compositionPath(cwd, name);
+	// Prefer the new write location; fall back to legacy tree for read-only migration.
+	const preferred = compositionPath(cwd, name);
+	const legacy = path.join(legacyCompositionsDir(cwd), `${name}.json`);
+	const filePath = fs.existsSync(preferred) ? preferred : legacy;
 	let raw: string;
 	try {
 		raw = fs.readFileSync(filePath, "utf-8");
 	} catch {
-		throw new Error(`Composition '${name}' not found at ${filePath}.`);
+		throw new Error(`Composition '${name}' not found at ${preferred} (or legacy ${legacy}).`);
 	}
 	if (Buffer.byteLength(raw, "utf8") > MAX_COMPOSITION_BYTES) {
 		throw new Error(`Composition '${name}' exceeds ${MAX_COMPOSITION_BYTES} bytes.`);

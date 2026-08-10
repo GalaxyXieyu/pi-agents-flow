@@ -124,7 +124,7 @@ describe("workflow controller", () => {
 
 		const detected = await controller.execute({ action: "start", goal: "分析这个插件" }, ctx);
 		assert.equal(detected.details.run.language, "zh");
-		const event = JSON.parse(fs.readFileSync(path.join(cwd, ".pi-agents-flow", "workflows", detected.details.run.id, "events.jsonl"), "utf-8").trim()) as { language?: string };
+		const event = JSON.parse(fs.readFileSync(path.join(cwd, ".pi/agents-flow", "workflows", detected.details.run.id, "events.jsonl"), "utf-8").trim()) as { language?: string };
 		assert.equal(event.language, "zh");
 
 		const overridden = await controller.execute({ action: "start", goal: "分析这个插件", language: "en" }, ctx);
@@ -965,7 +965,7 @@ describe("workflow controller", () => {
 	it("recovers an orphaned running attempt as a retryable failure after reload", () => {
 		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-controller-recover-"));
 		tempDirs.push(cwd);
-		const store = createWorkflowStore({ rootDir: path.join(cwd, ".pi-agents-flow", "workflows") });
+		const store = createWorkflowStore({ rootDir: path.join(cwd, ".pi/agents-flow", "workflows") });
 		store.create({ id: "workflow-recover", mode: "general", goal: "Recover", cwd, sessionId: "session-1", branch: "main", at: 1 });
 		store.append("workflow-recover", { id: "plan", type: "workflow.plan_applied", at: 2, tasks: [{ id: "task-main", label: "Main", order: 0 }], workUnits: [planNode("research-a")] });
 		const running = store.append("workflow-recover", {
@@ -1063,7 +1063,7 @@ describe("workflow controller", () => {
 	it("recovers a completed detached attempt from durable metadata after controller reload", () => {
 		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-controller-waiting-recover-"));
 		tempDirs.push(cwd);
-		const rootDir = path.join(cwd, ".pi-agents-flow", "workflows");
+		const rootDir = path.join(cwd, ".pi/agents-flow", "workflows");
 		const metadataPath = path.join(cwd, "child-meta.json");
 		const structuredOutputPath = path.join(cwd, "child-output.json");
 		const store = createWorkflowStore({ rootDir });
@@ -1121,7 +1121,7 @@ describe("workflow controller", () => {
 	it("fails a waiting node whose wait deadline passed and that never reported back", () => {
 		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-controller-wait-timeout-"));
 		tempDirs.push(cwd);
-		const rootDir = path.join(cwd, ".pi-agents-flow", "workflows");
+		const rootDir = path.join(cwd, ".pi/agents-flow", "workflows");
 		const store = createWorkflowStore({ rootDir });
 		store.create({ id: "workflow-wait-timeout", mode: "general", goal: "Wait timeout", cwd, sessionId: "session-1", branch: "main", at: 1 });
 		store.append("workflow-wait-timeout", { id: "plan", type: "workflow.plan_applied", at: 2, tasks: [{ id: "task-main", label: "Main", order: 0 }], workUnits: [planNode("research-a")] });
@@ -1171,7 +1171,7 @@ describe("workflow controller", () => {
 	it("preserves the last editor draft when Deep Research auto-stops after 3 quality-gate failures", async () => {
 		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-draft-stop-"));
 		tempDirs.push(cwd);
-		const rootDir = path.join(cwd, ".pi-agents-flow", "workflows");
+		const rootDir = path.join(cwd, ".pi/agents-flow", "workflows");
 		const store = createWorkflowStore({ rootDir });
 		const run = store.create({ id: "workflow-draft", mode: "deep-research", goal: "Draft preservation", cwd, sessionId: "session-1", branch: "main", at: 1 });
 		const runId = run.id;

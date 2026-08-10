@@ -76,8 +76,8 @@ describe("resolveSingleOutputPath", () => {
 	});
 
 	it("resolves relative output paths against an explicit artifact base", () => {
-		const resolved = resolveSingleOutputPath("reviews/report.md", "/runtime", "/requested", "/repo/.pi-agents-flow/artifacts/outputs/run-1");
-		assert.equal(resolved, path.resolve("/repo/.pi-agents-flow/artifacts/outputs/run-1", "reviews/report.md"));
+		const resolved = resolveSingleOutputPath("reviews/report.md", "/runtime", "/requested", "/repo/.pi/agents-flow/artifacts/outputs/run-1");
+		assert.equal(resolved, path.resolve("/repo/.pi/agents-flow/artifacts/outputs/run-1", "reviews/report.md"));
 	});
 });
 

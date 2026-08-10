@@ -1,8 +1,9 @@
-.pi/todos/
 .pi-swarm/
-.pi-agents-flow/
 .DS_Store
 AGENTS.md
 node_modules/
 .fallow/
 tmp/
+.pi/agents-flow/
+.pi-agents-flow/
+.pi/todos/

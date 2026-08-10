@@ -178,4 +178,4 @@ npm run benchmark:workflow -- --variant runtime-planned <workflow-run-dir> [...]
 
 Pi Agents Flow 基于 `nicobailon/pi-subagents`，保留其 SubAgent 执行、agent discovery、Fleet、intercom 和 async runtime。当前仓库新增并维护 Supervisor-owned Dynamic Workflow、Deep Research、质量门禁、恢复和 Workflow Board。
 
-同步上游时应先比较 delegation/public API，再合并新功能；不要把 `src/workflows/` 直接覆盖。运行状态写入 `.pi-agents-flow/`，不应提交到 Git。
+同步上游时应先比较 delegation/public API，再合并新功能；不要把 `src/workflows/` 直接覆盖。运行状态写入 `.pi/agents-flow/`（兼容读取旧的 `.pi-agents-flow/`），不应提交到 Git。

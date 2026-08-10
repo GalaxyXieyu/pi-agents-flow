@@ -2256,7 +2256,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.equal(result.details?.artifacts?.dir, expectedDir);
 		assert.ok(result.details?.artifacts?.files[0]?.outputPath.startsWith(`${expectedDir}${path.sep}`));
 		assert.equal(fs.readFileSync(result.details.artifacts.files[0].outputPath, "utf-8"), "session artifact result");
-		assert.equal(fs.existsSync(path.join(tempDir, ".pi-agents-flow", "artifacts")), false);
+		assert.equal(fs.existsSync(path.join(tempDir, ".pi/agents-flow", "artifacts")), false);
 	});
 
 	it("writes a failure stub to foreground output artifacts when no output was produced", async () => {
@@ -2355,7 +2355,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 
 		const taskArg = readCallArgs().at(-1) ?? "";
 		assert.equal(result.isError, undefined);
-		assert.match(taskArg, new RegExp(`Write your findings to exactly this path: ${escapeRegExp(path.join(tempDir, ".pi-agents-flow", "artifacts", "outputs"))}.*context\\.md`));
+		assert.match(taskArg, new RegExp(`Write your findings to exactly this path: ${escapeRegExp(path.join(tempDir, ".pi/agents-flow", "artifacts", "outputs"))}.*context\\.md`));
 		assert.equal(fs.existsSync(path.join(tempDir, "context.md")), false);
 	});
 

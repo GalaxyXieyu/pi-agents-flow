@@ -3,9 +3,9 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-const IGNORED_CHANGE_PREFIXES = [".pi-agents-flow/", "tmp/", "node_modules/"];
-const IGNORED_CHANGE_PATHS = new Set([".pi-agents-flow", "tmp", "node_modules"]);
-const IGNORED_CHANGE_SEGMENTS = new Set([".git", ".pi-agents-flow", "node_modules"]);
+const IGNORED_CHANGE_PREFIXES = [".pi-agents-flow/", ".pi/agents-flow/", "tmp/", "node_modules/"];
+const IGNORED_CHANGE_PATHS = new Set([".pi-agents-flow", ".pi", "tmp", "node_modules"]);
+const IGNORED_CHANGE_SEGMENTS = new Set([".git", ".pi-agents-flow", "agents-flow", "node_modules"]);
 
 const DEFAULT_MAX_HASH_FILE_BYTES = 64 * 1024 * 1024;
 const DEFAULT_MAX_HASH_TOTAL_BYTES = 64 * 1024 * 1024;

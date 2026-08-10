@@ -391,8 +391,8 @@ describe("activity board", () => {
 
 	it("projects evidence and run files and renders clickable locations", () => {
 		const workflow = run();
-		workflow.nodes.live!.attempts[0]!.structuredOutputPath = "/repo/.pi-agents-flow/live-result.json";
-		workflow.nodes.live!.attempts[0]!.metadataPath = "/repo/.pi-agents-flow/live-meta.json";
+		workflow.nodes.live!.attempts[0]!.structuredOutputPath = "/repo/.pi/agents-flow/live-result.json";
+		workflow.nodes.live!.attempts[0]!.metadataPath = "/repo/.pi/agents-flow/live-meta.json";
 		workflow.nodes.live!.attempts[0]!.result = {
 			summary: "Live result",
 			findings: [],
@@ -406,8 +406,8 @@ describe("activity board", () => {
 		assert.ok(unit);
 		assert.deepEqual(unit.artifacts.map((item) => [item.kind, item.label, item.path]), [
 			["evidence", "Evidence", "/repo/reports/findings.md:12:4"],
-			["run", "Structured result", "/repo/.pi-agents-flow/live-result.json"],
-			["run", "Metadata", "/repo/.pi-agents-flow/live-meta.json"],
+			["run", "Structured result", "/repo/.pi/agents-flow/live-result.json"],
+			["run", "Metadata", "/repo/.pi/agents-flow/live-meta.json"],
 		]);
 		const view = board({ perspective: "work", initialKey: "work-unit:live", getSnapshot: () => snapshot });
 		const text = view.component.render(120).join("\n");
@@ -422,7 +422,7 @@ describe("activity board", () => {
 		swarmState.foregroundControls.clear();
 		swarmState.fleetJobs!.set("queued-chain", {
 			asyncId: "queued-chain",
-			asyncDir: "/repo/.pi-agents-flow/queued-chain",
+			asyncDir: "/repo/.pi/agents-flow/queued-chain",
 			cwd: "/repo",
 			sessionId: "session-1",
 			status: "running",

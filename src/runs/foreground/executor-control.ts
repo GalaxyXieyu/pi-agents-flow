@@ -1201,7 +1201,7 @@ export async function resumeAsyncRun(input: {
 		inheritSkills: recoveryDescriptor.inheritSkills,
 		invocation: recoveryDescriptor.invocation,
 		source: "project",
-		filePath: recoveryDescriptor.agentFilePath ?? path.join(recoveryDescriptor.cwd, ".pi-agents-flow-recovery-agent"),
+		filePath: recoveryDescriptor.agentFilePath ?? path.join(recoveryDescriptor.cwd, ".pi/agents-flow-recovery-agent"),
 	} : undefined);
 	if (!agentConfig) {
 		return {

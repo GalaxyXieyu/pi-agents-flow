@@ -177,7 +177,7 @@ A node graph that will be run more than once can be saved as a declarative templ
 
 `/composition run` performs `apply_plan`; it does not start a run, so a workflow must already be active. `/composition save` stores concrete values with an empty `params` list: which values should become parameters is not inferred, because guessing wrong silently produces a broken template. Edit the saved file to introduce `{{param}}` placeholders and declare them.
 
-Templates live at `<cwd>/.pi-agents-flow/compositions/<name>.json`. Saving over an existing name overwrites it; these files are meant to be committed, so versioning is left to Git rather than duplicated in a parallel history directory.
+Templates live at `<cwd>/.pi/agents-flow/compositions/<name>.json`. Saving over an existing name overwrites it; these files are meant to be committed, so versioning is left to Git rather than duplicated in a parallel history directory.
 
 ```json
 {
@@ -215,7 +215,7 @@ Rendered templates are validated by the same parser the `workflow` tool uses for
 Each run is stored under the project checkout:
 
 ```text
-<cwd>/.pi-agents-flow/workflows/<run-id>/
+<cwd>/.pi/agents-flow/workflows/<run-id>/
   manifest.json       # atomic current-state projection
   events.jsonl        # append-only recovery source of truth
   nodes/               # node-scoped artifacts
@@ -228,7 +228,7 @@ Each run is stored under the project checkout:
 Saved composition templates are stored per project, outside any single run, because they are meant to outlive it and be committed:
 
 ```text
-<cwd>/.pi-agents-flow/compositions/<name>.json
+<cwd>/.pi/agents-flow/compositions/<name>.json
 ```
 
 The session also records a binding containing the run id, revision, session id, cwd, and Git branch. Reload or branch/cwd changes fail closed until the Supervisor starts a new run or the user makes an explicit decision. Retried nodes keep immutable attempt history and receive a new attempt number. A child that blocks on `contact_supervisor` moves its existing attempt to `waiting`; after the reply, completion is written back to that same attempt and child run. Reload recovery uses the persisted child metadata and structured output paths rather than launching a replacement.
@@ -457,7 +457,7 @@ You do not have to spell a model exactly. Model ids are matched fuzzily against 
 
 The subagent watchdog is not the `reviewer` subagent. `subagents.defaultModel` and `subagents.agentOverrides.reviewer` do not configure it. The watchdog is an opt-in adversarial change reviewer, so it should usually use a strong complementary model rather than a cheap/light model.
 
-The watchdog reviews repo edits, not ordinary conversation. It runs at the safe `agent_end` boundary only when the current agent or child writer changed the final repo state since the start of that turn. Multiple edits in one turn are coalesced into one review of the final changed state, unchanged/reverted diffs are skipped, and generated `.pi-agents-flow/` or `tmp/` artifacts do not trigger review. In orchestrated runs, each writing child can review its own edited worktree, and the parent can still review the aggregate repo diff after child changes are applied.
+The watchdog reviews repo edits, not ordinary conversation. It runs at the safe `agent_end` boundary only when the current agent or child writer changed the final repo state since the start of that turn. Multiple edits in one turn are coalesced into one review of the final changed state, unchanged/reverted diffs are skipped, and generated `.pi/agents-flow/` (legacy `.pi-agents-flow/`) or `tmp/` artifacts do not trigger review. In orchestrated runs, each writing child can review its own edited worktree, and the parent can still review the aggregate repo diff after child changes are applied.
 
 When enabled, the watchdog also keeps a bounded in-memory current-scope artifact from real user prompts and prepends it to review input by default (`subagents.watchdog.scope.enabled`). Newer prompts supersede and mutate older prompts, so the reviewer can flag work that no longer serves the current scope as `scope-drift`. Watchdog auto-follow prompts are not recorded as scope.
 

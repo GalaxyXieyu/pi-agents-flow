@@ -9,12 +9,12 @@ import {
 } from "../../src/shared/artifacts.ts";
 
 describe("project-local artifact paths", () => {
-	it("places generated subagent files under .pi-agents-flow for a project cwd", () => {
+	it("places generated subagent files under .pi/agents-flow for a project cwd", () => {
 		const cwd = path.join("tmp", "repo");
-		assert.equal(getProjectSubagentsDir(cwd), path.join(cwd, ".pi-agents-flow"));
-		assert.equal(getProjectArtifactsDir(cwd), path.join(cwd, ".pi-agents-flow", "artifacts"));
-		assert.equal(getProjectChainRunsDir(cwd), path.join(cwd, ".pi-agents-flow", "chain-runs"));
-		assert.equal(getArtifactsDir(null, cwd), path.join(cwd, ".pi-agents-flow", "artifacts"));
+		assert.equal(getProjectSubagentsDir(cwd), path.join(cwd, ".pi/agents-flow"));
+		assert.equal(getProjectArtifactsDir(cwd), path.join(cwd, ".pi/agents-flow", "artifacts"));
+		assert.equal(getProjectChainRunsDir(cwd), path.join(cwd, ".pi/agents-flow", "chain-runs"));
+		assert.equal(getArtifactsDir(null, cwd), path.join(cwd, ".pi/agents-flow", "artifacts"));
 	});
 
 	it("keeps the session artifact fallback when no project cwd is available", () => {

@@ -672,7 +672,7 @@ export function registerWorkflowTool(pi: ExtensionAPI, controller: WorkflowContr
 			"Use apply_plan again to add targeted verification or repair nodes when gaps or conflicts remain.",
 			"apply_plan requires tasks (human-level hierarchy) plus workUnits (schedulable units with taskId, order, dependsOn, agentSpec, and dataContract each). dependsOn orders work units only; task nesting expresses hierarchy.",
 			"complete requires nodeId, port, and digest from an accepted output artifact. The runtime reads the final content from the content-addressed artifact store.",
-			"Never mutate .pi-agents-flow/workflows or import Workflow Store code from bash. All transitions must use this tool.",
+			"Never mutate .pi/agents-flow/workflows (legacy: .pi-agents-flow/workflows) or import Workflow Store code from bash. All transitions must use this tool.",
 			"When the workflow result includes todoProjection.operations and the todo tool is available, call todo with each operation in order. Todo is a user-visible projection; never infer Workflow state from it.",
 		],
 		parameters: WorkflowParams,

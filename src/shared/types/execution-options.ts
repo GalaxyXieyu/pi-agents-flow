@@ -160,7 +160,7 @@ export interface ExtensionConfig {
 	worktreeSetupHook?: string;
 	worktreeSetupHookTimeoutMs?: number;
 	worktreeBaseDir?: string;
-	/** Where to store subagent artifact files. Defaults to "project" (cwd/.pi-agents-flow). Set to "session" for pi session dir, or "temp" for OS temp. */
+	/** Where to store subagent artifact files. Defaults to "project" (cwd/.pi/agents-flow; legacy cwd/.pi-agents-flow is still readable). Set to "session" for pi session dir, or "temp" for OS temp. */
 	artifactDir?: ArtifactDirPreference;
 	intercomBridge?: IntercomBridgeConfig;
 	proactiveSkillSubagents?: ProactiveSkillSubagentsConfig | false;

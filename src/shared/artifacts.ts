@@ -2,19 +2,30 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { TEMP_ARTIFACTS_DIR, type ArtifactPaths, type ArtifactDirPreference } from "./types.ts";
 import { getAgentDir } from "./utils.ts";
+import {
+	getPreferredProjectRuntimeRoot,
+	getProjectArtifactsRoot,
+	getProjectChainRunsRoot,
+	resolveProjectRuntimeRoot,
+} from "./project-runtime.ts";
 const CLEANUP_MARKER_FILE = ".last-cleanup";
-const PROJECT_ARTIFACT_ROOT = ".pi-agents-flow";
 
+/** Project runtime root used for new writes (`<cwd>/.pi/agents-flow`). */
 export function getProjectSubagentsDir(cwd: string): string {
-	return path.join(cwd, PROJECT_ARTIFACT_ROOT);
+	return getPreferredProjectRuntimeRoot(cwd);
+}
+
+/** Prefer the live runtime tree for reads (new `.pi/agents-flow`, else legacy). */
+export function resolveProjectSubagentsDir(cwd: string): string {
+	return resolveProjectRuntimeRoot(cwd);
 }
 
 export function getProjectArtifactsDir(cwd: string): string {
-	return path.join(getProjectSubagentsDir(cwd), "artifacts");
+	return getProjectArtifactsRoot(cwd, "write");
 }
 
 export function getProjectChainRunsDir(cwd: string): string {
-	return path.join(getProjectSubagentsDir(cwd), "chain-runs");
+	return getProjectChainRunsRoot(cwd, "write");
 }
 
 export function getArtifactsDir(
