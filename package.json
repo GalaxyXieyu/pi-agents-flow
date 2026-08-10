@@ -77,10 +77,10 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-agent-core": ">=0.81.0 <0.82.0",
-    "@earendil-works/pi-ai": ">=0.81.0 <0.82.0",
-    "@earendil-works/pi-coding-agent": ">=0.81.0 <0.82.0",
-    "@earendil-works/pi-tui": ">=0.81.0 <0.82.0"
+    "@earendil-works/pi-agent-core": ">=0.81.0",
+    "@earendil-works/pi-ai": ">=0.81.0",
+    "@earendil-works/pi-coding-agent": ">=0.81.0",
+    "@earendil-works/pi-tui": ">=0.81.0"
   },
   "peerDependenciesMeta": {
     "@earendil-works/pi-agent-core": {
