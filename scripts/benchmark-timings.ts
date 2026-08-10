@@ -19,7 +19,10 @@ import { discoverAgentsAll } from "../src/agents/agents.ts";
 import { createLocalWorkflowArtifactStore } from "../src/workflows/artifact-store.ts";
 import { materializeWorkflowContextPack } from "../src/workflows/context-pack.ts";
 import { resolveWorkflowMaxNodeAttempts, workflowNodeAttemptsExhausted } from "../src/workflows/retry-policy.ts";
-import type { WorkflowDataContract, WorkflowNode, WorkflowResolvedOutput, WorkflowRun } from "../src/workflows/types.ts";
+import { reduceWorkflowEvents } from "../src/workflows/reducer.ts";
+import { projectRunAudit } from "../src/workflows/diagnostics/audit.ts";
+import { projectLifecycleDiagnostics } from "../src/workflows/diagnostics/projector.ts";
+import type { WorkflowDataContract, WorkflowEvent, WorkflowNode, WorkflowResolvedOutput, WorkflowRun } from "../src/workflows/types.ts";
 import { timed } from "./workflow-benchmark.ts";
 
 export interface TimingProbe {
@@ -35,6 +38,7 @@ export interface TimingBaseline {
 		discovery: number | null;
 		"context-pack": number | null;
 		"scheduler-queue": number | null;
+		"diagnostics-projection": number | null;
 	};
 	probes: TimingProbe[];
 }
@@ -224,6 +228,37 @@ export async function measureSchedulerQueue(run: WorkflowRun): Promise<TimingPro
 	}
 }
 
+/**
+ * Measure the cost of the structured diagnostics projections (run-audit +
+ * lifecycle) over a real workflow event log. Defensive like the other probes:
+ * a missing or unreadable event log yields `ms: null` instead of throwing, so a
+ * broken workflow directory never takes down the benchmark. Requires a
+ * `workflowRunDir`; without one it reports `null`.
+ */
+export async function measureDiagnosticsProjection(runDir?: string): Promise<TimingProbe> {
+	const probe: TimingProbe = { label: "diagnostics-projection", ms: null };
+	if (!runDir) return probe;
+	const eventsPath = path.join(runDir, "events.jsonl");
+	let events: WorkflowEvent[];
+	try {
+		events = fs.readFileSync(eventsPath, "utf-8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+	} catch {
+		return probe;
+	}
+	if (events.length === 0) return probe;
+	try {
+		const workflowId = path.basename(runDir);
+		const timedResult = await timed("diagnostics-projection", async () => {
+			const run = reduceWorkflowEvents(events);
+			projectRunAudit({ run, events, diagnostics: [], salt: "", droppedDiagnosticCount: 0 });
+			projectLifecycleDiagnostics(events, { workflowId, salt: "", now: () => 0 });
+		});
+		return { label: "diagnostics-projection", ms: timedResult.ms };
+	} catch {
+		return probe;
+	}
+}
+
 export async function collectTimingBaseline(input: {
 	cwd: string;
 	workflowRunDir?: string;
@@ -235,6 +270,7 @@ export async function collectTimingBaseline(input: {
 		measureDiscovery(input.cwd),
 		measureContextPack(run, contextNode),
 		measureSchedulerQueue(run),
+		measureDiagnosticsProjection(input.workflowRunDir),
 	]);
 	const byLabel = Object.fromEntries(probes.map((probe) => [probe.label, probe.ms])) as TimingBaseline["timings"];
 	return {
@@ -245,6 +281,7 @@ export async function collectTimingBaseline(input: {
 			discovery: byLabel.discovery ?? null,
 			"context-pack": byLabel["context-pack"] ?? null,
 			"scheduler-queue": byLabel["scheduler-queue"] ?? null,
+			"diagnostics-projection": byLabel["diagnostics-projection"] ?? null,
 		},
 		probes,
 	};

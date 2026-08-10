@@ -25,6 +25,7 @@ import { evaluateWorkflow, type WorkflowEvaluation } from "./gates.ts";
 import { resolveWorkflowLanguage, workflowLanguageInstruction, workflowRunLanguage, type WorkflowLanguageMode } from "./language.ts";
 import { buildWorkflowRepairGuidance, formatWorkflowRepairGuidance, type WorkflowRepairGuidance } from "./guidance.ts";
 import { registerWorkflowOutputs } from "./output-ports.ts";
+import { writeRunAuditSidecar } from "./diagnostics/run-audit-writer.ts";
 import { assertDeepResearchCompletionContracts, assertDeepResearchEditorLineage } from "./data-contract.ts";
 import { parseWorkflowResult } from "./result-contract.ts";
 import { DEFAULT_WORKFLOW_MAX_NODE_ATTEMPTS, resolveWorkflowMaxNodeAttempts, workflowNodeAttemptsExhausted } from "./retry-policy.ts";
@@ -987,6 +988,9 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 					writeAtomicTextFile(finalPath, finalMarkdown);
 					const next = store.append(run.id, { id: createEventId(), type: "workflow.status_changed", at: now(), status: "completed" });
 					persistBinding(next);
+					// Best-effort, non-authoritative run-audit sidecar. Never interrupts the
+					// authoritative lifecycle; any projection/write failure is swallowed.
+					writeRunAuditSidecar(store, next.id);
 					return resultFor(ctx, next, evaluateWorkflow(next), `Workflow ${next.id} completed. Final artifact: ${finalPath}`, { finalPath, ...qualityDetails(store, next) });
 				}
 				case "status": {
