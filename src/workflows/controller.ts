@@ -22,6 +22,7 @@ import {
 } from "./coding-preset.ts";
 import { dependencyIsAccepted, finalAcceptedEditor } from "./effective-nodes.ts";
 import { evaluateWorkflow, type WorkflowEvaluation } from "./gates.ts";
+import { assertOutlineSectionWriterOwnership, outlineSectionWriterNodeIds } from "./section-ownership.ts";
 import { resolveWorkflowLanguage, workflowLanguageInstruction, workflowRunLanguage, type WorkflowLanguageMode } from "./language.ts";
 import { buildWorkflowRepairGuidance, formatWorkflowRepairGuidance, type WorkflowRepairGuidance } from "./guidance.ts";
 import { registerWorkflowOutputs } from "./output-ports.ts";
@@ -599,7 +600,7 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 					}
 					const next = store.append(run.id, { id: createEventId(), type: "workflow.outline_set", at: now(), outline: params.outline });
 					persistBinding(next);
-					return resultFor(ctx, next, evaluateWorkflow(next), `Document outline recorded for ${next.id}: ${params.outline.sections.length} sections across ${new Set(params.outline.sections.map((section) => section.writerNodeId)).size} Writer nodes.`);
+					return resultFor(ctx, next, evaluateWorkflow(next), `Document outline recorded for ${next.id}: ${params.outline.sections.length} sections across ${outlineSectionWriterNodeIds(params.outline).size} Writer nodes.`);
 				}
 				case "apply_plan": {
 					assertDeepResearchCompletionContracts(run.mode, params.workUnits);
@@ -654,6 +655,12 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 							evaluation,
 							"Plan not applied. Confirm and persist the detailed outline with set_outline before planning section writing, editing, or review nodes.",
 						);
+					}
+					if (run.mode === "deep-research" && includesDocumentProduction && run.documentOutline) {
+						assertOutlineSectionWriterOwnership(run.documentOutline, [
+							...Object.values(run.nodes),
+							...params.workUnits,
+						]);
 					}
 					const next = store.append(run.id, { id: createEventId(), type: "workflow.plan_applied", at: now(), tasks: params.tasks, workUnits: params.workUnits });
 					persistBinding(next);

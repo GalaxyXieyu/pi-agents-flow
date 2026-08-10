@@ -522,6 +522,60 @@ describe("workflow controller", () => {
 		assert.equal(planned.details.run.nodes.editor?.kind, "editor");
 	});
 
+	it("rejects an outline-to-writer mismatch before immutable document production starts", async () => {
+		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-controller-ownership-preflight-"));
+		tempDirs.push(cwd);
+		const entries: unknown[] = [];
+		const controller = createWorkflowController({
+			adapter: { async run() { throw new Error("must not execute"); } },
+			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }), createRunId: () => "workflow-ownership-preflight", now: () => 1, resolveBranch: () => "main",
+		});
+		const ctx = fakeContext(cwd, entries);
+		await controller.execute({ action: "start", mode: "deep-research", goal: "Research" }, ctx);
+		await controller.execute({ action: "set_brief", brief: {
+			version: 0, audience: "Engineers", purpose: "Decision", scope: "Ownership", depth: "standard", deliverable: "research-report",
+			targetWords: { min: 1000, max: 2000 }, requiredTopics: [], excludedTopics: [], constraints: [], assumptions: [], clarification: "confirmed",
+		} }, ctx);
+		await controller.execute({ action: "set_outline", outline: {
+			version: 0, title: "Ownership", thesis: "Explicit ownership prevents deadlocks.", approval: "supervisor",
+			sections: [
+				{ id: "a", title: "A", objective: "A", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeIds: ["writer-a"] },
+				{ id: "b", title: "B", objective: "B", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeIds: ["writer-b"] },
+			],
+		} }, ctx);
+		await assert.rejects(
+			controller.execute({ action: "apply_plan", tasks: [{ id: "task-main", label: "Main", order: 0 }], workUnits: [planNode("writer-a", "section-writer")] }, ctx),
+			/section 'b'.*writer-b.*Available Section Writer nodes: writer-a/is,
+		);
+		assert.deepEqual(controller.current(ctx)?.nodes, {});
+	});
+
+	it("accepts one explicit Section Writer owner for multiple outline sections", async () => {
+		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-controller-multi-section-owner-"));
+		tempDirs.push(cwd);
+		const entries: unknown[] = [];
+		const controller = createWorkflowController({
+			adapter: { async run() { throw new Error("must not execute"); } },
+			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }), createRunId: () => "workflow-multi-section-owner", now: () => 1, resolveBranch: () => "main",
+		});
+		const ctx = fakeContext(cwd, entries);
+		await controller.execute({ action: "start", mode: "deep-research", goal: "Research" }, ctx);
+		await controller.execute({ action: "set_brief", brief: {
+			version: 0, audience: "Engineers", purpose: "Decision", scope: "Ownership", depth: "standard", deliverable: "research-report",
+			targetWords: { min: 1000, max: 2000 }, requiredTopics: [], excludedTopics: [], constraints: [], assumptions: [], clarification: "confirmed",
+		} }, ctx);
+		await controller.execute({ action: "set_outline", outline: {
+			version: 0, title: "Ownership", thesis: "One writer can own several sections.", approval: "supervisor",
+			sections: [
+				{ id: "a", title: "A", objective: "A", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeIds: ["writer-a"] },
+				{ id: "b", title: "B", objective: "B", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeIds: ["writer-a"] },
+				{ id: "c", title: "C", objective: "C", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeIds: ["writer-b"] },
+			],
+		} }, ctx);
+		const planned = await controller.execute({ action: "apply_plan", tasks: [{ id: "task-main", label: "Main", order: 0 }], workUnits: [planNode("writer-a", "section-writer"), planNode("writer-b", "section-writer")] }, ctx);
+		assert.equal(planned.details.run.nodes["writer-a"]?.kind, "section-writer");
+	});
+
 	it("requires real user approval before persisting a user-owned outline", async () => {
 		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-controller-outline-review-"));
 		tempDirs.push(cwd);

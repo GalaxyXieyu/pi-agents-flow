@@ -229,7 +229,10 @@ export interface DocumentOutlineSection {
 	questions: string[];
 	evidenceRequirements: string[];
 	targetWords: number;
-	writerNodeId: string;
+	/** Legacy single-owner spelling. New outlines may use writerNodeIds instead. */
+	writerNodeId?: string;
+	/** Explicit Section Writer ownership. Supports one Writer producing several sections. */
+	writerNodeIds?: string[];
 }
 
 export interface DocumentOutline {

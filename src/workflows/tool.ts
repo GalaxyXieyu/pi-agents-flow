@@ -68,7 +68,8 @@ const DocumentOutlineParams = Type.Object({
 		questions: Type.Array(Type.String()),
 		evidenceRequirements: Type.Array(Type.String()),
 		targetWords: Type.Integer({ minimum: 100 }),
-		writerNodeId: Type.String(),
+		writerNodeId: Type.Optional(Type.String({ description: "Legacy single Section Writer owner. Prefer writerNodeIds when one Writer owns multiple sections." })),
+		writerNodeIds: Type.Optional(Type.Array(Type.String(), { minItems: 1, description: "Explicit Section Writer owners. One owner may be assigned to multiple outline sections." })),
 	}, { additionalProperties: false }), { minItems: 2 }),
 }, { additionalProperties: false });
 
@@ -419,7 +420,8 @@ function parseOutline(value: unknown): DocumentOutline {
 				questions: parseStringArray(entry.questions, `outline.sections[${index}].questions`),
 				evidenceRequirements: parseStringArray(entry.evidenceRequirements, `outline.sections[${index}].evidenceRequirements`),
 				targetWords: entry.targetWords as number,
-				writerNodeId: requiredString(entry.writerNodeId, `outline.sections[${index}].writerNodeId`),
+				...(entry.writerNodeId === undefined ? {} : { writerNodeId: requiredString(entry.writerNodeId, `outline.sections[${index}].writerNodeId`) }),
+				...(entry.writerNodeIds === undefined ? {} : { writerNodeIds: parseStringArray(entry.writerNodeIds, `outline.sections[${index}].writerNodeIds`) }),
 			};
 		}),
 	};

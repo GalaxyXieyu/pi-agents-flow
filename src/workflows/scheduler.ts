@@ -11,7 +11,8 @@ import { workflowLanguageInstruction, workflowRunLanguage } from "./language.ts"
 import { createLocalWorkflowArtifactStore } from "./artifact-store.ts";
 import type { WorkflowDelegationAdapter, WorkflowDelegationRuntimeContext } from "./delegation-adapter.ts";
 import { resolveWorkflowPolicy } from "./policy.ts";
-import { allocateWorkflowOutputSlots, registerWorkflowOutputs } from "./output-ports.ts";
+import { allocateWorkflowOutputSlots, outputRegistrationDiagnostic, registerWorkflowOutputs } from "./output-ports.ts";
+import { sectionIsOwnedBy } from "./section-ownership.ts";
 import { parseWorkflowResult } from "./result-contract.ts";
 import { resolveWorkflowMaxNodeAttempts, workflowNodeAttemptsExhausted } from "./retry-policy.ts";
 import { buildResearchSearchPlan, formatResearchSearchPlan, type ResearchSourcePortfolio } from "./query-strategy.ts";
@@ -50,6 +51,11 @@ function runnable(node: WorkflowRun["nodes"][string], maxNodeAttempts: number, r
 		&& (node.status === "failed" || node.status === "cancelled")
 		&& lastFailure?.retryable !== false
 		&& !workflowNodeAttemptsExhausted(node, maxNodeAttempts);
+}
+
+function outputRegistrationError(error: unknown, node: WorkflowRun["nodes"][string], result: WorkflowResult): string {
+	const reason = error instanceof Error ? error.message : String(error);
+	return `Workflow output registration failed: ${JSON.stringify({ ...outputRegistrationDiagnostic(node, result), reason })}`;
 }
 
 function workflowFailure(error: string, context?: WorkflowFailureContext): WorkflowFailure {
@@ -196,7 +202,7 @@ function withWorkflowContext(store: WorkflowStore, run: WorkflowRun, node: Workf
 	const contextNode = contextRun.nodes[node.id] ?? node;
 	const contract = contextNode.dataContract;
 	const policy = resolveWorkflowPolicy(run.mode, run.policy);
-	const assignedSections = run.documentOutline?.sections.filter((section) => section.writerNodeId === node.id) ?? [];
+	const assignedSections = run.documentOutline?.sections.filter((section) => sectionIsOwnedBy(section, node.id)) ?? [];
 	const qualityContract = run.mode === "deep-research" && (node.kind === "editor" || node.kind === "reviewer")
 		? [
 				"Final-document quality contract (satisfy before returning):",
@@ -480,7 +486,7 @@ export function createWorkflowScheduler(options: CreateWorkflowSchedulerOptions)
 								at: now(),
 								nodeId: node.id,
 								attemptId: attempt.attemptId,
-								error: `Workflow output registration failed: ${error instanceof Error ? error.message : String(error)}`,
+								error: outputRegistrationError(error, startedNode, parsed),
 								...terminalMetadata(response, result.launchContractDigest),
 							}, { failureClass: "output_registration_failed" });
 					}
@@ -512,7 +518,7 @@ export function createWorkflowScheduler(options: CreateWorkflowSchedulerOptions)
 								at: now(),
 								nodeId: node.id,
 								attemptId: attempt.attemptId,
-								error: `Workflow output registration failed: ${registrationError instanceof Error ? registrationError.message : String(registrationError)}`,
+								error: outputRegistrationError(registrationError, startedNode, salvaged),
 								...terminalMetadata(terminal, result.launchContractDigest),
 							}, { failureClass: "output_registration_failed" });
 						}

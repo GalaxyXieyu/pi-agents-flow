@@ -487,6 +487,29 @@ describe("workflow quality benchmark", () => {
 		assert.equal(withBoth.metrics.unresolvedConflicts, 0);
 	});
 
+	it("computes complete coverage when one explicit owner writes multiple outline sections", () => {
+		const research = [validResearchNode("architecture"), validResearchNode("safety"), validResearchNode("recovery")];
+		const workflow = run([...research, ...documentNodes(research)]);
+		workflow.documentOutline!.sections[0] = { ...workflow.documentOutline!.sections[0]!, writerNodeIds: ["section-a"] };
+		workflow.documentOutline!.sections[1] = { ...workflow.documentOutline!.sections[1]!, writerNodeIds: ["section-a"] };
+		const report = assessWorkflowQuality(workflow);
+		assert.equal(report.metrics.sectionWriterCoverage, 1);
+		assert.equal(report.releaseReady, true, report.blockers.join("\n"));
+	});
+
+	it("separates structural completion blockers from content quality blockers", () => {
+		const research = [validResearchNode("architecture"), validResearchNode("safety"), validResearchNode("recovery")];
+		const workflow = run([...research, ...documentNodes(research)]);
+		workflow.documentOutline!.sections[0] = { ...workflow.documentOutline!.sections[0]!, writerNodeIds: ["missing-writer"] };
+		const report = assessWorkflowQuality(workflow);
+		assert.ok(report.structuralBlockers.some((blocker) => blocker.includes("Section Writer coverage")));
+		assert.equal(report.contentBlockers.length, 0);
+		assert.match(formatWorkflowQualityReport(report), /Structural integrity: BLOCKED/);
+		assert.match(formatWorkflowQualityReport(report), /Content quality: PASSED/);
+		assert.equal(report.deliveryReadyButWorkflowIncomplete, true);
+		assert.match(formatWorkflowQualityReport(report), /READY FOR MANUAL HANDOFF/);
+	});
+
 	it("section writer coverage follows superseded chain", () => {
 		const research = validResearchNode("r1");
 		const nodes = documentNodes([research]);

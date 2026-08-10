@@ -497,6 +497,20 @@ describe("workflow tool and commands", () => {
 		assert.deepEqual(parseWorkflowActionParams({ action: "start", goal: "bad", codingStage: "bogus" }), { action: "start", goal: "bad" });
 	});
 
+	it("parses writerNodeIds-only ownership for multi-section writers", () => {
+		const parsed = parseWorkflowActionParams({
+			action: "set_outline",
+			outline: {
+				version: 0, title: "Report", thesis: "Explicit ownership.", approval: "supervisor",
+				sections: [
+					{ id: "a", title: "A", objective: "A", questions: [], evidenceRequirements: [], targetWords: 100, writerNodeIds: ["writer-a"] },
+					{ id: "b", title: "B", objective: "B", questions: [], evidenceRequirements: [], targetWords: 100, writerNodeIds: ["writer-a"] },
+				],
+			},
+		});
+		assert.deepEqual(parsed.action === "set_outline" ? parsed.outline.sections.map((section) => section.writerNodeIds) : [], [["writer-a"], ["writer-a"]]);
+	});
+
 	it("parses persisted research briefs and detailed outlines", () => {
 		const brief = {
 			version: 0 as const,

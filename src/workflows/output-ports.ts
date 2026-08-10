@@ -5,6 +5,7 @@ import type {
 	WorkflowDataContract,
 	WorkflowJsonValue,
 	WorkflowNode,
+	WorkflowOutputSubmission,
 	WorkflowResolvedOutput,
 	WorkflowResult,
 	WorkflowRun,
@@ -14,6 +15,41 @@ export interface RegisteredWorkflowOutputs {
 	resultArtifact: WorkflowArtifactDescriptor;
 	outputs: Record<string, WorkflowResolvedOutput>;
 	eventResult: WorkflowResult;
+}
+
+export interface WorkflowOutputRegistrationDiagnostic {
+	nodeId: string;
+	ports: Array<{
+		port: string;
+		expected: { mediaType: string; storage: WorkflowDataContract["outputs"][string]["storage"]; required: boolean; maxInlineBytes?: number };
+		actual: { present: boolean; kind?: WorkflowOutputSubmission["kind"]; path?: string; valuePresent?: boolean };
+	}>;
+}
+
+export function outputRegistrationDiagnostic(node: WorkflowNode, result: WorkflowResult): WorkflowOutputRegistrationDiagnostic {
+	return {
+		nodeId: node.id,
+		ports: Object.entries(node.dataContract.outputs).map(([port, expected]) => {
+			const submission = result.outputs[port];
+			return {
+				port,
+				expected: {
+					mediaType: expected.mediaType,
+					storage: expected.storage,
+					required: expected.required,
+					...(expected.maxInlineBytes === undefined ? {} : { maxInlineBytes: expected.maxInlineBytes }),
+				},
+				actual: submission
+					? {
+						present: true,
+						kind: submission.kind,
+						...(submission.path === undefined ? {} : { path: submission.path }),
+						...(submission.value === undefined ? {} : { valuePresent: true }),
+					}
+					: { present: false },
+			};
+		}),
+	};
 }
 
 function serialized(value: WorkflowJsonValue, mediaType: string): { content: string; bytes: number } {

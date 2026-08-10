@@ -2,6 +2,7 @@ import { effectiveAcceptedNodes, isAdjudicatedStatus, acceptedReviewerRelease, f
 import { policyAllowsCompletion, resolveWorkflowPolicy, type WorkflowPolicy } from "./policy.ts";
 import { resolveWorkflowMaxNodeAttempts, workflowNodeAttemptsExhausted } from "./retry-policy.ts";
 import { normalizeWorkflowText } from "./text-normalize.ts";
+import { outlineSectionWriterNodeIds } from "./section-ownership.ts";
 import type { WorkflowNode, WorkflowNodeKind, WorkflowReviewerRelease, WorkflowRun } from "./types.ts";
 
 export interface WorkflowEvaluation {
@@ -60,27 +61,20 @@ export function evaluateWorkflow(run: WorkflowRun, policyOverride?: WorkflowPoli
 	const exhausted = nodes.filter((node) => workflowNodeAttemptsExhausted(node, maxNodeAttempts)).length;
 	const acceptedResearchLanes = acceptedNodes.filter((node) => node.kind === "research").length;
 	const acceptedSectionWriters = acceptedNodes.filter((node) => node.kind === "section-writer").length;
-	const outlineWriterIds = new Set(run.documentOutline?.sections.map((section) => section.writerNodeId) ?? []);
-	// Track replacement chains: a writer ID is considered covered if it or any node
-	// that superseded it (following the supersededBy chain) is accepted. This ensures
-	// that replacing a rejected/pending writer via `replaces` still counts toward
-	// outline coverage without requiring the outline to be manually updated.
-	const isWriterIdCovered = (writerId: string): boolean => {
+	const outlineWriterIds = outlineSectionWriterNodeIds(run.documentOutline);
+	const editorCoversWriter = (editor: WorkflowNode, writerId: string): boolean => {
 		const visited = new Set<string>();
 		let current = run.nodes[writerId];
 		while (current && !visited.has(current.id)) {
 			visited.add(current.id);
-			if (current.status === "accepted") return true;
+			if (nodeTransitivelyDependsOn(run, editor.id, current.id)) return true;
 			if (current.status !== "superseded" || !current.supersededBy) break;
 			current = run.nodes[current.supersededBy];
 		}
 		return false;
 	};
 	const editorCoversOutline = (editor: WorkflowNode): boolean => outlineWriterIds.size > 0
-		&& [...outlineWriterIds].every((writerId) =>
-			nodeTransitivelyDependsOn(run, editor.id, writerId)
-			|| editor.dependsOn.some((dep) => isWriterIdCovered(dep) && run.nodes[dep]?.kind === "section-writer"),
-		);
+		&& [...outlineWriterIds].every((writerId) => editorCoversWriter(editor, writerId));
 	const editorReviewed = (editor: WorkflowNode): boolean => acceptedNodes.some((node) =>
 		node.kind === "reviewer" && nodeTransitivelyDependsOn(run, node.id, editor.id),
 	);

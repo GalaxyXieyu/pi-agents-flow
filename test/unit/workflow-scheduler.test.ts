@@ -167,6 +167,33 @@ describe("workflow scheduler", () => {
 		}
 	});
 
+	it("reports port-level diagnostics when output artifact registration fails", async () => {
+		const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-output-diagnostic-"));
+		tempDirs.push(rootDir);
+		const store = createWorkflowStore({ rootDir });
+		store.create({ id: "workflow-output-diagnostic", mode: "general", goal: "Diagnose", cwd: "/repo", sessionId: "session-1", branch: "main", at: 1 });
+		store.append("workflow-output-diagnostic", {
+			id: "plan", type: "workflow.plan_applied", at: 2, tasks: [{ id: "task-main", label: "Main", order: 0 }], workUnits: [node("research-a")],
+		});
+		const scheduler = createWorkflowScheduler({
+			store,
+			adapter: {
+				async run(run, workflowNode, attempt) {
+					return { ok: true, response: completedResponse(attempt.requestId, run.id, workflowNode.id, {
+						...result("finished"), outputs: { result: { kind: "file", path: "/outside-trusted-output.json" } },
+					}) };
+				},
+			},
+		});
+		const run = await scheduler.runReady("workflow-output-diagnostic");
+		const error = run.nodes["research-a"]?.attempts[0]?.error ?? "";
+		assert.equal(run.nodes["research-a"]?.attempts[0]?.failure?.failureClass, "output_registration_failed");
+		assert.match(error, /"nodeId":"research-a"/);
+		assert.match(error, /"port":"result"/);
+		assert.match(error, /"mediaType":"application\/json"/);
+		assert.match(error, /"path":"\/outside-trusted-output\.json"/);
+	});
+
 	it("keeps a one-megabyte result out of workflow history while hydrating it from a verified artifact", async () => {
 		const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-scheduler-large-result-"));
 		tempDirs.push(rootDir);

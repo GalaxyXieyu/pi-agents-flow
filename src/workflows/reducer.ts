@@ -4,6 +4,7 @@ import { resolveWorkflowMaxNodeAttempts, workflowNodeAttemptsExhausted, resolveW
 import { assertWorkflowDataContract, assertWorkflowDataFlow } from "./data-contract.ts";
 import { dependencyIsAccepted } from "./effective-nodes.ts";
 import { resolveWorkflowLanguage } from "./language.ts";
+import { sectionWriterNodeIds } from "./section-ownership.ts";
 import type {
 	WorkflowAttempt,
 	DocumentOutline,
@@ -79,10 +80,12 @@ function assertOutline(outline: DocumentOutline): void {
 		assertNonBlank(section.id, `outline.sections[${index}].id`);
 		assertNonBlank(section.title, `outline.sections[${index}].title`);
 		assertNonBlank(section.objective, `outline.sections[${index}].objective`);
-		assertNonBlank(section.writerNodeId, `outline.sections[${index}].writerNodeId`);
+		const ownerIds = sectionWriterNodeIds(section);
+		if (ownerIds.length === 0) throw new Error(`outline.sections[${index}] must declare writerNodeId or writerNodeIds.`);
+		if (section.writerNodeIds) assertStringList(section.writerNodeIds, `outline.sections[${index}].writerNodeIds`);
 		if (ids.has(section.id)) throw new Error(`Duplicate outline section '${section.id}'.`);
 		ids.add(section.id);
-		writers.add(section.writerNodeId);
+		for (const ownerId of ownerIds) writers.add(ownerId);
 		if (!Number.isInteger(section.targetWords) || section.targetWords < 100) throw new Error(`Outline section '${section.id}' targetWords must be an integer >= 100.`);
 		assertStringList(section.questions, `outline.sections[${index}].questions`);
 		assertStringList(section.evidenceRequirements, `outline.sections[${index}].evidenceRequirements`);
@@ -122,12 +125,12 @@ function isUserApprovedWriterOwnershipRepair(run: WorkflowRun, outline: Document
 			|| section.objective !== previous.objective
 			|| section.targetWords !== previous.targetWords
 			|| !sameStringList(section.questions, previous.questions)
-			|| !sameStringList(section.evidenceRequirements, previous.evidenceRequirements)
-			|| !isViableSectionWriter(run, section.writerNodeId)) return false;
-		if (section.writerNodeId === previous.writerNodeId) continue;
-
-		const obsoleteWriter = run.nodes[previous.writerNodeId];
-		if (obsoleteWriter?.kind !== "section-writer" || obsoleteWriter.status !== "rejected") return false;
+			|| !sameStringList(section.evidenceRequirements, previous.evidenceRequirements)) return false;
+		const ownerIds = sectionWriterNodeIds(section);
+		const previousOwnerIds = sectionWriterNodeIds(previous);
+		if (!ownerIds.every((ownerId) => isViableSectionWriter(run, ownerId))) return false;
+		if (sameStringList(ownerIds, previousOwnerIds)) continue;
+		if (!previousOwnerIds.every((ownerId) => run.nodes[ownerId]?.kind === "section-writer" && run.nodes[ownerId]?.status === "rejected")) return false;
 		changed = true;
 	}
 	return changed;

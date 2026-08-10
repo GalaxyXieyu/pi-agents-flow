@@ -145,6 +145,48 @@ describe("workflow completion gates", () => {
 		assert.equal(evaluation.nextAction, "complete");
 	});
 
+	it("does not treat one covered owner as coverage for other outline writers", () => {
+		const nodes = [
+			node("research-a", "research", "accepted"), node("research-b", "research", "accepted"), node("research-c", "research", "accepted"),
+			node("writer-a", "section-writer", "accepted"), node("writer-b", "section-writer", "accepted"),
+			node("editor", "editor", "accepted", ["writer-a"]), node("reviewer", "reviewer", "accepted", ["editor"]),
+		];
+		nodes.at(-1)!.result!.extensions = { release: { release: true, rationale: "Approved." } };
+		const workflow: WorkflowRun = {
+			version: 0, id: "workflow-incomplete-owner-lineage", mode: "deep-research", goal: "Research", cwd: "/repo", sessionId: "session-1", branch: "main", status: "active", revision: 1, createdAt: 1, updatedAt: 1,
+			researchBrief: { version: 0, audience: "Engineers", purpose: "Decision", scope: "Architecture", depth: "deep", deliverable: "research-report", targetWords: { min: 1000, max: 2000 }, requiredTopics: [], excludedTopics: [], constraints: [], assumptions: [], clarification: "confirmed" },
+			documentOutline: { version: 0, title: "Report", thesis: "Evidence.", approval: "user", sections: [
+				{ id: "a", title: "Background", objective: "Context", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeIds: ["writer-a"] },
+				{ id: "b", title: "Details", objective: "Mechanism", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeIds: ["writer-b"] },
+			] },
+			nodes: Object.fromEntries(nodes.map((entry) => [entry.id, entry])), decisions: [], appliedEventIds: ["started"],
+		};
+		assert.equal(evaluateWorkflow(workflow).finalEditorCoversOutline, false);
+	});
+
+	it("treats a multi-section writer as the owner of every explicitly assigned section", () => {
+		const nodes = [
+			node("research-a", "research", "accepted"), node("research-b", "research", "accepted"), node("research-c", "research", "accepted"),
+			node("writer-a", "section-writer", "accepted"), node("writer-b", "section-writer", "accepted"),
+			node("editor", "editor", "accepted", ["writer-a", "writer-b"]), node("reviewer", "reviewer", "accepted", ["editor"]),
+		];
+		const reviewer = nodes.at(-1)!;
+		reviewer.result!.extensions = { release: { release: true, rationale: "Approved." } };
+		const workflow: WorkflowRun = {
+			version: 0, id: "workflow-multi-section-owner", mode: "deep-research", goal: "Research", cwd: "/repo", sessionId: "session-1", branch: "main", status: "active", revision: 1, createdAt: 1, updatedAt: 1,
+			researchBrief: { version: 0, audience: "Engineers", purpose: "Decision", scope: "Architecture", depth: "deep", deliverable: "research-report", targetWords: { min: 1000, max: 2000 }, requiredTopics: [], excludedTopics: [], constraints: [], assumptions: [], clarification: "confirmed" },
+			documentOutline: { version: 0, title: "Report", thesis: "Evidence.", approval: "user", sections: [
+				{ id: "a", title: "Background", objective: "Context", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeIds: ["writer-a"] },
+				{ id: "b", title: "Details", objective: "Mechanism", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeIds: ["writer-a"] },
+				{ id: "c", title: "Decision", objective: "Choose", questions: [], evidenceRequirements: [], targetWords: 500, writerNodeIds: ["writer-b"] },
+			] },
+			nodes: Object.fromEntries(nodes.map((entry) => [entry.id, entry])), decisions: [], appliedEventIds: ["started"],
+		};
+		const evaluation = evaluateWorkflow(workflow);
+		assert.equal(evaluation.finalEditorCoversOutline, true);
+		assert.equal(evaluation.readyToComplete, true);
+	});
+
 	it("recognizes an accepted reviewed Editor repair through transitive Section Writer dependencies", () => {
 		const nodes = [
 			node("research-a", "research", "accepted"),

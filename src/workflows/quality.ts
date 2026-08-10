@@ -1,10 +1,11 @@
 import { benchmarkResearchLanes, type SearchQualityBenchmarkResult } from "./benchmark.ts";
 import { evaluateWorkflow } from "./gates.ts";
-import { effectiveAcceptedResultNodes, acceptedReviewerRelease } from "./effective-nodes.ts";
+import { effectiveAcceptedResultNodes, acceptedReviewerRelease, finalAcceptedEditor } from "./effective-nodes.ts";
 import { canonicalEvidenceUrl, canonicalFetchedUrl, claimSimilarity, evidenceHasLocalReference, evidenceRequiresWebFetch, findingHasCitation, type EvidenceRecord } from "./evidence.ts";
 import { buildWorkflowRepairGuidance } from "./guidance.ts";
 import { resolveWorkflowPolicy, type WorkflowEvidenceMode, type WorkflowPolicy } from "./policy.ts";
 import { normalizeWorkflowText } from "./text-normalize.ts";
+import { outlineSectionWriterNodeIds } from "./section-ownership.ts";
 import type { WorkflowArtifactDescriptor, WorkflowNode, WorkflowReviewerRelease, WorkflowRun } from "./types.ts";
 
 export interface WorkflowQualityMetrics {
@@ -37,6 +38,10 @@ export interface WorkflowQualityReport {
 	/** Actual evidence mode used for this report after auto-detection. */
 	evidenceMode: Exclude<WorkflowEvidenceMode, "auto">;
 	metrics: WorkflowQualityMetrics;
+	/** Workflow lineage and outline ownership problems that prevent automatic completion. */
+	structuralBlockers: string[];
+	/** Evidence and document-quality problems, separate from workflow structure. */
+	contentBlockers: string[];
 	blockers: string[];
 	warnings: string[];
 	searchBenchmark?: SearchQualityBenchmarkResult;
@@ -45,6 +50,8 @@ export interface WorkflowQualityReport {
 	recommendedAction?: { kind: string; target: string; reason: string };
 	/** Present when an accepted reviewer declared a release that relaxed specific gates. */
 	reviewerRelease?: WorkflowReviewerRelease;
+	/** The document can be handed to a user, but structural audit gates still prevent automatic completion. */
+	deliveryReadyButWorkflowIncomplete: boolean;
 }
 
 function percent(value: number): string {
@@ -57,8 +64,15 @@ export function formatWorkflowQualityReport(report: WorkflowQualityReport, repor
 		`Workflow ${report.workflowId} revision ${report.revision}`,
 		`Evidence mode ${report.evidenceMode} (${report.policy.qualityEnforcement})`,
 	];
-	if (report.blockers.length > 0) lines.push("", "Blockers:", ...report.blockers.map((blocker) => `- ${blocker}`));
+	if (report.blockers.length > 0) lines.push("", "Blockers:");
+	if (report.structuralBlockers.length > 0) lines.push("", "Structural integrity: BLOCKED", ...report.structuralBlockers.map((blocker) => `- ${blocker}`));
+	else lines.push("", "Structural integrity: PASSED");
+	if (report.contentBlockers.length > 0) lines.push("", "Content quality: BLOCKED", ...report.contentBlockers.map((blocker) => `- ${blocker}`));
+	else lines.push("", "Content quality: PASSED");
 	if (report.warnings.length > 0) lines.push("", "Warnings:", ...report.warnings.map((warning) => `- ${warning}`));
+	if (report.deliveryReadyButWorkflowIncomplete) {
+		lines.push("", "Delivery: READY FOR MANUAL HANDOFF", "- An accepted Editor artifact and Reviewer release exist; workflow structural gates still prevent automatic completion.");
+	}
 	if (report.reviewerRelease) {
 		const r = report.reviewerRelease;
 		const released = [
@@ -175,7 +189,9 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 	const reviewerRelease = acceptedReviewerRelease(run);
 	const gapsReleased = reviewerRelease?.gapsAccepted === true;
 	const conflictsReleased = reviewerRelease?.conflictsAccepted === true;
-	const editorNode = evaluation.finalEditorNodeId ? accepted.find((node) => node.id === evaluation.finalEditorNodeId) : undefined;
+	// Manual delivery can use the terminal accepted Editor even when a structural
+	// lineage gate prevents it from becoming the auto-completion candidate.
+	const editorNode = finalAcceptedEditor(run);
 	const legacyWriterNode = accepted.filter((node) => node.kind === "writer").at(-1);
 	const editorResolvedOutput = editorNode?.outputs?.document;
 	const editorRawOutput = editorNode?.result?.outputs?.document;
@@ -232,7 +248,7 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 	});
 	const headings = markdownHeadings(finalMarkdown);
 	const outlineSections = run.documentOutline?.sections ?? [];
-	const expectedWriterIds = new Set(outlineSections.map((section) => section.writerNodeId));
+	const expectedWriterIds = outlineSectionWriterNodeIds(run.documentOutline);
 	const acceptedSectionWriterIds = new Set(accepted.filter((node) => node.kind === "section-writer").map((node) => node.id));
 	// Follow supersededBy chains so that replacing a rejected/pending writer via
 	// `replaces` still counts toward outline section-writer coverage.
@@ -342,6 +358,13 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 	if (!conflictsReleased && metrics.unresolvedConflicts > policy.gates.maxUnresolvedConflicts) {
 		blockers.push(`${metrics.unresolvedConflicts} evidence conflict(s) remain unresolved (policy max ${policy.gates.maxUnresolvedConflicts}).`);
 	}
+	const structuralBlockers = blockers.filter((blocker) =>
+		blocker.startsWith("Deep Research final editor")
+		|| blocker.startsWith("Deep Research final reviewer")
+		|| blocker.startsWith("Section Writer coverage")
+		|| blocker === "Deep Research has no accepted final editor document.",
+	);
+	const contentBlockers = blockers.filter((blocker) => !structuralBlockers.includes(blocker));
 	const warnings: string[] = [];
 	if (run.mode === "deep-research" && sourceFindings.length === 0) {
 		warnings.push("Deep Research has no accepted source findings; local-codebase analysis may rely on the final document and artifact paths instead.");
@@ -396,6 +419,12 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 	const score = Math.round(ratio(scoreSignals.reduce((sum, value) => sum + value, 0), scoreSignals.length, 0) * 100);
 	const guidance = buildWorkflowRepairGuidance(run, evaluation, policy);
 	const followUps = !blockers.length ? [] : guidance.followUpQueries;
+	const deliveryReadyButWorkflowIncomplete = Boolean(
+		editorNode
+		&& reviewerRelease?.release === true
+		&& structuralBlockers.length > 0
+		&& contentBlockers.length === 0,
+	);
 	return {
 		version: 0,
 		workflowId: run.id,
@@ -405,8 +434,11 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 		policy,
 		evidenceMode,
 		metrics,
+		structuralBlockers,
+		contentBlockers,
 		blockers,
 		warnings,
+		deliveryReadyButWorkflowIncomplete,
 		...(reviewerRelease ? { reviewerRelease } : {}),
 		...(searchBenchmark ? { searchBenchmark } : {}),
 		...(followUps.length > 0 ? { recommendedFollowUpQueries: followUps } : {}),

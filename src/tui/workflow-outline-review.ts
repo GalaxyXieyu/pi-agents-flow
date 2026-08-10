@@ -166,7 +166,7 @@ export class WorkflowOutlineReviewComponent implements Component {
 		this.field(lines, this.language === "zh" ? "章节" : "Section", `${this.pageIndex}/${this.outline.sections.length} · ${section.title}`, width, "accent");
 		this.field(lines, this.language === "zh" ? "目标" : "Objective", section.objective, width);
 		this.field(lines, this.language === "zh" ? "字数" : "Words", String(section.targetWords), width, "muted");
-		this.field(lines, this.language === "zh" ? "负责人" : "Owner", section.writerNodeId, width, "muted");
+		this.field(lines, this.language === "zh" ? "负责人" : "Owner", section.writerNodeIds?.join(", ") ?? section.writerNodeId ?? "-", width, "muted");
 		lines.push("");
 		addWrapped(lines, " ", this.theme.fg("muted", this.language === "zh" ? "核心问题" : "Questions"), width);
 		for (const question of section.questions) addWrapped(lines, "   - ", question, width);
