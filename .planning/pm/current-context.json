@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-10T16:41:47+08:00",
+  "generated_at": "2026-08-10T17:37:45+08:00",
   "project": {
     "name": "CodingAgents",
     "repo_root": "/Users/hb00156/Documents/coding/pi-agents-flow",
@@ -87,6 +87,24 @@
       "url": "https://applink.feishu.cn/client/todo/detail?guid=092ac05e-dd7d-4025-978a-2df223b65201&suite_entity_num=t101024",
       "updated_at": "1786291023677",
       "created_at": "1786289932495"
+    },
+    {
+      "task_id": "T5",
+      "summary": "[T5] 引入 dependency-cruiser 架构依赖治理与循环基线",
+      "status": "todo",
+      "guid": "dc1721f2-c712-4a3c-a9a8-18fd3406a14d",
+      "url": "https://applink.feishu.cn/client/todo/detail?guid=dc1721f2-c712-4a3c-a9a8-18fd3406a14d&suite_entity_num=t101032",
+      "updated_at": "1786352811628",
+      "created_at": "1786352731022"
+    },
+    {
+      "task_id": "T6",
+      "summary": "[T6] 建立 Workflow 结构化故障诊断、运行审计与跨运行 Benchmark 管道",
+      "status": "todo",
+      "guid": "516d767a-5ab8-4e27-a038-2db3495d9b89",
+      "url": "https://applink.feishu.cn/client/todo/detail?guid=516d767a-5ab8-4e27-a038-2db3495d9b89&suite_entity_num=t101033",
+      "updated_at": "1786352816954",
+      "created_at": "1786352761256"
     }
   ],
   "next_task": {
