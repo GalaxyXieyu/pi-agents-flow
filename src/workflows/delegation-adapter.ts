@@ -14,7 +14,7 @@ import {
 	resolveSubagentLaunchContract,
 	type SubagentLaunchContractInput,
 } from "../api/preflight.ts";
-import { DEFAULT_TURN_BUDGET_GRACE_TURNS } from "../runs/shared/turn-budget.ts";
+import { DEFAULT_TURN_BUDGET_GRACE_TURNS, DEFAULT_WORKFLOW_CHILD_TURN_BUDGET } from "../runs/shared/turn-budget.ts";
 import { CODING_PREAPPROVAL_READONLY_ANNOTATION } from "./coding-preset.ts";
 import { workflowResultSchema, parseWorkflowResult, WORKFLOW_RESULT_SUBMISSION_GUIDE } from "./result-contract.ts";
 import type { AvailableModelInfo, ParentModel } from "../runs/shared/model-fallback.ts";
@@ -126,6 +126,7 @@ export function buildWorkflowDelegationRequest(
 	attempt: WorkflowAttempt,
 	resolved: Extract<WorkflowPreflightResult, { ok: true }>,
 	formatError?: string,
+	turnBudget = node.agentSpec.turnBudget,
 ): SubagentDelegationRequest {
 	const resultSchema = workflowResultSchema(node.dataContract);
 	return {
@@ -141,7 +142,7 @@ export function buildWorkflowDelegationRequest(
 		...(resolved.modelCandidates && resolved.modelCandidates.length > 1 ? { fallbackModels: resolved.modelCandidates.slice(1) } : {}),
 		...(resolved.thinking ?? node.agentSpec.thinking ? { thinking: resolved.thinking ?? node.agentSpec.thinking } : {}),
 		...(node.agentSpec.timeoutMs !== undefined ? { timeoutMs: node.agentSpec.timeoutMs } : {}),
-		...(node.agentSpec.turnBudget ? { turnBudget: node.agentSpec.turnBudget } : {}),
+		...(turnBudget ? { turnBudget } : {}),
 		...(node.agentSpec.toolBudget ? { toolBudget: node.agentSpec.toolBudget } : {}),
 		...(node.agentSpec.skills && node.agentSpec.skills.length > 0 ? { skill: node.agentSpec.skills } : {}),
 		...(node.agentSpec.extraTools?.length ? { extraTools: [...node.agentSpec.extraTools] } : {}),
@@ -280,7 +281,7 @@ export function createWorkflowDelegationAdapter(
 						};
 					}
 				}
-				const request = buildWorkflowDelegationRequest(run, node, attempt, preflightResult, formatError);
+				const request = buildWorkflowDelegationRequest(run, node, attempt, preflightResult, formatError, turnBudget);
 				let response: SubagentDelegationResponse;
 				try {
 					response = await waitForResponse(options.events, request, signal, responseTimeoutMs);

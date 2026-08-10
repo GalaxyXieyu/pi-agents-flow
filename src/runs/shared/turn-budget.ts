@@ -2,6 +2,9 @@ import type { ResolvedTurnBudget, TurnBudgetState } from "../../shared/types.ts"
 
 export const DEFAULT_TURN_BUDGET_GRACE_TURNS = 1;
 
+/** Conservative default turn budget for workflow child delegations lacking an explicit turnBudget. */
+export const DEFAULT_WORKFLOW_CHILD_TURN_BUDGET = 25;
+
 export function resolveTurnBudgetConfig(
 	raw: unknown,
 	label = "turnBudget",

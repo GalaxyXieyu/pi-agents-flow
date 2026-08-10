@@ -456,6 +456,9 @@ export function reduceWorkflowEvent(run: WorkflowRun | undefined, event: Workflo
 			// blocked chains can be repaired declaratively.
 			if (node.replaces) {
 				const target = run.nodes[node.replaces];
+				if (target?.status === "running" || target?.status === "waiting") {
+					throw new Error(`Workflow node '${target.id}' is ${target.status}; stop the running attempt before accepting its replacement.`);
+				}
 				if (target && target.status !== "accepted" && target.status !== "superseded") {
 					accepted[target.id] = {
 						...target,

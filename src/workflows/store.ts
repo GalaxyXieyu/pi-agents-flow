@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { writeAtomicJson } from "../shared/atomic-json.ts";
+import { getLegacyProjectRuntimeRoot, getPreferredProjectRuntimeRoot } from "../shared/project-runtime.ts";
 import { createLocalWorkflowArtifactStore } from "./artifact-store.ts";
 import { hydrateWorkflowResult } from "./output-ports.ts";
 import { reduceWorkflowEvent, reduceWorkflowEvents } from "./reducer.ts";
@@ -96,15 +97,30 @@ function readEvents(filePath: string): WorkflowEvent[] {
 	return events;
 }
 
+function remapLegacyRuntimePaths<T>(value: T, legacyRoot: string, preferredRoot: string): T {
+	if (typeof value === "string") {
+		if (value === legacyRoot) return preferredRoot as T;
+		const legacyPrefix = `${legacyRoot}${path.sep}`;
+		return value.split(legacyPrefix).join(`${preferredRoot}${path.sep}`) as T;
+	}
+	if (Array.isArray(value)) return value.map((entry) => remapLegacyRuntimePaths(entry, legacyRoot, preferredRoot)) as T;
+	if (value && typeof value === "object") {
+		return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, remapLegacyRuntimePaths(entry, legacyRoot, preferredRoot)])) as T;
+	}
+	return value;
+}
+
 function hydrateRunResults(run: WorkflowRun, artifactsDir: string): WorkflowRun {
 	const artifactStore = createLocalWorkflowArtifactStore(artifactsDir);
+	const legacyRoot = getLegacyProjectRuntimeRoot(run.cwd);
+	const preferredRoot = getPreferredProjectRuntimeRoot(run.cwd);
+	const hydrate = (descriptor: NonNullable<WorkflowRun["nodes"][string]["resultArtifact"]>) =>
+		remapLegacyRuntimePaths(hydrateWorkflowResult(descriptor, artifactStore), legacyRoot, preferredRoot);
 	let changed = false;
 	const nodes = Object.fromEntries(Object.entries(run.nodes).map(([nodeId, node]) => {
 		if (!node.resultArtifact) return [nodeId, node];
-		const result = hydrateWorkflowResult(node.resultArtifact, artifactStore);
-		const attempts = node.attempts.map((attempt) => attempt.resultArtifact
-			? { ...attempt, result: hydrateWorkflowResult(attempt.resultArtifact, artifactStore) }
-			: attempt);
+		const result = hydrate(node.resultArtifact);
+		const attempts = node.attempts.map((attempt) => attempt.resultArtifact ? { ...attempt, result: hydrate(attempt.resultArtifact) } : attempt);
 		changed = true;
 		return [nodeId, { ...node, result, attempts }];
 	}));

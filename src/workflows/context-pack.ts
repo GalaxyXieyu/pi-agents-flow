@@ -91,7 +91,16 @@ function assertClearance(output: WorkflowResolvedOutput, clearance: keyof typeof
 function artifactValue(store: WorkflowArtifactStore, descriptor: WorkflowArtifactDescriptor): WorkflowJsonValue {
 	if (descriptor.encoding !== "utf-8") throw new Error(`Artifact '${descriptor.artifactId}' cannot be selected as JSON because it is binary.`);
 	const text = store.read(descriptor).toString("utf8");
-	if (descriptor.mediaType === "application/json") return JSON.parse(text) as WorkflowJsonValue;
+	if (descriptor.mediaType === "application/json") {
+		try {
+			return JSON.parse(text) as WorkflowJsonValue;
+		} catch (parseError) {
+			// Graceful degradation: if the artifact claims to be JSON but isn't parseable,
+			// return the raw text so downstream can still access the content.
+			console.warn(`[context-pack] Artifact '${descriptor.artifactId}' has mediaType 'application/json' but JSON.parse failed: ${parseError instanceof Error ? parseError.message : String(parseError)}. Returning raw text.`);
+			return text;
+		}
+	}
 	return text;
 }
 
@@ -180,7 +189,21 @@ export function materializeWorkflowContextPack(input: {
 	const omitted: WorkflowContextPackManifest["omitted"] = [];
 	let inlineBytes = 0;
 	for (const binding of input.contract.inputs ?? []) {
-		const sources = resolveSources(input.run, input.node, binding, input.artifactStore, clearance);
+		let sources: ResolvedSource[];
+		try {
+			sources = resolveSources(input.run, input.node, binding, input.artifactStore, clearance);
+		} catch (resolveError) {
+			// Graceful degradation: if a required input cannot be resolved (e.g. dependency
+			// superseded with corrupted artifact, or JSON.parse failure in artifact), treat
+			// it as omitted rather than crashing the entire context pack. The downstream node
+			// will see the omission in the manifest and can decide how to proceed.
+			const reason = resolveError instanceof Error ? resolveError.message : String(resolveError);
+			console.warn(`[context-pack] Input binding '${binding.name}' failed to resolve: ${reason}. Treating as omitted.`);
+			if (binding.required !== false) {
+				omitted.push({ binding: binding.name, source: "error", reason });
+			}
+			continue;
+		}
 		if (sources.length === 0) {
 			omitted.push({ binding: binding.name, source: "none", reason: "optional input was unavailable" });
 			continue;

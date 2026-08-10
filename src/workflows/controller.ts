@@ -226,7 +226,21 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 				});
 				continue;
 			}
-			if (!attempt.metadataPath) continue;
+			if (!attempt.metadataPath) {
+				if (deadline === undefined) {
+					next = store.append(next.id, {
+						id: `recovery:${attempt.attemptId}:missing-recovery-metadata`,
+						type: "node.failed",
+						at: now(),
+						nodeId: node.id,
+						attemptId: attempt.attemptId,
+						error: "Detached child is waiting without a recovery metadata path or wait deadline; retry is allowed.",
+						...(attempt.childRunId ? { childRunId: attempt.childRunId } : {}),
+						...(attempt.structuredOutputPath ? { structuredOutputPath: attempt.structuredOutputPath } : {}),
+					});
+				}
+				continue;
+			}
 			const metadata = readJsonRecord(attempt.metadataPath);
 			if (!metadata) continue;
 			const exitCode = metadata.exitCode;

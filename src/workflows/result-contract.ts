@@ -96,20 +96,96 @@ function strings(value: unknown, field: string): string[] {
 	return [...value];
 }
 
+function assertAllowedKeys(value: Record<string, unknown>, allowed: readonly string[], field: string): void {
+	const unknown = Object.keys(value).find((key) => !allowed.includes(key));
+	if (unknown) throw new Error(`${field} contains undeclared field '${unknown}'.`);
+}
+
+function confidence(value: unknown, field: string): WorkflowResult["summary"]["confidence"] {
+	if (value !== "high" && value !== "medium" && value !== "low") throw new Error(`${field} must be high, medium, or low.`);
+	return value;
+}
+
+function optionalString(value: unknown, field: string): string | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value !== "string") throw new Error(`${field} must be a string.`);
+	return value;
+}
+
 function parseFindings(value: unknown): WorkflowFinding[] {
 	if (!Array.isArray(value)) throw new Error("evidence.findings must be an array.");
-	return structuredClone(value) as WorkflowFinding[];
+	return value.map((finding, findingIndex) => {
+		const field = `evidence.findings[${findingIndex}]`;
+		if (!record(finding)) throw new Error(`${field} must be an object.`);
+		assertAllowedKeys(finding, ["claim", "evidence", "confidence"], field);
+		if (typeof finding.claim !== "string") throw new Error(`${field}.claim must be a string.`);
+		if (!Array.isArray(finding.evidence)) throw new Error(`${field}.evidence must be an array.`);
+		const evidence = finding.evidence.map((entry, evidenceIndex) => {
+			const evidenceField = `${field}.evidence[${evidenceIndex}]`;
+			if (!record(entry)) throw new Error(`${evidenceField} must be an object.`);
+			assertAllowedKeys(entry, ["title", "url", "artifactPath", "quote", "kind", "publishedAt", "retrievedAt"], evidenceField);
+			const kind = entry.kind === undefined ? undefined : confidenceEvidenceKind(entry.kind, `${evidenceField}.kind`);
+			return {
+				...(optionalString(entry.title, `${evidenceField}.title`) !== undefined ? { title: entry.title as string } : {}),
+				...(optionalString(entry.url, `${evidenceField}.url`) !== undefined ? { url: entry.url as string } : {}),
+				...(optionalString(entry.artifactPath, `${evidenceField}.artifactPath`) !== undefined ? { artifactPath: entry.artifactPath as string } : {}),
+				...(optionalString(entry.quote, `${evidenceField}.quote`) !== undefined ? { quote: entry.quote as string } : {}),
+				...(kind ? { kind } : {}),
+				...(optionalString(entry.publishedAt, `${evidenceField}.publishedAt`) !== undefined ? { publishedAt: entry.publishedAt as string } : {}),
+				...(optionalString(entry.retrievedAt, `${evidenceField}.retrievedAt`) !== undefined ? { retrievedAt: entry.retrievedAt as string } : {}),
+			};
+		});
+		return { claim: finding.claim, evidence, confidence: confidence(finding.confidence, `${field}.confidence`) };
+	});
+}
+
+function confidenceEvidenceKind(value: unknown, field: string): "primary" | "secondary" | "community" {
+	if (value !== "primary" && value !== "secondary" && value !== "community") throw new Error(`${field} must be primary, secondary, or community.`);
+	return value;
 }
 
 function parseSearch(value: unknown): WorkflowSearchTrace | undefined {
 	if (value === undefined) return undefined;
 	if (!record(value)) throw new Error("evidence.search must be an object.");
-	return { queries: strings(value.queries, "evidence.search.queries"), fetchedUrls: strings(value.fetchedUrls, "evidence.search.fetchedUrls"), droppedSources: structuredClone(value.droppedSources) as WorkflowSearchTrace["droppedSources"] };
+	assertAllowedKeys(value, ["queries", "fetchedUrls", "droppedSources"], "evidence.search");
+	if (!Array.isArray(value.droppedSources)) throw new Error("evidence.search.droppedSources must be an array.");
+	const droppedSources = value.droppedSources.map((source, index) => {
+		const field = `evidence.search.droppedSources[${index}]`;
+		if (!record(source)) throw new Error(`${field} must be an object.`);
+		assertAllowedKeys(source, ["url", "reason"], field);
+		if (typeof source.url !== "string" || typeof source.reason !== "string") throw new Error(`${field} requires string url and reason.`);
+		return { url: source.url, reason: source.reason };
+	});
+	return { queries: strings(value.queries, "evidence.search.queries"), fetchedUrls: strings(value.fetchedUrls, "evidence.search.fetchedUrls"), droppedSources };
+}
+
+function parseGaps(value: unknown): WorkflowResult["diagnostics"]["gaps"] {
+	if (!Array.isArray(value)) throw new Error("diagnostics.gaps must be an array.");
+	return value.map((gap, index) => {
+		const field = `diagnostics.gaps[${index}]`;
+		if (!record(gap)) throw new Error(`${field} must be an object.`);
+		assertAllowedKeys(gap, ["question", "reason"], field);
+		if (typeof gap.question !== "string" || typeof gap.reason !== "string") throw new Error(`${field} requires string question and reason.`);
+		return { question: gap.question, reason: gap.reason };
+	});
+}
+
+function parseConflicts(value: unknown): WorkflowResult["diagnostics"]["conflicts"] {
+	if (!Array.isArray(value)) throw new Error("diagnostics.conflicts must be an array.");
+	return value.map((conflict, index) => {
+		const field = `diagnostics.conflicts[${index}]`;
+		if (!record(conflict)) throw new Error(`${field} must be an object.`);
+		assertAllowedKeys(conflict, ["statement", "alternatives", "evidence"], field);
+		if (typeof conflict.statement !== "string") throw new Error(`${field}.statement must be a string.`);
+		return { statement: conflict.statement, alternatives: strings(conflict.alternatives, `${field}.alternatives`), evidence: strings(conflict.evidence, `${field}.evidence`) };
+	});
 }
 
 export function parseWorkflowResult(value: unknown, contract: WorkflowDataContract): WorkflowResult {
 	if (!record(value) || value.version !== 1) throw new Error("Workflow result version must be 1.");
+	assertAllowedKeys(value, ["version", "summary", "outputs", "diagnostics", "recommendations", "evidence", "extensions"], "Workflow result");
 	if (!record(value.summary) || typeof value.summary.text !== "string" || !value.summary.text.trim()) throw new Error("Workflow result summary.text must be non-empty.");
+	assertAllowedKeys(value.summary, ["text", "covers", "omissions", "confidence"], "summary");
 	if (Buffer.byteLength(value.summary.text, "utf8") > MAX_WORKFLOW_SUMMARY_BYTES) throw new Error(`Workflow result summary exceeds ${MAX_WORKFLOW_SUMMARY_BYTES} bytes.`);
 	if (!record(value.outputs)) throw new Error("Workflow result outputs must be an object.");
 	const outputs: WorkflowResult["outputs"] = {};
@@ -120,6 +196,7 @@ export function parseWorkflowResult(value: unknown, contract: WorkflowDataContra
 			continue;
 		}
 		if (!record(submission) || (submission.kind !== "value" && submission.kind !== "file")) throw new Error(`Output port '${name}' submission is invalid.`);
+		assertAllowedKeys(submission, ["kind", "value", "path", "sha256"], `Output port '${name}'`);
 		if (submission.kind === "value") {
 			if (!("value" in submission) || "path" in submission || "sha256" in submission) throw new Error(`Output port '${name}' value submission is invalid.`);
 			if (port.mediaType.toLowerCase().startsWith("text/") && typeof submission.value !== "string") {
@@ -128,22 +205,27 @@ export function parseWorkflowResult(value: unknown, contract: WorkflowDataContra
 			outputs[name] = { kind: "value", value: structuredClone(submission.value) as WorkflowJsonValue };
 		} else {
 			if (typeof submission.path !== "string" || !submission.path.trim() || "value" in submission) throw new Error(`Output port '${name}' file submission is invalid.`);
+			if (submission.sha256 !== undefined && (typeof submission.sha256 !== "string" || !/^[A-Fa-f0-9]{64}$/.test(submission.sha256))) {
+				throw new Error(`Output port '${name}' sha256 must be 64 hexadecimal characters.`);
+			}
 			outputs[name] = { kind: "file", path: submission.path, ...(typeof submission.sha256 === "string" ? { sha256: submission.sha256.toLowerCase() } : {}) };
 		}
 	}
 	const unknownPort = Object.keys(value.outputs).find((name) => !contract.outputs[name]);
 	if (unknownPort) throw new Error(`Undeclared output port '${unknownPort}'.`);
 	if (!record(value.diagnostics)) throw new Error("Workflow result diagnostics must be an object.");
+	assertAllowedKeys(value.diagnostics, ["gaps", "conflicts", "warnings"], "diagnostics");
 	const diagnostics = {
-		gaps: structuredClone(value.diagnostics.gaps) as WorkflowResult["diagnostics"]["gaps"],
-		conflicts: structuredClone(value.diagnostics.conflicts) as WorkflowResult["diagnostics"]["conflicts"],
+		gaps: parseGaps(value.diagnostics.gaps),
+		conflicts: parseConflicts(value.diagnostics.conflicts),
 		warnings: strings(value.diagnostics.warnings, "diagnostics.warnings"),
 	};
-	if (!Array.isArray(diagnostics.gaps) || !Array.isArray(diagnostics.conflicts)) throw new Error("Workflow result diagnostics gaps/conflicts must be arrays.");
 	let evidence: WorkflowResult["evidence"];
 	if (value.evidence !== undefined) {
 		if (!record(value.evidence)) throw new Error("Workflow result evidence must be an object.");
-		evidence = { findings: parseFindings(value.evidence.findings), ...(parseSearch(value.evidence.search) ? { search: parseSearch(value.evidence.search) } : {}) };
+		assertAllowedKeys(value.evidence, ["findings", "search"], "evidence");
+		const search = parseSearch(value.evidence.search);
+		evidence = { findings: parseFindings(value.evidence.findings), ...(search ? { search } : {}) };
 	}
 	if ((contract.profile === "research" || contract.profile === "writer") && !evidence) throw new Error(`Workflow profile '${contract.profile}' requires evidence.`);
 	let extensions: Record<string, WorkflowJsonValue> | undefined;
@@ -153,7 +235,7 @@ export function parseWorkflowResult(value: unknown, contract: WorkflowDataContra
 	}
 	return {
 		version: 1,
-		summary: { text: value.summary.text, covers: strings(value.summary.covers, "summary.covers"), omissions: strings(value.summary.omissions, "summary.omissions"), confidence: value.summary.confidence as WorkflowResult["summary"]["confidence"] },
+		summary: { text: value.summary.text, covers: strings(value.summary.covers, "summary.covers"), omissions: strings(value.summary.omissions, "summary.omissions"), confidence: confidence(value.summary.confidence, "summary.confidence") },
 		outputs,
 		diagnostics,
 		recommendations: strings(value.recommendations, "recommendations"),

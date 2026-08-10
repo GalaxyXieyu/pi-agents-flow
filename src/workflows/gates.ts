@@ -125,6 +125,7 @@ export function evaluateWorkflow(run: WorkflowRun, policyOverride?: WorkflowPoli
 		policy.gates.requireOutline && !run.documentOutline ? "approved outline is missing" : undefined,
 		acceptedResearchLanes < policy.gates.minAcceptedResearchLanes ? `accepted research lanes ${acceptedResearchLanes}/${policy.gates.minAcceptedResearchLanes}` : undefined,
 		acceptedSectionWriters < policy.gates.minAcceptedSectionWriters ? `accepted Section Writers ${acceptedSectionWriters}/${policy.gates.minAcceptedSectionWriters}` : undefined,
+		policy.gates.requireWriter && !acceptedKinds.includes("writer") ? "an accepted Writer is required by policy" : undefined,
 		gaps > policy.gates.maxUnresolvedGaps && reviewerRelease?.gapsAccepted !== true ? `${gaps} unresolved evidence gap(s)` : undefined,
 		conflicts > policy.gates.maxUnresolvedConflicts && reviewerRelease?.conflictsAccepted !== true ? `${conflicts} unresolved evidence conflict(s)` : undefined,
 		!allAdjudicated ? `${nodes.filter((node) => !isAdjudicatedStatus(node.status)).length} node(s) are not adjudicated` : undefined,
