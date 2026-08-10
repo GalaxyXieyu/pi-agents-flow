@@ -196,6 +196,13 @@ describe("workflow controller", () => {
 		assert.equal(evaluated.details.evaluation?.completedAwaitingDecision, 1);
 		assert.equal(evaluated.details.evaluation?.readyToComplete, false);
 		assert.match(evaluated.text, /completed research-a/);
+		// T1: the machine-readable recommendedAction is surfaced through the evaluate
+		// tool result (WorkflowControllerDetails.repairGuidance.recommendedAction).
+		const recommendation = evaluated.details.repairGuidance?.recommendedAction;
+		assert.ok(recommendation, "evaluate tool result must expose a recommendedAction");
+		assert.equal(recommendation!.kind, "adjudicate_node");
+		assert.equal(recommendation!.target, "research-a");
+		assert.ok(recommendation!.reason);
 		const nodeResult = await controller.execute({ action: "get_result", runId: "workflow-1", nodeId: "research-a" }, ctx);
 		assert.match(nodeResult.text, /"text": "completed research-a"/);
 
