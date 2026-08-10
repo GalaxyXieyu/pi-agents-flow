@@ -69,6 +69,7 @@ import {
 import type { AgentDefaultContextPolicy } from "./executor-validation.ts";
 import {
 	applySingleAgentLaunchDefaults,
+	buildRequestedModeError,
 	canonicalizeExecutionParams,
 	normalizeRepeatedParallelCounts,
 	preflightForkSessionsForStaticTasks,
@@ -76,6 +77,7 @@ import {
 	resolveEffectiveToolBudget,
 	resolveRunTimeout,
 	resolveToolBudget,
+	shouldForkAgent,
 	toExecutionErrorResult,
 	validateAgentInvocationPolicy,
 	validateExecutionChainBindings,
@@ -97,6 +99,7 @@ import {
 	foregroundStatusResult,
 	getAsyncInterruptTarget,
 	getForegroundControl,
+	hasActiveSubagentChildren,
 	interruptAsyncRun,
 	interruptNestedRun,
 	nestedResolutionScopeForExecutor,

@@ -66,6 +66,7 @@ import {
 	resumeTargetExact,
 	canonicalizeAgentName,
 } from "./executor-helpers.ts";
+import { resolveSingleRunOutputBaseDir } from "./executor-path-parallel-helpers.ts";
 import type { AgentDefaultContextPolicy } from "./executor-validation.ts";
 import {
 	applySingleAgentLaunchDefaults,

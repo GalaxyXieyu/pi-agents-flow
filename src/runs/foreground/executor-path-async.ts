@@ -70,6 +70,8 @@ import type { AgentDefaultContextPolicy } from "./executor-validation.ts";
 import {
 	applySingleAgentLaunchDefaults,
 	buildRequestedModeError,
+	collectChainSessionFiles,
+	collectChainThinkingOverrides,
 	preflightForkSessionsForStaticTasks,
 	resolveAgentDefaultContextPolicy,
 	resolveEffectiveToolBudget,
@@ -164,6 +166,7 @@ import { resolveAsyncRootResultPath } from "../background/chain-root-attachment.
 import { attachRootChildrenToSteps, createNestedRoute, findNestedControlResult, resolveInheritedNestedRouteFromEnv, resolveNestedAsyncDir, resolveNestedParentAddressFromEnv, snapshotNestedEventFiles, updateForegroundNestedProjection, writeNestedControlRequest, writeNestedEvent, type NestedRunResolutionScope } from "../shared/nested-events.ts";
 import { resolveSubagentRunId, type ResolvedSubagentRunId } from "../background/run-id-resolver.ts";
 import { formatNestedRunStatusLines } from "../shared/nested-render.ts";
+import { buildChainWorktreeTaskCwdError, buildParallelModeError, buildParallelWorktreeTaskCwdError, resolveSingleRunOutputBaseDir } from "./executor-path-parallel-helpers.ts";
 import { inspectSubagentStatus } from "../background/run-status.ts";
 import { applyForceTopLevelAsyncOverride } from "../background/top-level-async.ts";
 import {

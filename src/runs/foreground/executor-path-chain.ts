@@ -70,6 +70,8 @@ import type { AgentDefaultContextPolicy } from "./executor-validation.ts";
 import {
 	applySingleAgentLaunchDefaults,
 	buildRequestedModeError,
+	collectChainSessionFiles,
+	collectChainThinkingOverrides,
 	preflightForkSessionsForStaticTasks,
 	resolveAgentDefaultContextPolicy,
 	resolveEffectiveToolBudget,

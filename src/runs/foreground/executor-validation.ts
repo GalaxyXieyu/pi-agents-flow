@@ -2,7 +2,7 @@
  * Launch validation / param normalization helpers for the subagent executor.
  */
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
-import { canInvokeAgent, type AgentConfig, type AgentInvocationOrigin } from "../../agents/agents.ts";
+import { canInvokeAgent, effectiveAgentInvocation, type AgentConfig, type AgentInvocationOrigin } from "../../agents/agents.ts";
 import {
 	getStepAgents,
 	isDynamicParallelStep,
