@@ -22,7 +22,7 @@ import type {
 	ResolvedToolBudget,
 	ToolBudgetConfig,
 } from "../../shared/types.ts";
-import type { SubagentParamsLike } from "./subagent-executor.ts";
+import type { SubagentParamsLike } from "./executor-types.ts";
 import {
 	canonicalizeAgentName,
 	collectRequestedAgentNames,

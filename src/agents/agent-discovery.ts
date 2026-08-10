@@ -8,11 +8,17 @@ import { fileURLToPath } from "node:url";
 import { getAgentDir } from "../shared/utils.ts";
 import { mergeAgentsForScope } from "./agent-selection.ts";
 import {
+	EMPTY_SUBAGENT_SETTINGS,
+	type AgentConfig,
+	type AgentDiscoveryResult,
+	type AgentScope,
+	type ChainConfig,
+} from "./agent-types.ts";
+import {
 	applyBuiltinOverrides,
 	applyCustomAgentOverrides,
 	applySubagentDefaults,
 	collectPackageSubagentPaths,
-	EMPTY_SUBAGENT_SETTINGS,
 	getProjectAgentSettingsPath,
 	getUserAgentSettingsPath,
 	getUserChainDir,
@@ -24,10 +30,6 @@ import {
 	resolveSubagentDefaultExtensions,
 	resolveSubagentDefaultModel,
 	resolveSubagentDefaultThinking,
-	type AgentConfig,
-	type AgentDiscoveryResult,
-	type AgentScope,
-	type ChainConfig,
 } from "./agents-config.ts";
 
 const BUILTIN_AGENTS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "agents");

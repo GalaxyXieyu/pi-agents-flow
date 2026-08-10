@@ -7,49 +7,51 @@ Goal structure: `optimization-report.md` §P2
 
 | File | Target split | Status |
 | --- | --- | --- |
-| `subagent-executor.ts` | pure helpers + recovery/validation slices | **Done (multi-module)** |
-| `agents.ts` | discovery vs override/config | **Done (facade)** |
-| `controller.ts` | pure helpers vs factory | **Deferred** (see residual) |
+| `subagent-executor.ts` | pure helpers + validation + control + run-paths | **Done** |
+| `agents.ts` | types / config+overrides / discovery | **Done** |
+| `controller.ts` | pure helpers vs factory | **Done** |
 | `shared/types.ts` | domain modules + re-export facade | **Done** |
 
 ## Resulting layout
 
 ### `src/shared/types/` (facade: `src/shared/types.ts`)
-
-- `basic.ts`, `progress.ts`, `results.ts`, `artifacts.ts`
-- `async-execution.ts`, `display.ts`, `error-handling.ts`
-- `execution-options.ts`, `constants.ts`, `recursion-depth.ts`, `utility-functions.ts`
-
-Public import path remains `../shared/types.ts` (export * facade).
+- domain modules under `types/*` with stable re-export facade
 
 ### `src/agents/` (facade: `agents.ts`)
+- `agent-types.ts` — types + pure name/policy helpers
+- `agents-config.ts` — settings, overrides, package paths, loaders
+- `agent-discovery.ts` — `discoverAgents` / `discoverAgentsAll`
+- `agents.ts` — facade re-exports
 
-- `agents-config.ts` — types, settings, overrides, package path helpers, loaders
-- `agent-discovery.ts` — `discoverAgents` / `discoverAgentsAll` / `EXTRA_AGENT_DIRS_ENV`
-- `agents.ts` — re-exports identity + config + discovery
+### `src/workflows/`
+- `controller-helpers.ts` — public controller types + pure helpers
+- `controller.ts` — `createWorkflowController` factory + re-exports
 
 ### `src/runs/foreground/`
-
 - `executor-helpers.ts` — pure string/path/mode helpers
-- `executor-validation.ts` — launch validation / param normalization / fork preflight
-- `subagent-executor.ts` — control plane + run paths + `createSubagentExecutor` (~4059 lines, down from 4644)
-
-### `src/workflows/controller.ts`
-
-Left as a single file (1213 lines). Extracting helpers pulled heavy import graphs and made the already-long controller suite impractical to green-check in this pass. Next slice should move only pure status/guidance helpers with a lean import set and run the controller suite overnight/with concurrency limits.
+- `executor-types.ts` — `SubagentParamsLike` / `ExecutorDeps` / `ExecutionContextData`
+- `executor-validation.ts` — launch validation / param normalization
+- `executor-control.ts` — resume/interrupt/nested/control memory
+- `executor-run-paths.ts` — async/chain/parallel/single run paths
+- `subagent-executor.ts` — wiring + `createSubagentExecutor` (~1150 lines)
 
 ## Line counts (approx)
 
 | Path | Lines |
 | --- | ---: |
-| `subagent-executor.ts` | 4059 |
-| `executor-validation.ts` | 563 |
+| `subagent-executor.ts` | 1149 |
+| `executor-control.ts` | 1486 |
+| `executor-run-paths.ts` | 1786 |
+| `executor-validation.ts` | 564 |
+| `executor-types.ts` | 312 |
 | `executor-helpers.ts` | 112 |
-| `agents.ts` (facade) | 6 |
-| `agents-config.ts` | 1698 |
-| `agent-discovery.ts` | 214 |
+| `controller.ts` | 1038 |
+| `controller-helpers.ts` | 239 |
+| `agents.ts` (facade) | 7 |
+| `agents-config.ts` | 1381 |
+| `agent-discovery.ts` | 216 |
+| `agent-types.ts` | 352 |
 | `shared/types.ts` (facade) | 17 |
-| `controller.ts` | 1213 |
 
 ## Tests run (all pass)
 
@@ -64,13 +66,14 @@ node --experimental-strip-types --test \
   test/unit/agent-overrides.test.ts \
   test/unit/activity-board.test.ts
 # 160 pass / 0 fail
-```
 
-Also fixed `workflow-skills-agents` expectation: runtime default tools now include `web_search` for every child (matches `SUBAGENT_DEFAULT_TOOLS` from earlier optimization commits).
+node --experimental-strip-types --test --test-name-pattern=\'rejects an impossible|resolves and persists workflow language|persists the configured node-attempt\' \
+  test/unit/workflow-controller.test.ts
+# 3 pass / 0 fail
+```
 
 ## Residuals
 
-1. `controller.ts` not split yet.
-2. `agents-config.ts` still large (types + overrides + package IO); further type-only extract is optional.
-3. `subagent-executor.ts` still holds control + run-path orchestration (~4k lines); next cut is `executor-control.ts` / `executor-run-paths.ts` with careful `ExecutorDeps` typing.
-4. Full `npm run test:unit` suite not re-run end-to-end (known hang risk on large suites).
+1. Full `workflow-controller.test.ts` suite is large/slow; only smoke subset re-run after controller split.
+2. Full `npm run test:unit` not re-run end-to-end (known hang risk).
+3. `agents-config.ts` and `executor-run-paths.ts` remain large but now have clear boundaries for further cuts.
