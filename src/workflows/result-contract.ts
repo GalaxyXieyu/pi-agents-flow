@@ -3,7 +3,7 @@ import type { WorkflowDataContract, WorkflowFinding, WorkflowJsonValue, Workflow
 
 export const WORKFLOW_RESULT_SUBMISSION_GUIDE = [
 	"Return the complete WorkflowResult through the tool-level structured_output envelope: {value:{version:1,summary:{...},outputs:{...},diagnostics:{...},recommendations:[...],evidence:{...}}}.",
-	"The outer tool `value` contains the COMPLETE WorkflowResult. Do not place version, summary, outputs, diagnostics, recommendations, evidence, or extensions beside that outer `value`.",
+	"The outer tool `value` contains the COMPLETE WorkflowResult. Do not place version, summary, outputs, diagnostics, recommendations, evidence, review, or extensions beside that outer `value`.",
 	"Inside WorkflowResult.outputs, submit each declared port using {kind:'value', value:...} or {kind:'file', path:'...', sha256:'...'}; these inner port fields are different from the outer tool transport.",
 	"summary.text is a bounded semantic summary, never the complete document or dataset.",
 	"Large text, documents, logs, and datasets must use an inner file-port submission written exactly to that port's preallocated output slot path (listed under Output slots); report that path unchanged.",
@@ -55,10 +55,11 @@ function findingSchema(): Record<string, unknown> {
 export function workflowResultSchema(contract: WorkflowDataContract): Record<string, unknown> {
 	const requiredOutputs = Object.entries(contract.outputs).filter(([, port]) => port.required).map(([name]) => name);
 	const evidenceRequired = contract.profile === "research" || contract.profile === "writer";
+	const reviewerProfile = contract.profile === "reviewer";
 	return {
 		type: "object",
 		additionalProperties: false,
-		required: ["version", "summary", "outputs", "diagnostics", "recommendations", ...(evidenceRequired ? ["evidence"] : [])],
+		required: ["version", "summary", "outputs", "diagnostics", "recommendations", ...(evidenceRequired ? ["evidence"] : []), ...(reviewerProfile ? ["review"] : [])],
 		properties: {
 			version: { const: 1 },
 			summary: {
@@ -82,8 +83,36 @@ export function workflowResultSchema(contract: WorkflowDataContract): Record<str
 					search: { type: "object", additionalProperties: false, required: ["queries", "fetchedUrls", "droppedSources"], properties: { queries: { type: "array", items: { type: "string" } }, fetchedUrls: { type: "array", items: { type: "string" } }, droppedSources: { type: "array", items: { type: "object", additionalProperties: false, required: ["url", "reason"], properties: { url: { type: "string" }, reason: { type: "string" } } } } } },
 				},
 			},
+			...(reviewerProfile ? { review: { type: "object", additionalProperties: false, required: ["verdict"], properties: { verdict: { type: "string", enum: ["pass", "fail"] } } } } : {}),
 			extensions: { type: "object", additionalProperties: true },
 		},
+		...(reviewerProfile ? {
+			allOf: [{
+				if: { properties: { review: { properties: { verdict: { const: "pass" } }, required: ["verdict"] } }, required: ["review"] },
+				then: {
+					required: ["extensions"],
+					properties: {
+						extensions: {
+							type: "object",
+							required: ["release"],
+							properties: {
+								release: {
+									type: "object",
+									additionalProperties: false,
+									required: ["release", "rationale"],
+									properties: {
+										release: { const: true }, rationale: { type: "string", pattern: ".*\\S.*" },
+										gapsAccepted: { type: "boolean" }, conflictsAccepted: { type: "boolean" },
+										citationShortfallAccepted: { type: "boolean" }, lengthShortfallAccepted: { type: "boolean" },
+									},
+								},
+							},
+						},
+					},
+				},
+				else: { properties: { extensions: { not: { required: ["release"] } } } },
+			}],
+		} : {}),
 	};
 }
 
@@ -170,6 +199,23 @@ function parseGaps(value: unknown): WorkflowResult["diagnostics"]["gaps"] {
 	});
 }
 
+function parseReviewerRelease(value: unknown): void {
+	if (!record(value)) throw new Error("extensions.release must be an object for a passing reviewer.");
+	assertAllowedKeys(value, ["release", "gapsAccepted", "conflictsAccepted", "citationShortfallAccepted", "lengthShortfallAccepted", "rationale"], "extensions.release");
+	if (value.release !== true) throw new Error("extensions.release.release must be true for a passing reviewer.");
+	if (typeof value.rationale !== "string" || !value.rationale.trim()) throw new Error("extensions.release.rationale must be a non-empty string for a passing reviewer.");
+	for (const name of ["gapsAccepted", "conflictsAccepted", "citationShortfallAccepted", "lengthShortfallAccepted"]) {
+		if (value[name] !== undefined && typeof value[name] !== "boolean") throw new Error(`extensions.release.${name} must be a boolean.`);
+	}
+}
+
+function parseReview(value: unknown): WorkflowResult["review"] {
+	if (!record(value)) throw new Error("review must be an object for reviewer profiles.");
+	assertAllowedKeys(value, ["verdict"], "review");
+	if (value.verdict !== "pass" && value.verdict !== "fail") throw new Error("review.verdict must be pass or fail.");
+	return { verdict: value.verdict };
+}
+
 function parseConflicts(value: unknown): WorkflowResult["diagnostics"]["conflicts"] {
 	if (!Array.isArray(value)) throw new Error("diagnostics.conflicts must be an array.");
 	return value.map((conflict, index) => {
@@ -183,7 +229,7 @@ function parseConflicts(value: unknown): WorkflowResult["diagnostics"]["conflict
 
 export function parseWorkflowResult(value: unknown, contract: WorkflowDataContract): WorkflowResult {
 	if (!record(value) || value.version !== 1) throw new Error("Workflow result version must be 1.");
-	assertAllowedKeys(value, ["version", "summary", "outputs", "diagnostics", "recommendations", "evidence", "extensions"], "Workflow result");
+	assertAllowedKeys(value, ["version", "summary", "outputs", "diagnostics", "recommendations", "evidence", "review", "extensions"], "Workflow result");
 	if (!record(value.summary) || typeof value.summary.text !== "string" || !value.summary.text.trim()) throw new Error("Workflow result summary.text must be non-empty.");
 	assertAllowedKeys(value.summary, ["text", "covers", "omissions", "confidence"], "summary");
 	if (Buffer.byteLength(value.summary.text, "utf8") > MAX_WORKFLOW_SUMMARY_BYTES) throw new Error(`Workflow result summary exceeds ${MAX_WORKFLOW_SUMMARY_BYTES} bytes.`);
@@ -233,6 +279,10 @@ export function parseWorkflowResult(value: unknown, contract: WorkflowDataContra
 		if (!record(value.extensions) || jsonBytes(value.extensions) > MAX_WORKFLOW_EXTENSION_BYTES) throw new Error(`Workflow result extensions must be a JSON object <= ${MAX_WORKFLOW_EXTENSION_BYTES} bytes.`);
 		extensions = structuredClone(value.extensions) as Record<string, WorkflowJsonValue>;
 	}
+	const review = contract.profile === "reviewer" ? parseReview(value.review) : undefined;
+	if (contract.profile !== "reviewer" && value.review !== undefined) throw new Error("review is only allowed for reviewer profiles.");
+	if (review?.verdict === "pass") parseReviewerRelease(extensions?.release);
+	if (review?.verdict === "fail" && extensions?.release !== undefined) throw new Error("extensions.release must be omitted when review.verdict is fail.");
 	return {
 		version: 1,
 		summary: { text: value.summary.text, covers: strings(value.summary.covers, "summary.covers"), omissions: strings(value.summary.omissions, "summary.omissions"), confidence: confidence(value.summary.confidence, "summary.confidence") },
@@ -240,6 +290,7 @@ export function parseWorkflowResult(value: unknown, contract: WorkflowDataContra
 		diagnostics,
 		recommendations: strings(value.recommendations, "recommendations"),
 		...(evidence ? { evidence } : {}),
+		...(review ? { review } : {}),
 		...(extensions ? { extensions } : {}),
 	};
 }

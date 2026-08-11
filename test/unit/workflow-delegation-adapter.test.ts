@@ -250,6 +250,39 @@ describe("workflow delegation adapter", () => {
 		}
 	});
 
+	it("auto-steers an invalid reviewer release using a new transport identity and frozen preflight", async () => {
+		const events = new FakeEvents();
+		let preflightCalls = 0;
+		const reviewerNode: WorkflowNode = {
+			...node,
+			id: "reviewer-a",
+			kind: "reviewer",
+			dataContract: { version: 1, profile: "reviewer", inputs: [], outputs: { review: { mediaType: "text/plain", description: "review", storage: "inline", required: true, classification: "internal" } } },
+		};
+		events.on(SUBAGENT_DELEGATION_REQUEST_EVENT, (data) => {
+			const request = data as SubagentDelegationRequest;
+			const first = !request.requestId.includes(":format-");
+			queueMicrotask(() => events.emit(SUBAGENT_DELEGATION_RESPONSE_EVENT, {
+				version: 2, requestId: request.requestId, ownerRunId: request.ownerRunId, nodeId: request.nodeId, status: "completed",
+				result: { kind: "structured", value: {
+					version: 1, summary: { text: "review", covers: [], omissions: [], confidence: "high" }, outputs: { review: { kind: "value", value: "review" } }, diagnostics: { gaps: [], conflicts: [], warnings: [] }, recommendations: [], review: { verdict: "pass" },
+					...(first ? {} : { extensions: { release: { release: true, rationale: "All gates are satisfied." } } }),
+				} },
+			}));
+		});
+		const result = await createWorkflowDelegationAdapter({
+			events,
+			preflight: async () => { preflightCalls++; return { ok: true, agent: "research-reviewer", model: "fixed/model", launchContractDigest: "fixed-digest" }; },
+		}).run(run, reviewerNode, { ...attempt, attemptId: "reviewer-a:1", requestId: "reviewer-request" });
+		assert.equal(result.ok, true);
+		assert.equal(preflightCalls, 1);
+		const requests = events.emitted.filter((entry) => entry.event === SUBAGENT_DELEGATION_REQUEST_EVENT).map((entry) => entry.data as SubagentDelegationRequest);
+		assert.deepEqual(requests.map((request) => request.requestId), ["reviewer-request", "reviewer-request:format-1"]);
+		assert.equal(requests[1]?.agent, "research-reviewer");
+		assert.equal(requests[1]?.model, "fixed/model");
+		assert.match(requests[1]?.task ?? "", /extensions\.release must be an object/);
+	});
+
 	it("does not emit a child request when preflight fails", async () => {
 		const events = new FakeEvents();
 		const adapter = createWorkflowDelegationAdapter({

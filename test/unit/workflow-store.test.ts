@@ -108,6 +108,7 @@ describe("workflow store", () => {
 			outputs: { review: { kind: "value", value: "approved" } },
 			diagnostics: { gaps: [], conflicts: [], warnings: [] },
 			recommendations: [],
+			review: { verdict: "pass" },
 			extensions: { release: { release: true, gapsAccepted: true, rationale: "Quick report gaps are acceptable." } },
 		};
 		const registered = registerWorkflowOutputs({
@@ -118,6 +119,7 @@ describe("workflow store", () => {
 			contract: { version: 1, profile: "reviewer", inputs: [], outputs: { review: { mediaType: "text/plain", description: "review", storage: "inline", required: true, classification: "internal" } } },
 			artifactStore: createLocalWorkflowArtifactStore(rootDir),
 		});
+		assert.deepEqual(registered.eventResult.review, result.review);
 		assert.deepEqual(registered.eventResult.extensions, result.extensions);
 	});
 

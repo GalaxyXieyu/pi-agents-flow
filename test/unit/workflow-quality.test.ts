@@ -153,7 +153,7 @@ function documentNodes(researchNodes: WorkflowNode[]): WorkflowNode[] {
 		acceptedNode("section-a", "section-writer", { ...envelope(findings), summary: { text: background, covers: [], omissions: [], confidence: "high" }, outputs: { document: { kind: "value", value: background } } }),
 		acceptedNode("section-b", "section-writer", { ...envelope(findings), summary: { text: technical, covers: [], omissions: [], confidence: "high" }, outputs: { document: { kind: "value", value: technical } } }),
 		acceptedNode("editor", "editor", { ...envelope(findings), summary: { text: `# Research report\n\n${background}\n\n${technical}`, covers: [], omissions: [], confidence: "high" }, outputs: { document: { kind: "value", value: `# Research report\n\n${background}\n\n${technical}` } } }, ["section-a", "section-b"]),
-		acceptedNode("reviewer", "reviewer", { ...envelope([]), extensions: { release: { release: true, rationale: "Document passed review." } } }, ["editor"]),
+		acceptedNode("reviewer", "reviewer", { ...envelope([]), review: { verdict: "pass" }, extensions: { release: { release: true, rationale: "Document passed review." } } }, ["editor"]),
 	];
 }
 
@@ -346,6 +346,7 @@ describe("workflow quality benchmark", () => {
 		assert.equal(resolved.metrics.researchTraceCoverage, 1);
 		assert.equal(resolved.metrics.unresolvedGaps, 0);
 		assert.equal(resolved.metrics.unresolvedConflicts, 0);
+		assert.deepEqual(resolved.residuals, { gaps: { raw: 1, accepted: 1, blocking: 0 }, conflicts: { raw: 1, accepted: 1, blocking: 0 } });
 	});
 
 	it("infers local evidence mode without requiring web citations", () => {
@@ -440,12 +441,14 @@ describe("workflow quality benchmark", () => {
 		const reviewer = documents.find((node) => node.kind === "reviewer")!;
 		reviewer.result = {
 			...reviewer.result!,
+			review: { verdict: "pass" },
 			extensions: { release: { release: true, citationShortfallAccepted: true, lengthShortfallAccepted: true, rationale: "Short, focused deliverable is acceptable." } },
 		};
 		const blocked = assessWorkflowQuality(run([...research, ...documents]));
 		assert.equal(blocked.releaseReady, true, blocked.blockers.join("\n"));
 		assert.equal(blocked.reviewerRelease?.citationShortfallAccepted, true);
 		assert.match(formatWorkflowQualityReport(blocked), /Reviewer release: citation-shortfall, length-shortfall/);
+		assert.match(formatWorkflowQualityReport(blocked), /evidence residuals/);
 	});
 
 	it("formats a release-oriented human quality summary", () => {

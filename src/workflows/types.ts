@@ -160,6 +160,31 @@ export interface WorkflowOutputSubmission {
 	sha256?: string;
 }
 
+export interface WorkflowReview {
+	verdict: "pass" | "fail";
+}
+
+/** Residual evidence state after explicit decisions and a reviewer release waiver. */
+export interface WorkflowResidualCounts {
+	raw: number;
+	accepted: number;
+	blocking: number;
+}
+
+export interface WorkflowReviewerRelease {
+	/** Overall: the reviewer approves release of the final document. */
+	release: boolean;
+	/** Reviewer accepts the remaining unresolved evidence gaps. */
+	gapsAccepted?: boolean;
+	/** Reviewer accepts the remaining unresolved conflicts. */
+	conflictsAccepted?: boolean;
+	/** Reviewer accepts the final-citation coverage shortfall. */
+	citationShortfallAccepted?: boolean;
+	/** Reviewer accepts the final-document length shortfall. */
+	lengthShortfallAccepted?: boolean;
+	rationale?: string;
+}
+
 export interface WorkflowResult {
 	version: 1;
 	summary: {
@@ -179,6 +204,8 @@ export interface WorkflowResult {
 		findings: WorkflowFinding[];
 		search?: WorkflowSearchTrace;
 	};
+	/** Required only for reviewer profiles; controls reviewer release gates. */
+	review?: WorkflowReview;
 	extensions?: Record<string, WorkflowJsonValue>;
 }
 
@@ -326,20 +353,6 @@ export interface WorkflowNode extends WorkflowWorkUnitPlan {
 	 * failed/cancelled node is reopened to grant it additional attempts in place.
 	 */
 	maxAttempts?: number;
-}
-
-export interface WorkflowReviewerRelease {
-	/** Overall: the reviewer approves release of the final document. */
-	release: boolean;
-	/** Reviewer accepts the remaining unresolved evidence gaps. */
-	gapsAccepted?: boolean;
-	/** Reviewer accepts the remaining unresolved conflicts. */
-	conflictsAccepted?: boolean;
-	/** Reviewer accepts the final-citation coverage shortfall. */
-	citationShortfallAccepted?: boolean;
-	/** Reviewer accepts the final-document length shortfall. */
-	lengthShortfallAccepted?: boolean;
-	rationale?: string;
 }
 
 export interface WorkflowDecision {

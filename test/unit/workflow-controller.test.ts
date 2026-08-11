@@ -382,7 +382,11 @@ describe("workflow controller", () => {
 		const controller = createWorkflowController({
 			adapter: {
 				async run(run, node, attempt) {
-					return { ok: true, response: completedResponse(attempt.requestId, run.id, node.id) };
+					const response = completedResponse(attempt.requestId, run.id, node.id);
+					if (node.kind === "reviewer" && response.result?.kind === "structured") {
+						response.result.value = { ...(response.result.value as object), review: { verdict: "pass" }, extensions: { release: { release: true, rationale: "Coding review passed." } } };
+					}
+					return { ok: true, response };
 				},
 			},
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
@@ -1304,7 +1308,7 @@ describe("workflow controller", () => {
 		acceptNode("section-a", "section-writer", { ...editorResult }, ["research-a", "research-b"]);
 		acceptNode("section-b", "section-writer", { ...editorResult }, ["research-a", "research-c"]);
 		acceptNode("editor", "editor", editorResult, ["section-a", "section-b"], editorAttemptOutputs);
-		const reviewerResult: WorkflowResult = { version: 1, summary: { text: "review", covers: [], omissions: [], confidence: "high" }, outputs: { review: { kind: "value", value: "review" } }, diagnostics: { gaps: [], conflicts: [], warnings: [] }, recommendations: [], extensions: { release: { release: true, gapsAccepted: true, conflictsAccepted: true, rationale: "gaps/conflicts acceptable" } } };
+		const reviewerResult: WorkflowResult = { version: 1, summary: { text: "review", covers: [], omissions: [], confidence: "high" }, outputs: { review: { kind: "value", value: "review" } }, diagnostics: { gaps: [], conflicts: [], warnings: [] }, recommendations: [], review: { verdict: "pass" }, extensions: { release: { release: true, gapsAccepted: true, conflictsAccepted: true, rationale: "gaps/conflicts acceptable" } } };
 		acceptNode("reviewer", "reviewer", reviewerResult, ["editor"]);
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [{ type: "custom", customType: WORKFLOW_BINDING_ENTRY_TYPE, data: createWorkflowBinding(store.load(runId)) }];
 		const controller = createWorkflowController({ adapter: { async run() { return { ok: false, stage: "transport", error: "unused" }; } }, appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }), now: () => 8, resolveBranch: () => "main" });

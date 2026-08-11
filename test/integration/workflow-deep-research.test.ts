@@ -41,7 +41,7 @@ function envelope(
 			}],
 			search: { queries: [`${summary} primary source`], fetchedUrls: [sourceUrl], droppedSources: [] },
 		},
-		...(options.release ? { extensions: { release: { release: true, rationale: "Integration reviewer approved the final editor document." } } } : {}),
+		...(options.release ? { review: { verdict: "pass" as const }, extensions: { release: { release: true, rationale: "Integration reviewer approved the final editor document." } } } : {}),
 	};
 }
 

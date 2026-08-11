@@ -29,6 +29,7 @@ function node(id: string, kind: WorkflowNode["kind"], status: WorkflowNode["stat
 			outputs: {},
 			diagnostics: { gaps: [], conflicts: [], warnings: [] },
 			recommendations: [],
+			review: { verdict: "pass" },
 			extensions: { release: { release: true, rationale: "Document passed review." } },
 		} } : {}),
 		agentSpec: { id: `agent-${id}`, baseAgent, role: kind, objective: id, instructions: id, context: "fresh", },
@@ -344,6 +345,20 @@ describe("workflow completion gates", () => {
 		assert.ok(evaluation.completionBlockers.includes("the final Reviewer has not approved document release"));
 	});
 
+	it("does not release gates from a legacy reviewer artifact lacking review.verdict", () => {
+		const nodes = [node("research-a", "research", "accepted"), node("research-b", "research", "accepted"), node("research-c", "research", "accepted"), node("section-a", "section-writer", "accepted"), node("section-b", "section-writer", "accepted"), node("editor", "editor", "accepted", ["section-a", "section-b"]), node("reviewer", "reviewer", "accepted", ["editor"])];
+		const reviewer = nodes.at(-1)!;
+		delete reviewer.result?.review;
+		reviewer.result!.diagnostics.gaps = [{ question: "legacy gap", reason: "not public" }];
+		const workflow: WorkflowRun = {
+			version: 1, id: "workflow-legacy-review", mode: "deep-research", goal: "Research", cwd: "/repo", sessionId: "session-1", branch: "main", status: "active", revision: 1, createdAt: 1, updatedAt: 1,
+			nodes: Object.fromEntries(nodes.map((candidate) => [candidate.id, candidate])), decisions: [], appliedEventIds: ["started"],
+		};
+		const evaluation = evaluateWorkflow(workflow);
+		assert.equal(evaluation.reviewerRelease, undefined);
+		assert.ok(evaluation.completionBlockers.some((blocker) => blocker.includes("unresolved evidence gap")));
+	});
+
 	it("releases unresolved gap/conflict gates when the final Reviewer declares acceptance", () => {
 		const nodes = [
 			node("research-a", "research", "accepted"),
@@ -360,6 +375,7 @@ describe("workflow completion gates", () => {
 			outputs: {},
 			diagnostics: { gaps: [{ question: "g", reason: "r" }], conflicts: [{ statement: "c", alternatives: [], evidence: [] }], warnings: [] },
 			recommendations: [],
+			review: { verdict: "pass" },
 			extensions: { release: { release: true, gapsAccepted: true, conflictsAccepted: true, rationale: "Residual issues do not undermine the deliverable." } },
 		};
 		nodes.push(reviewer);

@@ -131,7 +131,7 @@ Under `strict` enforcement, the corresponding metrics become release blockers:
 | `mixed` | Both web and local evidence classes must be present and traceable |
 | `auto` | Infers the mode from accepted evidence and applies the corresponding rules |
 
-A Reviewer may explicitly accept residual gaps, conflicts, citation shortfalls, or length shortfalls through `extensions.release` flags, which relax the corresponding gates without requiring a manual decision per item.
+A Reviewer returns the machine-readable top-level control field `review:{verdict:"pass"|"fail"}`. A pass additionally requires top-level `extensions.release` flags, which may explicitly accept residual gaps, conflicts, citation shortfalls, or length shortfalls without requiring a manual decision per item. Missing or malformed reviewer control fields receive a bounded, precise format-steer retry to the same Agent; the release gate never infers approval from prose or a result-file artifact. Quality reports retain raw evidence residuals while separately showing reviewer/decision-accepted and still-blocking counts.
 
 ### Choosing an entry point
 

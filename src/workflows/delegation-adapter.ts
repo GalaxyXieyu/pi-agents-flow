@@ -100,6 +100,9 @@ function buildOutputContractGuide(contract: WorkflowDataContract, formatError?: 
 	if (contract.profile === "research" || contract.profile === "writer") {
 		lines.push("", "evidence.findings array is REQUIRED for this profile.");
 	}
+	if (contract.profile === "reviewer") {
+		lines.push("", "Reviewer control contract: include top-level review:{verdict:'pass'|'fail'} inside WorkflowResult. A pass MUST also include top-level extensions:{release:{release:true,rationale:'non-empty',...}}; a fail MUST omit extensions.release. Do not put review or release in an output file, summary text, or outside the outer tool value.");
+	}
 	lines.push("", "Do NOT return prose or raw text outside of structured_output. Every output port must appear in the outputs object.");
 	return lines.join("\n");
 }
@@ -127,11 +130,12 @@ export function buildWorkflowDelegationRequest(
 	resolved: Extract<WorkflowPreflightResult, { ok: true }>,
 	formatError?: string,
 	turnBudget = node.agentSpec.turnBudget,
+	delegationRequestId = attempt.requestId,
 ): SubagentDelegationRequest {
 	const resultSchema = workflowResultSchema(node.dataContract);
 	return {
 		version: SUBAGENT_DELEGATION_PROTOCOL_VERSION,
-		requestId: attempt.requestId,
+		requestId: delegationRequestId,
 		ownerRunId: run.id,
 		nodeId: node.id,
 		agent: resolved.agent,
@@ -244,28 +248,34 @@ export function createWorkflowDelegationAdapter(
 			}
 
 			let formatError: string | undefined;
+			let resolvedPreflight: Extract<WorkflowPreflightResult, { ok: true }> | undefined;
 			for (let steer = 0; steer <= MAX_FORMAT_STEER_ATTEMPTS; steer++) {
+				const delegationRequestId = steer === 0 ? attempt.requestId : `${attempt.requestId}:format-${steer}`;
 				const task = buildTask(formatError);
-				const preflightResult = await preflight({
-					agent: node.agentSpec.baseAgent,
-					cwd: run.cwd,
-					task,
-					context: node.agentSpec.context,
-					...(node.agentSpec.model ? { model: node.agentSpec.model } : {}),
-					...(options.fallbackModels?.length ? { fallbackModels: [...options.fallbackModels] } : {}),
-					...(runtime?.parentModel ? { parentModel: runtime.parentModel } : {}),
-					...(runtime?.availableModels ? { availableModels: runtime.availableModels } : {}),
-					...(runtime?.parentModel?.provider ? { preferredProvider: runtime.parentModel.provider } : {}),
-					...(node.agentSpec.thinking ? { thinking: node.agentSpec.thinking } : {}),
-					...(node.agentSpec.skills ? { skill: node.agentSpec.skills } : {}),
-					...(node.agentSpec.extraTools?.length ? { extraTools: [...node.agentSpec.extraTools] } : {}),
-					...(node.agentSpec.denyTools?.length ? { denyTools: [...node.agentSpec.denyTools] } : {}),
-					outputSchema: resultSchema,
-					...(turnBudget ? { turnBudget } : {}),
-					artifacts: true,
-					runId: attempt.requestId,
-				});
-				if (preflightResult.ok === false) return { ok: false, stage: "preflight", error: preflightResult.error };
+				if (!resolvedPreflight) {
+					const preflightResult = await preflight({
+						agent: node.agentSpec.baseAgent,
+						cwd: run.cwd,
+						task,
+						context: node.agentSpec.context,
+						...(node.agentSpec.model ? { model: node.agentSpec.model } : {}),
+						...(options.fallbackModels?.length ? { fallbackModels: [...options.fallbackModels] } : {}),
+						...(runtime?.parentModel ? { parentModel: runtime.parentModel } : {}),
+						...(runtime?.availableModels ? { availableModels: runtime.availableModels } : {}),
+						...(runtime?.parentModel?.provider ? { preferredProvider: runtime.parentModel.provider } : {}),
+						...(node.agentSpec.thinking ? { thinking: node.agentSpec.thinking } : {}),
+						...(node.agentSpec.skills ? { skill: node.agentSpec.skills } : {}),
+						...(node.agentSpec.extraTools?.length ? { extraTools: [...node.agentSpec.extraTools] } : {}),
+						...(node.agentSpec.denyTools?.length ? { denyTools: [...node.agentSpec.denyTools] } : {}),
+						outputSchema: resultSchema,
+						...(turnBudget ? { turnBudget } : {}),
+						artifacts: true,
+						runId: delegationRequestId,
+					});
+					if (preflightResult.ok === false) return { ok: false, stage: "preflight", error: preflightResult.error };
+					resolvedPreflight = preflightResult;
+				}
+				const preflightResult = resolvedPreflight;
 				if (node.dataContract.annotations?.[CODING_PREAPPROVAL_READONLY_ANNOTATION]) {
 					const allowedReadOnlyTools = new Set(["read", "grep", "find", "ls", "contact_supervisor", "intercom", "structured_output"]);
 					const disallowedTools = (preflightResult.effectiveTools ?? []).filter((tool) => !allowedReadOnlyTools.has(tool));
@@ -281,7 +291,7 @@ export function createWorkflowDelegationAdapter(
 						};
 					}
 				}
-				const request = buildWorkflowDelegationRequest(run, node, attempt, preflightResult, formatError, turnBudget);
+				const request = buildWorkflowDelegationRequest(run, node, attempt, preflightResult, formatError, turnBudget, delegationRequestId);
 				let response: SubagentDelegationResponse;
 				try {
 					response = await waitForResponse(options.events, request, signal, responseTimeoutMs);

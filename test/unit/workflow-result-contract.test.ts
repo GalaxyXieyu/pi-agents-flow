@@ -53,4 +53,22 @@ describe("workflow result runtime contract", () => {
 		value.outputs.result = { kind: "file", path: "/tmp/result.json", sha256: "abc" };
 		assert.throws(() => parseWorkflowResult(value, contract), /64 hexadecimal/);
 	});
+
+	it("requires an envelope-level pass verdict and release for reviewer results", () => {
+		const reviewerContract: WorkflowDataContract = { ...contract, profile: "reviewer", outputs: { review: { mediaType: "text/plain", description: "review", storage: "inline", required: true, classification: "internal" } } };
+		const reviewerResult = { ...validResult(), outputs: { review: { kind: "value", value: "approved" } }, review: { verdict: "pass" }, extensions: { release: { release: true, rationale: "All release criteria are met." } } };
+		assert.equal(parseWorkflowResult(reviewerResult, reviewerContract).review?.verdict, "pass");
+		const missingRelease = structuredClone(reviewerResult);
+		delete (missingRelease as { extensions?: unknown }).extensions;
+		assert.throws(() => parseWorkflowResult(missingRelease, reviewerContract), /extensions\.release must be an object/);
+		const failedWithRelease = structuredClone(reviewerResult);
+		(failedWithRelease as { review: { verdict: string } }).review.verdict = "fail";
+		assert.throws(() => parseWorkflowResult(failedWithRelease, reviewerContract), /must be omitted/);
+		const whitespaceRationale = structuredClone(reviewerResult);
+		((whitespaceRationale as { extensions: { release: { rationale: string } } }).extensions.release.rationale) = "   ";
+		assert.throws(() => parseWorkflowResult(whitespaceRationale, reviewerContract), /rationale must be a non-empty/);
+		const unknownReleaseField = structuredClone(reviewerResult);
+		(unknownReleaseField as { extensions: { release: Record<string, unknown> } }).extensions.release.extra = true;
+		assert.throws(() => parseWorkflowResult(unknownReleaseField, reviewerContract), /extensions\.release contains undeclared field/);
+	});
 });

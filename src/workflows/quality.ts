@@ -6,7 +6,7 @@ import { buildWorkflowRepairGuidance } from "./guidance.ts";
 import { resolveWorkflowPolicy, type WorkflowEvidenceMode, type WorkflowPolicy } from "./policy.ts";
 import { normalizeWorkflowText } from "./text-normalize.ts";
 import { outlineSectionWriterNodeIds } from "./section-ownership.ts";
-import type { WorkflowArtifactDescriptor, WorkflowNode, WorkflowReviewerRelease, WorkflowRun } from "./types.ts";
+import type { WorkflowArtifactDescriptor, WorkflowNode, WorkflowResidualCounts, WorkflowReviewerRelease, WorkflowRun } from "./types.ts";
 
 export interface WorkflowQualityMetrics {
 	claimCitationCoverage: number;
@@ -38,6 +38,8 @@ export interface WorkflowQualityReport {
 	/** Actual evidence mode used for this report after auto-detection. */
 	evidenceMode: Exclude<WorkflowEvidenceMode, "auto">;
 	metrics: WorkflowQualityMetrics;
+	/** Raw diagnostics are preserved, while explicit decisions and Reviewer release determine acceptance/blocking. */
+	residuals: { gaps: WorkflowResidualCounts; conflicts: WorkflowResidualCounts };
 	/** Workflow lineage and outline ownership problems that prevent automatic completion. */
 	structuralBlockers: string[];
 	/** Evidence and document-quality problems, separate from workflow structure. */
@@ -96,7 +98,8 @@ export function formatWorkflowQualityReport(report: WorkflowQualityReport, repor
 		`- final citations ${percent(report.metrics.finalCitationCoverage)}; unsupported final citations ${percent(report.metrics.unsupportedFinalCitationRate)}`,
 		`- final length ${report.metrics.finalDocumentUnits} units (${percent(report.metrics.finalDocumentLengthRatio)} of minimum)`,
 		`- delegation provenance ${percent(report.metrics.delegationProvenanceCoverage)}`,
-		`- unresolved gaps ${report.metrics.unresolvedGaps}; conflicts ${report.metrics.unresolvedConflicts}`,
+		`- evidence residuals — gaps raw ${report.residuals.gaps.raw}; accepted ${report.residuals.gaps.accepted}; blocking ${report.residuals.gaps.blocking}`,
+		`- evidence residuals — conflicts raw ${report.residuals.conflicts.raw}; accepted ${report.residuals.conflicts.accepted}; blocking ${report.residuals.conflicts.blocking}`,
 	);
 	if (report.searchBenchmark) {
 		lines.push(
@@ -169,6 +172,11 @@ function nodeHasLocalTrace(node: WorkflowNode, context?: WorkflowQualityContext)
 	return Boolean(localFinding || node.result?.evidence?.search?.fetchedUrls.some(isLocalFetchedReference));
 }
 
+function residualCounts(raw: number, unresolved: number, limit: number, released: boolean): WorkflowResidualCounts {
+	const accepted = raw - unresolved + (released ? unresolved : 0);
+	return { raw, accepted, blocking: released ? 0 : Math.max(0, unresolved - limit) };
+}
+
 function resolvedEvidenceMode(policy: WorkflowPolicy, sourceEvidence: EvidenceRecord[], sourceNodes: WorkflowNode[]): Exclude<WorkflowEvidenceMode, "auto"> {
 	if (policy.evidenceMode !== "auto") return policy.evidenceMode;
 	const hasWeb = sourceEvidence.some((evidence) => evidenceRequiresWebFetch(evidence))
@@ -189,6 +197,12 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 	const reviewerRelease = acceptedReviewerRelease(run);
 	const gapsReleased = reviewerRelease?.gapsAccepted === true;
 	const conflictsReleased = reviewerRelease?.conflictsAccepted === true;
+	const rawGaps = new Set(accepted.flatMap((node) => node.result?.diagnostics.gaps.map((gap) => normalizeWorkflowText(gap.question)) ?? [])).size;
+	const rawConflicts = new Set(accepted.flatMap((node) => node.result?.diagnostics.conflicts.map((conflict) => normalizeWorkflowText(conflict.statement)) ?? [])).size;
+	const residuals = {
+		gaps: residualCounts(rawGaps, evaluation.gaps, policy.gates.maxUnresolvedGaps, gapsReleased),
+		conflicts: residualCounts(rawConflicts, evaluation.conflicts, policy.gates.maxUnresolvedConflicts, conflictsReleased),
+	};
 	// Manual delivery can use the terminal accepted Editor even when a structural
 	// lineage gate prevents it from becoming the auto-completion candidate.
 	const editorNode = finalAcceptedEditor(run);
@@ -434,6 +448,7 @@ export function assessWorkflowQuality(run: WorkflowRun, policyOverride?: Workflo
 		policy,
 		evidenceMode,
 		metrics,
+		residuals,
 		structuralBlockers,
 		contentBlockers,
 		blockers,

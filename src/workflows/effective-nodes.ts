@@ -49,17 +49,21 @@ export function isAdjudicatedStatus(status: WorkflowNode["status"]): boolean {
 	return status === "accepted" || status === "superseded" || status === "rejected";
 }
 
-function parseReviewerRelease(value: unknown): WorkflowReviewerRelease | undefined {
+function parseReviewerRelease(review: unknown, value: unknown): WorkflowReviewerRelease | undefined {
+	if (typeof review !== "object" || review === null || Array.isArray(review) || (review as Record<string, unknown>).verdict !== "pass") return undefined;
 	if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
 	const record = value as Record<string, unknown>;
-	if (typeof record.release !== "boolean" || record.release !== true) return undefined;
+	if (record.release !== true || typeof record.rationale !== "string" || !record.rationale.trim()) return undefined;
+	for (const name of ["gapsAccepted", "conflictsAccepted", "citationShortfallAccepted", "lengthShortfallAccepted"]) {
+		if (record[name] !== undefined && typeof record[name] !== "boolean") return undefined;
+	}
 	return {
 		release: true,
 		...(typeof record.gapsAccepted === "boolean" ? { gapsAccepted: record.gapsAccepted } : {}),
 		...(typeof record.conflictsAccepted === "boolean" ? { conflictsAccepted: record.conflictsAccepted } : {}),
 		...(typeof record.citationShortfallAccepted === "boolean" ? { citationShortfallAccepted: record.citationShortfallAccepted } : {}),
 		...(typeof record.lengthShortfallAccepted === "boolean" ? { lengthShortfallAccepted: record.lengthShortfallAccepted } : {}),
-		...(typeof record.rationale === "string" ? { rationale: record.rationale } : {}),
+		rationale: record.rationale,
 	};
 }
 
@@ -80,5 +84,5 @@ export function acceptedReviewerRelease(run: WorkflowRun): WorkflowReviewerRelea
 		: acceptedReviewers;
 	const reviewer = candidates.sort((left, right) => completionOrder(left) - completionOrder(right) || left.id.localeCompare(right.id)).at(-1);
 	if (!reviewer?.result?.extensions) return undefined;
-	return parseReviewerRelease(reviewer.result.extensions.release);
+	return parseReviewerRelease(reviewer.result.review, reviewer.result.extensions.release);
 }

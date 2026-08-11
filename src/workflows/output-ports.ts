@@ -84,6 +84,8 @@ function boundedEventResult(result: WorkflowResult): WorkflowResult {
 		diagnostics: structuredClone(result.diagnostics),
 		recommendations: result.recommendations.slice(0, 20),
 		...(result.evidence ? { evidence: { findings: [], ...(result.evidence.search ? { search: structuredClone(result.evidence.search) } : {}) } } : {}),
+		// The verdict is gate control data; retain it alongside the bounded release declaration.
+		...(result.review ? { review: structuredClone(result.review) } : {}),
 		// Extensions are bounded by WorkflowResult validation and may contain release
 		// decisions used by evaluation. Dropping them makes event/manifest gates disagree
 		// with hydrated quality checks until the store is reloaded.

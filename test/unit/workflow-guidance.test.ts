@@ -282,6 +282,7 @@ describe("workflow repair guidance and search benchmark fixtures", () => {
 			diagnostics: { gaps: [], conflicts: [], warnings: [] },
 			recommendations: [],
 			evidence: { findings: [] },
+			review: { verdict: "pass" },
 			extensions: { release: { release: true, rationale: "Document passed review." } },
 		};
 		const workflow = run([editor, reviewer]);
