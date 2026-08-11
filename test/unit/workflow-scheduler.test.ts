@@ -190,8 +190,10 @@ describe("workflow scheduler", () => {
 		assert.equal(run.nodes["research-a"]?.attempts[0]?.failure?.failureClass, "output_registration_failed");
 		assert.match(error, /"nodeId":"research-a"/);
 		assert.match(error, /"port":"result"/);
+		assert.match(error, /"stage":"file_capture"/);
 		assert.match(error, /"mediaType":"application\/json"/);
 		assert.match(error, /"path":"\/outside-trusted-output\.json"/);
+		assert.match(error, /"actual":\{[^}]*"reason":"Output port 'result' file must use/);
 	});
 
 	it("keeps a one-megabyte result out of workflow history while hydrating it from a verified artifact", async () => {

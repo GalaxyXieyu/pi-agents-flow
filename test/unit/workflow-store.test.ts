@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { afterEach, describe, it } from "node:test";
 
 import { createWorkflowStore } from "../../src/workflows/store.ts";
-import { registerWorkflowOutputs } from "../../src/workflows/output-ports.ts";
+import { outputRegistrationDiagnostic, registerWorkflowOutputs } from "../../src/workflows/output-ports.ts";
 import { createLocalWorkflowArtifactStore } from "../../src/workflows/artifact-store.ts";
 import type { WorkflowEvent, WorkflowResult } from "../../src/workflows/types.ts";
 
@@ -80,6 +80,23 @@ describe("workflow store", () => {
 		const replayed = store.append("workflow-1", plan);
 		assert.equal(replayed.revision, 2);
 		assert.equal(fs.readFileSync(paths.events, "utf-8").trim().split("\n").length, 2);
+	});
+
+	it("names a missing required output as the failed port and registration stage", () => {
+		const result: WorkflowResult = {
+			version: 1, summary: { text: "partial", covers: [], omissions: [], confidence: "high" }, outputs: {},
+			diagnostics: { gaps: [], conflicts: [], warnings: [] }, recommendations: [],
+		};
+		const node = {
+			id: "w-aliyun",
+			dataContract: { version: 1, profile: "writer", inputs: [], outputs: { sections: { mediaType: "text/markdown", description: "sections", storage: "artifact", required: true, classification: "internal" } } },
+		} as never;
+		const diagnostic = outputRegistrationDiagnostic(node, result, new Error("Required output port 'sections' is missing."));
+		assert.deepEqual(diagnostic, {
+			nodeId: "w-aliyun", port: "sections", stage: "missing_submission", reason: "Required output port 'sections' is missing.",
+			expected: { mediaType: "text/markdown", storage: "artifact", required: true },
+			actual: { present: false, reason: "Required output port 'sections' is missing." },
+		});
 	});
 
 	it("keeps reviewer release extensions in the compact event result", () => {

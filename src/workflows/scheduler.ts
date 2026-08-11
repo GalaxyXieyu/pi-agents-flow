@@ -54,8 +54,7 @@ function runnable(node: WorkflowRun["nodes"][string], maxNodeAttempts: number, r
 }
 
 function outputRegistrationError(error: unknown, node: WorkflowRun["nodes"][string], result: WorkflowResult): string {
-	const reason = error instanceof Error ? error.message : String(error);
-	return `Workflow output registration failed: ${JSON.stringify({ ...outputRegistrationDiagnostic(node, result), reason })}`;
+	return `Workflow output registration failed: ${JSON.stringify(outputRegistrationDiagnostic(node, result, error))}`;
 }
 
 function workflowFailure(error: string, context?: WorkflowFailureContext): WorkflowFailure {

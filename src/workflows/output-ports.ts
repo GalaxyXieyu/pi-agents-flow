@@ -17,38 +17,57 @@ export interface RegisteredWorkflowOutputs {
 	eventResult: WorkflowResult;
 }
 
+export type WorkflowOutputRegistrationStage = "missing_submission" | "submission_validation" | "file_capture" | "inline_budget" | "artifact_write" | "unknown";
+
 export interface WorkflowOutputRegistrationDiagnostic {
 	nodeId: string;
-	ports: Array<{
-		port: string;
-		expected: { mediaType: string; storage: WorkflowDataContract["outputs"][string]["storage"]; required: boolean; maxInlineBytes?: number };
-		actual: { present: boolean; kind?: WorkflowOutputSubmission["kind"]; path?: string; valuePresent?: boolean };
-	}>;
+	port?: string;
+	stage: WorkflowOutputRegistrationStage;
+	expected?: { mediaType: string; storage: WorkflowDataContract["outputs"][string]["storage"]; required: boolean; maxInlineBytes?: number };
+	actual?: { present: boolean; kind?: WorkflowOutputSubmission["kind"]; path?: string; valuePresent?: boolean; reason: string };
+	reason: string;
 }
 
-export function outputRegistrationDiagnostic(node: WorkflowNode, result: WorkflowResult): WorkflowOutputRegistrationDiagnostic {
+function portSnapshot(port: WorkflowDataContract["outputs"][string], submission: WorkflowOutputSubmission | undefined, reason: string): Pick<WorkflowOutputRegistrationDiagnostic, "expected" | "actual"> {
+	return {
+		expected: {
+			mediaType: port.mediaType,
+			storage: port.storage,
+			required: port.required,
+			...(port.maxInlineBytes === undefined ? {} : { maxInlineBytes: port.maxInlineBytes }),
+		},
+		actual: submission
+			? {
+				present: true,
+				kind: submission.kind,
+				...(submission.path === undefined ? {} : { path: submission.path }),
+				...(submission.value === undefined ? {} : { valuePresent: true }),
+				reason,
+			}
+			: { present: false, reason },
+	};
+}
+
+/** Converts a registration failure into a single Supervisor-actionable port diagnostic. */
+export function outputRegistrationDiagnostic(node: WorkflowNode, result: WorkflowResult, error: unknown): WorkflowOutputRegistrationDiagnostic {
+	const reason = error instanceof Error ? error.message : String(error);
+	const missing = reason.match(/^Required output port '([^']+)' is missing\.$/);
+	const named = reason.match(/^Output port '([^']+)'/);
+	const portName = missing?.[1] ?? named?.[1];
+	const port = portName ? node.dataContract.outputs[portName] : undefined;
+	const submission = portName ? result.outputs[portName] : undefined;
+	const stage: WorkflowOutputRegistrationStage = missing ? "missing_submission"
+		: /exceeds its \d+-byte inline budget/.test(reason) ? "inline_budget"
+		: /file path is missing|requires an inline value/.test(reason) ? "submission_validation"
+		: /capture|slot|submission|path|sha256|file/i.test(reason) ? "file_capture"
+		: /artifact|write|put/i.test(reason) ? "artifact_write"
+		: "unknown";
 	return {
 		nodeId: node.id,
-		ports: Object.entries(node.dataContract.outputs).map(([port, expected]) => {
-			const submission = result.outputs[port];
-			return {
-				port,
-				expected: {
-					mediaType: expected.mediaType,
-					storage: expected.storage,
-					required: expected.required,
-					...(expected.maxInlineBytes === undefined ? {} : { maxInlineBytes: expected.maxInlineBytes }),
-				},
-				actual: submission
-					? {
-						present: true,
-						kind: submission.kind,
-						...(submission.path === undefined ? {} : { path: submission.path }),
-						...(submission.value === undefined ? {} : { valuePresent: true }),
-					}
-					: { present: false },
-			};
-		}),
+		...(portName ? { port: portName } : {}),
+		stage,
+		...(port ? portSnapshot(port, submission, reason) : {}),
+		reason,
 	};
 }
 
