@@ -4,6 +4,7 @@ import { SUBAGENT_DEFAULT_TOOLS, buildPiArgs } from "../../src/runs/shared/pi-ar
 
 describe("capability ceiling child launch enforcement", () => {
 	const base = {
+		parentSessionId: "capability-ceiling-parent",
 		baseArgs: [] as string[],
 		task: "test",
 		sessionEnabled: false,

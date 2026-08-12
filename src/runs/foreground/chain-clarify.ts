@@ -12,16 +12,16 @@ import type { AgentConfig } from "../../agents/agents.ts";
 import type { ResolvedStepBehavior } from "../../shared/settings.ts";
 import { resolveModelCandidate, splitThinkingSuffix } from "../shared/model-fallback.ts";
 import { findModelInfo, getSupportedThinkingLevels, type ModelInfo, type ThinkingLevel } from "../../shared/model-info.ts";
+import type {
+	BehaviorOverride,
+	ExecutionClarificationRequest,
+	ExecutionClarificationResult,
+	ExecutionClarifier,
+} from "../shared/execution-clarifier.ts";
+
+export type { BehaviorOverride, ExecutionClarifier } from "../shared/execution-clarifier.ts";
 
 type ClarifyMode = 'single' | 'parallel' | 'chain';
-
-export interface BehaviorOverride {
-	output?: string | false;
-	reads?: string[] | false;
-	progress?: boolean;
-	model?: string;
-	skills?: string[] | false;
-}
 
 export interface ChainClarifyResult {
 	confirmed: boolean;
@@ -1347,4 +1347,46 @@ export class ChainClarifyComponent implements Component {
 		if (this.noticeMessageTimer) clearTimeout(this.noticeMessageTimer);
 		this.noticeMessageTimer = null;
 	}
+}
+
+/**
+ * Default interactive ExecutionClarifier adapter.
+ *
+ * Delegates to the original ChainClarifyComponent via ctx.ui.custom.
+ * Preserves the exact TUI behavior (editing, background mode, cancellation).
+ * The result is mapped from the internal ChainClarifyResult to the
+ * UI-neutral ExecutionClarificationResult contract.
+ */
+export function createInteractiveExecutionClarifier(): ExecutionClarifier {
+	return {
+		async decide(input: ExecutionClarificationRequest, signal?: AbortSignal): Promise<ExecutionClarificationResult> {
+			if (signal?.aborted) return { verdict: "reject", reason: "Clarification aborted." };
+			const result = await input.ctx.ui.custom<ChainClarifyResult>(
+				(tui, theme, _kb, done) =>
+					new ChainClarifyComponent(
+						tui, theme,
+						input.agentConfigs,
+						input.templates,
+						input.originalTask,
+						input.chainDir,
+						input.resolvedBehaviors,
+						input.availableModels,
+						input.preferredProvider,
+						input.availableSkills,
+						done,
+						input.mode,
+					),
+				{ overlay: true, overlayOptions: { anchor: "center", width: "95%", minWidth: 40, maxWidth: 84, maxHeight: "80%" } },
+			);
+			if (!result || !result.confirmed) {
+				return { verdict: "reject", reason: "Cancelled" };
+			}
+			return {
+				verdict: "approve",
+				templates: result.templates,
+				behaviorOverrides: result.behaviorOverrides,
+				...(result.runInBackground ? { runInBackground: true } : {}),
+			};
+		},
+	};
 }

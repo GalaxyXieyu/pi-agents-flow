@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { buildAssetCatalog, formatAssetCatalog } from "../../src/workflows/asset-catalog.ts";
 import { registerWorkflowAssetsTool } from "../../src/workflows/tool.ts";
+import { createWorkflowAssetsRenderer } from "../../src/tui/workflow-tool-renderer.ts";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -20,7 +21,7 @@ function assetsTool(): ToolDefinition {
 	const pi = {
 		registerTool(tool: ToolDefinition) { captured = tool; },
 	} as unknown as ExtensionAPI;
-	registerWorkflowAssetsTool(pi);
+	registerWorkflowAssetsTool(pi, createWorkflowAssetsRenderer());
 	assert.ok(captured, "expected the workflow_assets tool to be registered");
 	return captured;
 }

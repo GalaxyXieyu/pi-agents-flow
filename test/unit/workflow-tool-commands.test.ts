@@ -6,6 +6,7 @@ import { Compile } from "typebox/compile";
 import { registerWorkflowCommands } from "../../src/workflows/commands.ts";
 import type { WorkflowController, WorkflowControllerResult } from "../../src/workflows/controller.ts";
 import { parseWorkflowActionParams, registerWorkflowTool } from "../../src/workflows/tool.ts";
+import { createWorkflowToolRenderer } from "../../src/tui/workflow-tool-renderer.ts";
 import type { WorkflowRun } from "../../src/workflows/types.ts";
 
 function run(): WorkflowRun {
@@ -76,7 +77,7 @@ describe("workflow tool and commands", () => {
 				return result("started");
 			},
 		};
-		registerWorkflowTool(pi as unknown as ExtensionAPI, controller);
+		registerWorkflowTool(pi as unknown as ExtensionAPI, controller, createWorkflowToolRenderer());
 
 		assert.equal(pi.tools.length, 1);
 		const tool = pi.tools[0]!;
@@ -162,7 +163,7 @@ describe("workflow tool and commands", () => {
 		};
 		const ctx = fakeContext();
 		ctx.abort = () => order.push("abort");
-		registerWorkflowTool(pi as unknown as ExtensionAPI, controller);
+		registerWorkflowTool(pi as unknown as ExtensionAPI, controller, createWorkflowToolRenderer());
 
 		await pi.tools[0]!.execute("call-stop", { action: "stop", runId: "workflow-1" }, undefined, undefined, ctx);
 		assert.deepEqual(order, ["controller:stop", "abort"]);
@@ -181,7 +182,7 @@ describe("workflow tool and commands", () => {
 		};
 		const ctx = fakeContext();
 		ctx.abort = () => { aborts++; };
-		registerWorkflowTool(pi as unknown as ExtensionAPI, controller);
+		registerWorkflowTool(pi as unknown as ExtensionAPI, controller, createWorkflowToolRenderer());
 		await assert.rejects(() => pi.tools[0]!.execute("call-stop-fail", { action: "stop", runId: "workflow-1" }, undefined, undefined, ctx), /stop failed/);
 		assert.equal(aborts, 0);
 	});
@@ -195,7 +196,7 @@ describe("workflow tool and commands", () => {
 		};
 		const ctx = fakeContext();
 		ctx.ui.setToolsExpanded = () => { compacted++; };
-		registerWorkflowTool(pi as unknown as ExtensionAPI, controller);
+		registerWorkflowTool(pi as unknown as ExtensionAPI, controller, createWorkflowToolRenderer());
 		await pi.tools[0]!.execute("call-compact", { action: "start", mode: "general", goal: "Build it" }, undefined, undefined, ctx);
 		assert.equal(compacted, 1);
 	});
@@ -206,9 +207,9 @@ describe("workflow tool and commands", () => {
 			current: () => undefined,
 			async execute() { return result("unused"); },
 		};
-		registerWorkflowTool(pi as unknown as ExtensionAPI, controller, () => {
+		registerWorkflowTool(pi as unknown as ExtensionAPI, controller, createWorkflowToolRenderer(() => {
 			throw new TypeError("dock snapshot unavailable");
-		});
+		}));
 		const tool = pi.tools[0]!;
 		const component = tool.renderResult?.(
 			{ content: [{ type: "text", text: "RAW STATUS SHOULD NOT LEAK" }], details: { run: run() } },

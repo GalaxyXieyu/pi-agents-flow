@@ -7,6 +7,7 @@ import { buildPiArgs } from "../../src/runs/shared/pi-args.ts";
 // argument, and that the capability ceiling still clamps them.
 describe("buildPiArgs per-launch tool grants", () => {
 	const base = {
+		parentSessionId: "pi-args-tool-grants-parent",
 		baseArgs: [] as string[],
 		task: "test",
 		sessionEnabled: false,

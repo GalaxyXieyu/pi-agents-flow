@@ -2,7 +2,7 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { THINKING_LEVELS, type ThinkingLevel } from "../shared/model-info.ts";
 import type { Details } from "../shared/types.ts";
-import { buildWatchdogStatus } from "./register-main.ts";
+import { buildWatchdogStatus } from "./status.ts";
 import type { MainWatchdogRuntime } from "./runtime.ts";
 import { parseWatchdogThinkingInput, recommendStrongWatchdogModel, resolveWatchdogModelInput } from "./model-selection.ts";
 import { writeWatchdogModelSettings, type WatchdogModelSettingsTarget, type WatchdogSettingsWriteScope } from "./settings.ts";

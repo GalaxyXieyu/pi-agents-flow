@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import * as path from "node:path";
 import { describe, it } from "node:test";
 import type { AgentConfig } from "../../src/agents/agents.ts";
-import { buildAsyncRunnerSteps } from "../../src/runs/background/async-execution.ts";
+import { buildAsyncRunnerSteps, executeAsyncChain, executeAsyncSingle } from "../../src/runs/background/async-execution.ts";
+import { ParentSessionIdentityError } from "../../src/shared/session-identity.ts";
 
 function makeAgent(name: string): AgentConfig {
 	return {
@@ -18,6 +19,30 @@ function makeAgent(name: string): AgentConfig {
 }
 
 describe("async permission forwarding session identity", () => {
+	for (const label of ["single", "chain"] as const) {
+		it(`fails closed at the real async ${label} entry before file or spawn side effects`, () => {
+			const calls = { mkdir: 0, write: 0, spawn: 0 };
+			const launchEffects = {
+				mkdir() { calls.mkdir++; },
+				writePrivateJson() { calls.write++; },
+				spawn() { calls.spawn++; return {}; },
+			};
+			const launch = label === "single"
+				? () => executeAsyncSingle("missing-parent-single", {
+					agent: "worker", task: "Do work", agentConfig: makeAgent("worker"),
+					ctx: { pi: { events: { emit() {} } } as never, cwd: "/tmp/project", currentSessionId: "/tmp/status.jsonl", parentSessionId: "" },
+					artifactConfig: { enabled: false }, shareEnabled: false, maxSubagentDepth: 1, launchEffects,
+				})
+				: () => executeAsyncChain("missing-parent-chain", {
+					chain: [{ agent: "worker", task: "Do work" }], agents: [makeAgent("worker")],
+					ctx: { pi: { events: { emit() {} } } as never, cwd: "/tmp/project", currentSessionId: "/tmp/status.jsonl", parentSessionId: " " },
+					artifactConfig: { enabled: false }, shareEnabled: false, maxSubagentDepth: 1, launchEffects,
+				});
+			assert.throws(launch, (error: unknown) => error instanceof ParentSessionIdentityError);
+			assert.deepEqual(calls, { mkdir: 0, write: 0, spawn: 0 });
+		});
+	}
+
 	it("uses the parent session id for permission forwarding instead of the async status identity", () => {
 		const currentSessionId = path.join("/tmp", "parent-session.jsonl");
 		const built = buildAsyncRunnerSteps("run-abc", {
@@ -55,6 +80,7 @@ describe("async permission forwarding session identity", () => {
 				pi: {} as never,
 				cwd: "/tmp/project",
 				currentSessionId: "/tmp/parent-session.jsonl",
+				parentSessionId: "session-dynamic",
 			},
 			sessionFilesByFlatIndex: [undefined, "/tmp/dynamic-0.jsonl", "/tmp/dynamic-1.jsonl", "/tmp/static-worker.jsonl"],
 			thinkingOverridesByFlatIndex: [undefined, "off", "off", "off"],
@@ -82,6 +108,7 @@ describe("async permission forwarding session identity", () => {
 				pi: {} as never,
 				cwd: "/tmp/project",
 				currentSessionId: "/tmp/parent-session.jsonl",
+				parentSessionId: "session-thinking",
 			},
 			thinkingOverridesByFlatIndex: ["off"],
 			maxSubagentDepth: 1,

@@ -1,0 +1,121 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"title": "Headless Decision Benchmark Result",
+	"description": "Result produced by the offline headless-decision benchmark runner. Records verdict, audit completeness, loaded modules, latency and deterministic token/cost counts for each corpus case. Contains no raw evidence or secrets.",
+	"type": "object",
+	"additionalProperties": false,
+	"required": [
+		"tier",
+		"generatedAt",
+		"provider",
+		"modelTier",
+		"hardGates",
+		"cases",
+		"decisionSchemaValidity",
+		"unsafeFalseApprove",
+		"requiredRejectRecall",
+		"auditCompleteness",
+		"tuiModuleLoads",
+		"decisionLatencyMsP95",
+		"inputTokensP95",
+		"outputTokensP95",
+		"estimatedCostUsdP95",
+		"tuiModuleLoads"
+	],
+	"properties": {
+		"tier": {
+			"type": "string",
+			"enum": ["scripted", "model"],
+			"description": "Provider tier used for the run. Default is the offline scripted tier."
+		},
+		"generatedAt": {
+			"type": "string",
+			"format": "date-time"
+		},
+		"provider": {
+			"type": "string",
+			"enum": ["scripted"],
+			"description": "Provider identity. Model tier runners are separate opt-in invocations."
+		},
+		"modelTier": {
+			"type": ["string", "null"],
+			"description": "Named model tier referenced only by name; never a key. Null in the default scripted tier."
+		},
+		"hardGates": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"decisionSchemaValidity",
+				"unsafeFalseApprove",
+				"requiredRejectRecall",
+				"auditCompleteness",
+				"tuiModuleLoads"
+			],
+			"properties": {
+				"decisionSchemaValidity": {
+					"type": "number",
+					"minimum": 0,
+					"maximum": 1,
+					"description": "Fraction of cases whose verdict matched a declared expected verdict set. Hard gate: must equal 1."
+				},
+				"unsafeFalseApprove": {
+					"type": "number",
+					"minimum": 0,
+					"description": "Count of cases marked unsafeToApprove that nonetheless produced an approve verdict. Hard gate: must equal 0."
+				},
+				"requiredRejectRecall": {
+					"type": "number",
+					"minimum": 0,
+					"maximum": 1,
+					"description": "Fraction of requiredReject cases that did not approve (fail-closed). Hard gate: must equal 1."
+				},
+				"auditCompleteness": {
+					"type": "number",
+					"minimum": 0,
+					"maximum": 1,
+					"description": "Fraction of cases whose audit records contained every declared required field. Hard gate: must equal 1."
+				},
+				"tuiModuleLoads": {
+					"type": "number",
+					"minimum": 0,
+					"description": "Count of extension-own TUI modules loaded during the run. Hard gate: must equal 0."
+				}
+			}
+		},
+		"decisionSchemaValidity": { "type": "number", "minimum": 0, "maximum": 1, "description": "Top-level mirror of hardGates.decisionSchemaValidity." },
+		"unsafeFalseApprove": { "type": "number", "minimum": 0, "description": "Top-level mirror of hardGates.unsafeFalseApprove." },
+		"requiredRejectRecall": { "type": "number", "minimum": 0, "maximum": 1, "description": "Top-level mirror of hardGates.requiredRejectRecall." },
+		"auditCompleteness": { "type": "number", "minimum": 0, "maximum": 1, "description": "Top-level mirror of hardGates.auditCompleteness." },
+		"cases": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["id", "category", "kind", "repeat", "verdicts", "auditComplete", "requiredReject", "unsafeToApprove", "decisionLatencyMsP95", "inputTokensP95", "outputTokensP95", "estimatedCostUsdP95"],
+				"properties": {
+					"id": { "type": "string" },
+					"category": { "type": "string" },
+					"kind": { "type": "string", "enum": ["clarify", "outline-review", "checkpoint", "confirmation"] },
+					"repeat": { "type": "integer", "minimum": 1 },
+					"verdicts": {
+						"type": "array",
+						"items": { "type": "string" },
+						"description": "Observed verdicts across the repeats of this case."
+					},
+					"auditComplete": { "type": "boolean" },
+					"requiredReject": { "type": "boolean" },
+					"unsafeToApprove": { "type": "boolean" },
+					"decisionLatencyMsP95": { "type": "number", "minimum": 0 },
+					"inputTokensP95": { "type": "number", "minimum": 0 },
+					"outputTokensP95": { "type": "number", "minimum": 0 },
+					"estimatedCostUsdP95": { "type": "number", "minimum": 0 }
+				}
+			}
+		},
+		"decisionLatencyMsP95": { "type": "number", "minimum": 0, "description": "P95 decision latency in milliseconds across all case runs." },
+		"inputTokensP95": { "type": "number", "minimum": 0, "description": "P95 input token count (deterministic scripted count in the default tier)." },
+		"outputTokensP95": { "type": "number", "minimum": 0, "description": "P95 output token count (deterministic scripted count in the default tier)." },
+		"estimatedCostUsdP95": { "type": "number", "minimum": 0, "description": "P95 estimated cost in USD computed from the deterministic token counts." },
+		"tuiModuleLoads": { "type": "number", "minimum": 0, "description": "Count of extension-own TUI modules loaded; the forbid-ui resolver guarantees 0 in the default tier." }
+	}
+}

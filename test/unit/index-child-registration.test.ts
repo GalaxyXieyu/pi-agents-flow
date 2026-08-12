@@ -338,7 +338,7 @@ describe("subagent extension child mode", () => {
 		}
 	});
 
-	it("disposes pending completion notifications during runtime reload cleanup", () => {
+	it("keeps instances independent until each explicit shutdown disposes its notifications", () => {
 		const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-agents-flow-notify-reload-"));
 		const configDir = path.join(agentDir, "extensions", "subagent");
 		fs.mkdirSync(configDir, { recursive: true });
@@ -399,8 +399,11 @@ describe("subagent extension child mode", () => {
 			const newRuntime = createRuntime("notify-reload-new");
 			registerSubagentExtension(newRuntime.pi);
 			newRuntime.handlers.get("session_start")({}, newRuntime.ctx);
+			if (![...oldCompletionTimers].every(([token]) => pendingTimers.has(token))) throw new Error("second instance implicitly cleaned the first instance");
+			oldRuntime.handlers.get("session_shutdown")();
+			if ([...oldCompletionTimers].some(([token]) => pendingTimers.has(token))) throw new Error("explicit old shutdown left completion timers pending");
 			for (const [, handler] of oldCompletionTimers) handler();
-			if (oldRuntime.sent.length !== 0) throw new Error("stale completion sent after runtime cleanup");
+			if (oldRuntime.sent.length !== 0) throw new Error("stale completion sent after explicit shutdown");
 
 			const timersBeforeNewCompletion = new Set(pendingTimers.keys());
 			newRuntime.events.emit("subagent:async-complete", {
@@ -413,8 +416,9 @@ describe("subagent extension child mode", () => {
 				pendingTimers.delete(token);
 				handler();
 			}
-			if (newRuntime.sent.length !== 1) throw new Error("new notifier was not active after reload cleanup");
+			if (newRuntime.sent.length !== 1) throw new Error("new notifier was not active after old shutdown");
 			newRuntime.handlers.get("session_shutdown")();
+			if (pendingTimers.size !== 0) throw new Error("explicit shutdown left timers pending");
 			globalThis.setTimeout = realSetTimeout;
 			globalThis.clearTimeout = realClearTimeout;
 		`;

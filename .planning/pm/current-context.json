@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-10T19:33:11+08:00",
+  "generated_at": "2026-08-11T14:26:35+08:00",
   "project": {
     "name": "CodingAgents",
     "repo_root": "/Users/hb00156/Documents/coding/pi-agents-flow",
@@ -69,8 +69,42 @@
     "state_doc_token": "VunrdZrHtojfnYxLjAzcP9longU",
     "state_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/VunrdZrHtojfnYxLjAzcP9longU"
   },
-  "open_tasks": [],
-  "next_task": null,
-  "current_task": null,
+  "open_tasks": [
+    {
+      "task_id": "T11",
+      "summary": "[T11] [工作流] Reviewer release 契约失败自动 steer 与 residual gate 可观测性",
+      "status": "todo",
+      "guid": "b151738a-9706-40fb-806d-34d68d6f68ad",
+      "url": "https://applink.feishu.cn/client/todo/detail?guid=b151738a-9706-40fb-806d-34d68d6f68ad&suite_entity_num=t101040",
+      "updated_at": "1786429592728",
+      "created_at": "1786427535117"
+    }
+  ],
+  "next_task": {
+    "task_id": "T11",
+    "summary": "[T11] [工作流] Reviewer release 契约失败自动 steer 与 residual gate 可观测性",
+    "status": "todo",
+    "guid": "b151738a-9706-40fb-806d-34d68d6f68ad",
+    "url": "https://applink.feishu.cn/client/todo/detail?guid=b151738a-9706-40fb-806d-34d68d6f68ad&suite_entity_num=t101040",
+    "updated_at": "1786429592728",
+    "created_at": "1786427535117"
+  },
+  "current_task": {
+    "task_id": "T11",
+    "summary": "[T11] [工作流] Reviewer release 契约失败自动 steer 与 residual gate 可观测性",
+    "status": "todo",
+    "guid": "b151738a-9706-40fb-806d-34d68d6f68ad",
+    "url": "https://applink.feishu.cn/client/todo/detail?guid=b151738a-9706-40fb-806d-34d68d6f68ad&suite_entity_num=t101040",
+    "description": "任务编号：T11\n创建时间：2026-08-11 13:52:14 CST\n类型：task\nRepo：/Users/hb00156/Documents/coding/pi-agents-flow\n\n需求：\n基于 Deep Research 实战复盘优化 workflow：为 reviewer 引入结构化 review verdict，pass 但 ResultEnvelope 顶层缺 extensions.release 时，向同一 reviewer 返回清晰、可执行的格式 steer/retry，避免额外 reviewer；质量报告区分 raw residual、reviewer 已接受 residual 与仍阻断 residual，并补回归测试。不得修改已有未提交 PM 缓存以外的无关文件。\n\n执行要求：\n- 以 task/doc 为主，不再依赖本地 task/context/state 文件。\n- 进度默认写评论，验收证据优先回填附件或评论。",
+    "updated_at": "1786429592728",
+    "completed_at": "0",
+    "attachments": [],
+    "tasklists": [
+      {
+        "section_guid": "0555dc98-7c33-576b-7db0-c43519a48ee1",
+        "tasklist_guid": "a3894c51-137e-4e7c-9c1d-abe72179b818"
+      }
+    ]
+  },
   "recent_comments": []
 }

@@ -86,6 +86,7 @@ describe("capability ceiling agent allowlist", () => {
 
 	it("includes allowedAgents in propagated launch env and audit metadata", () => {
 		const { env, capabilityAudit } = buildPiArgs({
+			parentSessionId: "capability-agent-parent",
 			baseArgs: [],
 			task: "Review",
 			sessionEnabled: false,

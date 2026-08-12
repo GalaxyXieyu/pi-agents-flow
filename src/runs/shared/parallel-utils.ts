@@ -1,6 +1,8 @@
+import type { ChildEnvironmentProfile } from "./child-environment.ts";
+
 export interface RunnerSubagentStep {
 	/** Session id of the direct parent session for permission-system ask forwarding. */
-	parentSessionId?: string;
+	parentSessionId: string;
 	agent: string;
 	task: string;
 	/** Resolved launch context for this child. */
@@ -35,6 +37,7 @@ export interface RunnerSubagentStep {
 	outputMode?: "inline" | "file-only";
 	sessionFile?: string;
 	maxSubagentDepth?: number;
+	environmentProfile?: ChildEnvironmentProfile;
 	waitToolEnabled?: boolean;
 	structuredOutput?: {
 		schema: import("../../shared/types.ts").JsonSchemaObject;

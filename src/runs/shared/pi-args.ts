@@ -73,7 +73,7 @@ export const PI_INTERCOM_STABLE_ID_ENV = "PI_INTERCOM_STABLE_ID";
 export const PI_INTERCOM_SESSION_ID_ENV = "PI_INTERCOM_SESSION_ID";
 
 export interface BuildPiArgsInput {
-	parentSessionId?: string;
+	parentSessionId: string;
 	baseArgs: string[];
 	task: string;
 	sessionEnabled: boolean;
@@ -327,6 +327,9 @@ export function resolvePiLaunchToolPlan(input: ResolvePiLaunchToolPlanInput): Pi
 }
 
 export function buildPiArgs(input: BuildPiArgsInput): BuildPiArgsResult {
+	if (!input.parentSessionId?.trim()) {
+		throw new Error("buildPiArgs requires an explicit non-empty parentSessionId");
+	}
 	const args = [...input.baseArgs];
 
 	if (input.sessionFile) {
@@ -499,7 +502,7 @@ export function buildPiArgs(input: BuildPiArgsInput): BuildPiArgsResult {
 	const encodedChildWatchdog = encodeChildWatchdogConfig(input.childWatchdog);
 	if (encodedChildWatchdog) env[CHILD_WATCHDOG_CONFIG_ENV] = encodedChildWatchdog;
 
-	env[SUBAGENT_PARENT_SESSION_ENV] = input.parentSessionId ?? process.env[SUBAGENT_PARENT_SESSION_ENV] ?? "";
+	env[SUBAGENT_PARENT_SESSION_ENV] = input.parentSessionId;
 
 	return { args, env, tempDir, toolDiagnosticPath, runtimeAcknowledgedExtensionsPath, capabilityAudit: toolPlan.capabilityAudit };
 }

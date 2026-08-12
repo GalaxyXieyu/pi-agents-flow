@@ -6,7 +6,6 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { canInvokeAgent, effectiveAgentInvocation, resolveAgentName, type AgentConfig, type AgentInvocationOrigin, type AgentScope } from "../../agents/agents.ts";
 import { getArtifactsDir, getProjectChainRunsDir } from "../../shared/artifacts.ts";
-import { ChainClarifyComponent, type ChainClarifyResult } from "./chain-clarify.ts";
 import { resolveEffectiveThinking, toModelInfo, type ModelInfo } from "../../shared/model-info.ts";
 import { executeChain } from "./chain-execution.ts";
 import {
@@ -98,7 +97,7 @@ import { enqueueChainAppendRequest, readPendingChainAppendRequests, runnerStepOu
 import { ChainOutputValidationError, validateChainOutputBindingsWithContext } from "../shared/chain-outputs.ts";
 import { validateExecutionAcceptance } from "../shared/acceptance.ts";
 import { createForkContextResolver, forkedChildRequiresThinkingOff } from "../../shared/fork-context.ts";
-import { resolveCurrentSessionId } from "../../shared/session-identity.ts";
+import { resolveCurrentSessionId, resolveRequiredParentSessionId } from "../../shared/session-identity.ts";
 import { applyIntercomBridgeToAgent, INTERCOM_BRIDGE_MARKER, resolveIntercomBridge, resolveIntercomSessionTarget, resolveSubagentIntercomTarget, type IntercomBridgeState } from "../../intercom/intercom-bridge.ts";
 import { formatControlIntercomMessage, formatControlNoticeMessage, resolveControlConfig, shouldNotifyControlEvent } from "../shared/subagent-control.ts";
 import { resolveTurnBudgetConfig } from "../shared/turn-budget.ts";
@@ -850,11 +849,12 @@ export function appendStepToAsyncChain(input: {
 	const chainSkillInput = normalizeSkillInput(effectiveParams.skill);
 	const chainSkills = chainSkillInput === false ? [] : (chainSkillInput ?? []);
 	const parentModel = input.parentModel;
+	const parentSessionId = resolveRequiredParentSessionId(input.ctx.sessionManager);
 	const asyncCtx = {
 		pi: input.deps.pi,
 		cwd: input.ctx.cwd,
 		currentSessionId: resolveCurrentSessionId(input.ctx.sessionManager),
-		parentSessionId: input.ctx.sessionManager.getSessionId() ?? undefined,
+		parentSessionId,
 		currentModelProvider: parentModel?.provider,
 		currentModel: parentModel,
 		modelScope: discoveredForAppend.modelScope,
@@ -1246,6 +1246,7 @@ export async function resumeAsyncRun(input: {
 		const chain = wrapChainTasksForFork(attachChain, contextPolicy);
 		const normalized = normalizeSkillInput(input.params.skill);
 		const parentModel = input.parentModel;
+		const parentSessionId = resolveRequiredParentSessionId(input.ctx.sessionManager);
 		const result = executeAsyncChain(runId, {
 			chain,
 			task: workflowTask,
@@ -1263,7 +1264,7 @@ export async function resumeAsyncRun(input: {
 				pi: input.deps.pi,
 				cwd: input.requestCwd,
 				currentSessionId: input.deps.state.currentSessionId,
-				parentSessionId: input.ctx.sessionManager.getSessionId() ?? undefined,
+				parentSessionId,
 				currentModelProvider: parentModel?.provider,
 				currentModel: parentModel,
 				modelScope,
@@ -1308,6 +1309,7 @@ export async function resumeAsyncRun(input: {
 	const artifactsDir = recoveryDescriptor?.artifactsDir ?? getArtifactsDir(parentSessionFile, effectiveCwd, artifactConfig.dir);
 	const availableModels = input.ctx.modelRegistry.getAvailable().map(toModelInfo);
 	const parentModel = input.parentModel;
+	const parentSessionId = resolveRequiredParentSessionId(input.ctx.sessionManager);
 	const result = executeAsyncSingle(runId, {
 		agent: target.agent,
 		task: buildRevivedAsyncTask(target, followUp),
@@ -1317,7 +1319,7 @@ export async function resumeAsyncRun(input: {
 			pi: input.deps.pi,
 			cwd: input.requestCwd,
 			currentSessionId: input.deps.state.currentSessionId,
-			parentSessionId: input.ctx.sessionManager.getSessionId() ?? undefined,
+			parentSessionId,
 			currentModelProvider: parentModel?.provider,
 			currentModel: parentModel,
 			modelScope,

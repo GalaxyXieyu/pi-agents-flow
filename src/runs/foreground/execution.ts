@@ -56,6 +56,8 @@ import { getPiSpawnCommand } from "../shared/pi-spawn.ts";
 import { createJsonlWriter } from "../../shared/jsonl-writer.ts";
 import { attachPostExitStdioGuard, trySignalChild } from "../../shared/post-exit-stdio-guard.ts";
 import { applyThinkingSuffix, buildPiArgs, cleanupTempDir, projectLaunchResolvedChildExtensions, resolvePiLaunchToolPlan } from "../shared/pi-args.ts";
+import { buildChildEnvironment } from "../shared/child-environment.ts";
+import { assertRequiredParentSessionId } from "../../shared/session-identity.ts";
 import { readRuntimeAcknowledgedExtensions } from "../shared/runtime-acknowledged-extensions.ts";
 import { assertAgentAllowedByCapabilityCeiling, decodeSubagentCapabilityCeiling, intersectSubagentCapabilityCeilings, resolveCurrentSubagentCapabilityCeiling, SUBAGENT_CAPABILITY_CEILING_ENV } from "../shared/capability-ceiling.ts";
 import { resolveEffectiveThinking } from "../../shared/model-info.ts";
@@ -459,7 +461,15 @@ async function runSingleAttempt(
 		};
 		return result;
 	}
-	const spawnEnv = { ...process.env, ...sharedEnv, ...getSubagentDepthEnv(options.maxSubagentDepth) };
+	const parentSessionId = assertRequiredParentSessionId(options.parentSessionId);
+	const environmentProfile = options.environmentProfile ?? "interactive";
+	const spawnEnv = buildChildEnvironment({
+		profile: environmentProfile,
+		base: process.env,
+		overlay: { ...sharedEnv, ...getSubagentDepthEnv(options.maxSubagentDepth) },
+		parentSessionId,
+		allowModelNetwork: environmentProfile === "interactive",
+	});
 	if (options.steerCapabilityPath) rmSync(options.steerCapabilityPath, { force: true });
 	let observedMutationAttempt = false;
 	let structuredOutputToolInvoked = false;

@@ -6,7 +6,7 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { canInvokeAgent, effectiveAgentInvocation, resolveAgentName, type AgentConfig, type AgentInvocationOrigin, type AgentScope } from "../../agents/agents.ts";
 import { getArtifactsDir, getProjectChainRunsDir } from "../../shared/artifacts.ts";
-import { ChainClarifyComponent, type ChainClarifyResult } from "./chain-clarify.ts";
+import type { BehaviorOverride, ExecutionClarificationRequest, ExecutionClarificationResult } from "../shared/execution-clarifier.ts";
 import { resolveEffectiveThinking, toModelInfo, type ModelInfo } from "../../shared/model-info.ts";
 import { executeChain } from "./chain-execution.ts";
 import {
@@ -132,7 +132,7 @@ import { enqueueChainAppendRequest, readPendingChainAppendRequests, runnerStepOu
 import { ChainOutputValidationError, validateChainOutputBindingsWithContext } from "../shared/chain-outputs.ts";
 import { validateExecutionAcceptance } from "../shared/acceptance.ts";
 import { createForkContextResolver, forkedChildRequiresThinkingOff } from "../../shared/fork-context.ts";
-import { resolveCurrentSessionId } from "../../shared/session-identity.ts";
+import { resolveCurrentSessionId, resolveRequiredParentSessionId } from "../../shared/session-identity.ts";
 import { applyIntercomBridgeToAgent, INTERCOM_BRIDGE_MARKER, resolveIntercomBridge, resolveIntercomSessionTarget, resolveSubagentIntercomTarget, type IntercomBridgeState } from "../../intercom/intercom-bridge.ts";
 import { formatControlIntercomMessage, formatControlNoticeMessage, resolveControlConfig, shouldNotifyControlEvent } from "../shared/subagent-control.ts";
 import { resolveTurnBudgetConfig } from "../shared/turn-budget.ts";
@@ -289,30 +289,44 @@ export async function runSinglePath(data: ExecutionContextData, deps: ExecutorDe
 	const currentMaxSubagentDepth = resolveCurrentMaxSubagentDepth(deps.config.maxSubagentDepth);
 	const maxSubagentDepth = resolveChildMaxSubagentDepth(currentMaxSubagentDepth, agentConfig.maxSubagentDepth);
 
-	if (params.clarify === true && ctx.hasUI) {
+	if (params.clarify === true) {
+		if (!deps.clarifier) {
+			return {
+				content: [{ type: "text", text: "Clarification requested but no execution clarifier is available. Pausing for explicit decision." }],
+				isError: true,
+				details: { mode: "single", results: [] },
+			};
+		}
 		const behavior = resolveStepBehavior(agentConfig, { output: effectiveOutput, skills: skillOverride });
 		const availableSkills = discoverAvailableSkills(effectiveCwd);
 
-		const result = await ctx.ui.custom<ChainClarifyResult>(
-			(tui, theme, _kb, done) =>
-				new ChainClarifyComponent(
-					tui, theme,
-					[agentConfig],
-					[task],
-					task,
-					undefined,
-					[behavior],
-					availableModels,
-					currentProvider,
-					availableSkills,
-					done,
-					"single",
-				),
-			{ overlay: true, overlayOptions: { anchor: "center", width: "95%", minWidth: 40, maxWidth: 84, maxHeight: "80%" } },
-		);
+		const clarifyRequest: ExecutionClarificationRequest = {
+			mode: "single",
+			agentConfigs: [agentConfig],
+			templates: [task],
+			originalTask: task,
+			chainDir: undefined,
+			resolvedBehaviors: [behavior],
+			availableModels,
+			preferredProvider: currentProvider,
+			availableSkills,
+			ctx,
+			evidence: { agent: agentConfig.name, task },
+		};
 
-		if (!result || !result.confirmed) {
-			return { content: [{ type: "text", text: "Cancelled" }], details: { mode: "single", results: [] } };
+		let result: ExecutionClarificationResult;
+		try {
+			result = await deps.clarifier.decide(clarifyRequest, signal);
+		} catch (error) {
+			return {
+				content: [{ type: "text", text: `Clarification failed: ${error instanceof Error ? error.message : String(error)}. Pausing for explicit decision.` }],
+				isError: true,
+				details: { mode: "single", results: [] },
+			};
+		}
+
+		if (result.verdict !== "approve") {
+			return { content: [{ type: "text", text: result.verdict === "reject" ? "Cancelled" : `${result.verdict}: ${result.reason}` }], details: { mode: "single", results: [] } };
 		}
 
 		task = result.templates[0]!;
@@ -330,11 +344,12 @@ export async function runSinglePath(data: ExecutionContextData, deps: ExecutorDe
 				};
 			}
 			const id = randomUUID();
+			const parentSessionId = resolveRequiredParentSessionId(ctx.sessionManager);
 			const asyncCtx = {
 				pi: deps.pi,
 				cwd: ctx.cwd,
 				currentSessionId: deps.state.currentSessionId!,
-				parentSessionId: ctx.sessionManager.getSessionId() ?? undefined,
+				parentSessionId,
 				currentModelProvider: parentModel?.provider,
 				currentModel: parentModel,
 				modelScope: data.modelScope,
@@ -434,8 +449,9 @@ export async function runSinglePath(data: ExecutionContextData, deps: ExecutorDe
 	const deadlineAt = data.deadlineAt ?? (data.timeoutMs !== undefined ? Date.now() + data.timeoutMs : undefined);
 	let r: Awaited<ReturnType<typeof runSync>>;
 	try {
+		const parentSessionId = resolveRequiredParentSessionId(ctx.sessionManager);
 		r = await runSync(ctx.cwd, agents, params.agent!, task, {
-			parentSessionId: ctx.sessionManager.getSessionId() ?? undefined,
+			parentSessionId,
 			context: data.contextPolicy.contextForAgent(params.agent!),
 			cwd: effectiveCwd,
 			signal,
@@ -453,6 +469,7 @@ export async function runSinglePath(data: ExecutionContextData, deps: ExecutorDe
 			outputMode: effectiveOutputMode,
 			maxSubagentDepth,
 			waitToolEnabled: deps.waitToolEnabled,
+			environmentProfile: data.environmentProfile,
 			onUpdate: forwardSingleUpdate,
 			controlConfig,
 			onControlEvent,

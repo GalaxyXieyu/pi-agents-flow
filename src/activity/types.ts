@@ -1,4 +1,4 @@
-import type { FleetItem } from "../tui/fleet.ts";
+import type { FleetItem } from "./fleet-types.ts";
 import type { WorkflowNode, WorkflowRun, WorkflowTaskPlan } from "../workflows/types.ts";
 
 export type ActivityPerspective = "work" | "agents";

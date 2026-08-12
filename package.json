@@ -7,6 +7,7 @@
   "type": "module",
   "exports": {
     ".": "./index.ts",
+    "./headless": "./src/extension/headless.ts",
     "./background-work": "./src/api/background-work.ts",
     "./delegation": "./src/api/delegation.ts",
     "./capability-ceiling": "./src/api/capability-ceiling.ts",
@@ -51,6 +52,8 @@
     "benchmark:workflow": "node --experimental-strip-types scripts/workflow-benchmark.ts",
     "benchmark:timings": "node --experimental-strip-types scripts/benchmark-timings.ts",
     "benchmark:regression": "node scripts/check-benchmark-regression.mjs",
+    "benchmark:headless-decisions": "node --experimental-strip-types --import ./test/support/forbid-ui-loader.mjs scripts/headless-decision-benchmark.ts",
+    "benchmark:headless-decisions:check": "node scripts/check-headless-decision-regression.mjs --baseline benchmarks/headless-decisions/baseline.json --current benchmarks/headless-decisions/latest.json",
     "check:rpiv-todo-bridge": "node scripts/check-rpiv-todo-bridge.mjs",
     "check:runtime-paths": "node scripts/check-runtime-paths.mjs",
     "check:deps": "depcruise src --config .dependency-cruiser.cjs",

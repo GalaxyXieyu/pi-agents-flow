@@ -1,0 +1,105 @@
+{
+  "generated_at": "2026-08-11T09:14:12+08:00",
+  "mode": "plan",
+  "focus": "",
+  "project": {
+    "name": "CodingAgents",
+    "repo_root": "/Users/hb00156/Documents/coding/pi-agents-flow",
+    "config_path": "/Users/hb00156/Documents/coding/pi-agents-flow/.planning/pm/pm.json",
+    "tasklist_name": "CodingAgents",
+    "tasklist_guid": "a3894c51-137e-4e7c-9c1d-abe72179b818",
+    "task_prefix": "T",
+    "kind": "task",
+    "task_backend": "feishu",
+    "doc_backend": "feishu"
+  },
+  "repo_scan": {
+    "root": "/Users/hb00156/Documents/coding/pi-agents-flow",
+    "exists": true,
+    "name": "pi-agents-flow",
+    "markers": {
+      "git": true,
+      "package_json": true,
+      "pnpm_lock": false,
+      "yarn_lock": false,
+      "npm_lock": true,
+      "pyproject": false,
+      "requirements_txt": false,
+      "go_mod": false,
+      "cargo_toml": false,
+      "miniapp_app_json": false,
+      "miniapp_project_config": false,
+      "src_dir": true,
+      "pages_dir": false,
+      "components_dir": false
+    },
+    "package_manager": "npm",
+    "framework_hints": []
+  },
+  "bootstrap": {
+    "project_mode": "brownfield",
+    "recommended_action": "map-codebase",
+    "task_backend": "feishu",
+    "doc_backend": "feishu",
+    "doc_folder_name": "CodingAgents",
+    "doc_folder_token": "DTccfPZBble2LGd5taXcQ03knfe",
+    "doc_folder_url": "https://xcn8w8gj1s4u.feishu.cn/drive/folder/DTccfPZBble2LGd5taXcQ03knfe",
+    "project_doc_token": "QJt6dVTKhoJkjJxFsn5cAzIgniT",
+    "project_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/QJt6dVTKhoJkjJxFsn5cAzIgniT",
+    "requirements_doc_token": "JMGGdAdYMo6gZUxBQH9cxQkgnAy",
+    "requirements_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/JMGGdAdYMo6gZUxBQH9cxQkgnAy",
+    "roadmap_doc_token": "LaJcdgHeNodDWwxs198cXYv7nmc",
+    "roadmap_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/LaJcdgHeNodDWwxs198cXYv7nmc",
+    "state_doc_token": "VunrdZrHtojfnYxLjAzcP9longU",
+    "state_doc_url": "https://xcn8w8gj1s4u.feishu.cn/docx/VunrdZrHtojfnYxLjAzcP9longU",
+    "notes": [
+      "brownfield 项目优先做 map-codebase，再补项目/路线图/状态文档。",
+      "greenfield 项目优先做 new-project，再进入任务拆解。",
+      "当前 task backend=feishu，doc backend=feishu。"
+    ]
+  },
+  "gsd": {},
+  "current_task": {
+    "task_id": "T10",
+    "summary": "[T10] Make workflow output-registration failures port-actionable",
+    "status": "todo",
+    "guid": "c9f2775b-4328-4ca5-b110-eb68bf108a8e",
+    "url": "https://applink.feishu.cn/client/todo/detail?guid=c9f2775b-4328-4ca5-b110-eb68bf108a8e&suite_entity_num=t101037",
+    "description": "任务编号：T10\n创建时间：2026-08-11 09:13:55 CST\n类型：task\nRepo：/Users/hb00156/Documents/coding/pi-agents-flow\n\n需求：\nRefine output_registration_failed diagnostics so the failed output port carries an explicit registration stage and actual.reason (missing submission, invalid storage/submission type, path, capture, budget, or artifact write) rather than only a global registration string. Add regression tests and push the improvement.\n\n执行要求：\n- 以 task/doc 为主，不再依赖本地 task/context/state 文件。\n- 进度默认写评论，验收证据优先回填附件或评论。",
+    "updated_at": "1786410836780",
+    "completed_at": "0",
+    "attachments": [],
+    "tasklists": [
+      {
+        "section_guid": "0555dc98-7c33-576b-7db0-c43519a48ee1",
+        "tasklist_guid": "a3894c51-137e-4e7c-9c1d-abe72179b818"
+      }
+    ]
+  },
+  "next_task": {
+    "task_id": "T10",
+    "summary": "[T10] Make workflow output-registration failures port-actionable",
+    "status": "todo",
+    "guid": "c9f2775b-4328-4ca5-b110-eb68bf108a8e",
+    "url": "https://applink.feishu.cn/client/todo/detail?guid=c9f2775b-4328-4ca5-b110-eb68bf108a8e&suite_entity_num=t101037",
+    "updated_at": "1786410836780",
+    "created_at": "1786410836740"
+  },
+  "open_tasks": [
+    {
+      "task_id": "T10",
+      "summary": "[T10] Make workflow output-registration failures port-actionable",
+      "status": "todo",
+      "guid": "c9f2775b-4328-4ca5-b110-eb68bf108a8e",
+      "url": "https://applink.feishu.cn/client/todo/detail?guid=c9f2775b-4328-4ca5-b110-eb68bf108a8e&suite_entity_num=t101037",
+      "updated_at": "1786410836780",
+      "created_at": "1786410836740"
+    }
+  ],
+  "recent_comments": [],
+  "instructions": [
+    "Use task as execution truth and doc as long-form truth.",
+    "Prefer updating plan/refinement results back into the active task description or linked doc.",
+    "Use repo scan and GSD assets as supporting context, not as the only source of truth."
+  ]
+}

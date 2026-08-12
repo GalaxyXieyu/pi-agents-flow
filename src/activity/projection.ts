@@ -1,6 +1,7 @@
 import { compactText, sumDefinedNumbers } from "../shared/formatters.ts";
 import type { SubagentState } from "../shared/types.ts";
-import { collectFleetSnapshot, type FleetItem } from "../tui/fleet.ts";
+import { collectFleetSnapshot } from "./fleet-projection.ts";
+import type { FleetItem } from "./fleet-types.ts";
 import { workflowRunLanguage } from "../workflows/language.ts";
 import type { WorkflowNode, WorkflowRun } from "../workflows/types.ts";
 import type {

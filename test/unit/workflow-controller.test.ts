@@ -15,6 +15,7 @@ import { resolveWorkflowPolicy } from "../../src/workflows/policy.ts";
 import { createWorkflowStore } from "../../src/workflows/store.ts";
 import type { WorkflowResult, WorkflowWorkUnitPlan } from "../../src/workflows/types.ts";
 import { evaluateWorkflow } from "../../src/workflows/gates.ts";
+import { createTuiWorkflowInteraction } from "../../src/tui/workflow-interaction-adapter.ts";
 
 const tempDirs: string[] = [];
 
@@ -88,11 +89,32 @@ function fakeContext(cwd: string, entries: unknown[]): ExtensionContext {
 }
 
 describe("workflow controller", () => {
+	it("fails closed at a decision point when no interaction adapter was injected", async () => {
+		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-controller-no-interaction-"));
+		tempDirs.push(cwd);
+		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
+		const controller = createWorkflowController({
+			adapter: { async run() { throw new Error("unused"); } },
+			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
+			createRunId: () => "workflow-no-interaction",
+			now: () => 1,
+			resolveBranch: () => "main",
+		} as never);
+		const ctx = fakeContext(cwd, entries);
+		await controller.execute({ action: "start", mode: "deep-research", goal: "Research safely" }, ctx);
+		await assert.rejects(
+			controller.execute({ action: "clarify", questions: [{ id: "scope", prompt: "Scope?", options: [{ label: "A" }, { label: "B" }], multiple: false }] }, ctx),
+			/interaction adapter is required.*blocked/i,
+		);
+		assert.equal(controller.current(ctx)?.clarifications?.length ?? 0, 0);
+	});
+
 	it("rejects an impossible Deep Research Editor contract before applying the plan", async () => {
 		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-controller-editor-contract-"));
 		tempDirs.push(cwd);
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: { async run() { throw new Error("must not execute"); } },
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 			createRunId: () => "workflow-editor-contract",
@@ -118,6 +140,7 @@ describe("workflow controller", () => {
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		let runNumber = 0;
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: { async run() { return { ok: false, stage: "transport", error: "unused" }; } },
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 			createRunId: () => `workflow-language-${++runNumber}`,
@@ -141,6 +164,7 @@ describe("workflow controller", () => {
 		tempDirs.push(cwd);
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: { async run() { throw new Error("unused"); } },
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 			createRunId: () => "workflow-attempt-config",
@@ -176,6 +200,7 @@ describe("workflow controller", () => {
 		};
 		let timestamp = 10;
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter,
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 			createRunId: () => "workflow-1",
@@ -225,6 +250,7 @@ describe("workflow controller", () => {
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		const decisions = [false, true];
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: {
 				async run(run, node, attempt) {
 					return {
@@ -272,6 +298,7 @@ describe("workflow controller", () => {
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		const decisions = [false, true];
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: {
 				async run(run, node, attempt) {
 					return { ok: true, response: completedResponse(attempt.requestId, run.id, node.id) };
@@ -331,6 +358,7 @@ describe("workflow controller", () => {
 		tempDirs.push(cwd);
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: { async run() { throw new Error("unused"); } },
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 			createRunId: () => "workflow-coding-preapproval-plan",
@@ -380,6 +408,7 @@ describe("workflow controller", () => {
 		tempDirs.push(cwd);
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: {
 				async run(run, node, attempt) {
 					const response = completedResponse(attempt.requestId, run.id, node.id);
@@ -420,6 +449,7 @@ describe("workflow controller", () => {
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		const projections: number[] = [];
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: { async run() { return { ok: false, stage: "transport", error: "unused" }; } },
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 			applyTodoProjection: (projection) => {
@@ -449,6 +479,7 @@ describe("workflow controller", () => {
 		tempDirs.push(cwd);
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: { async run() { return { ok: false, stage: "transport", error: "unused" }; } },
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 			createRunId: () => "workflow-deep",
@@ -469,6 +500,7 @@ describe("workflow controller", () => {
 		tempDirs.push(cwd);
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: { async run() { return { ok: false, stage: "transport", error: "unused" }; } },
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 			createRunId: () => "workflow-document-plan",
@@ -531,6 +563,7 @@ describe("workflow controller", () => {
 		tempDirs.push(cwd);
 		const entries: unknown[] = [];
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: { async run() { throw new Error("must not execute"); } },
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }), createRunId: () => "workflow-ownership-preflight", now: () => 1, resolveBranch: () => "main",
 		});
@@ -559,6 +592,7 @@ describe("workflow controller", () => {
 		tempDirs.push(cwd);
 		const entries: unknown[] = [];
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: { async run() { throw new Error("must not execute"); } },
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }), createRunId: () => "workflow-multi-section-owner", now: () => 1, resolveBranch: () => "main",
 		});
@@ -587,6 +621,7 @@ describe("workflow controller", () => {
 		let review: { cancelled: boolean; approved: boolean; feedback?: string } = { cancelled: false, approved: false, feedback: "提高 PoC 路线权重" };
 		let receivedOutline: unknown;
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: { async run() { return { ok: false, stage: "transport", error: "unused" }; } },
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 			createRunId: () => "workflow-outline-review",
@@ -649,6 +684,7 @@ describe("workflow controller", () => {
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		let reviewCount = 0;
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: {
 				async run(run, node, attempt) {
 					return node.id.endsWith("-r2")
@@ -726,6 +762,7 @@ describe("workflow controller", () => {
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		let receivedQuestions: unknown;
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: { async run() { return { ok: false, stage: "transport", error: "unused" }; } },
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 			createRunId: () => "workflow-clarify",
@@ -794,6 +831,7 @@ describe("workflow controller", () => {
 			},
 		};
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter,
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 			createRunId: () => "workflow-stop",
@@ -823,6 +861,7 @@ describe("workflow controller", () => {
 		let firstStarted = false;
 		let calls = 0;
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: {
 				run(run, workflowNode, attempt, signal) {
 					calls++;
@@ -876,6 +915,7 @@ describe("workflow controller", () => {
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		const calls = new Map<string, number>();
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: {
 				async run(run, node, attempt) {
 					const call = (calls.get(node.id) ?? 0) + 1;
@@ -910,6 +950,7 @@ describe("workflow controller", () => {
 		tempDirs.push(cwd);
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: {
 				async run(run, node, attempt) {
 					return { ok: true, response: completedResponse(attempt.requestId, run.id, node.id) };
@@ -946,6 +987,7 @@ describe("workflow controller", () => {
 		tempDirs.push(cwd);
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: {
 				async run(run, node, attempt) {
 					return node.id === "research-old"
@@ -976,6 +1018,7 @@ describe("workflow controller", () => {
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		let calls = 0;
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: { async run() { calls++; return { ok: false, stage: "transport", error: `failure ${calls}` }; } },
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 			createRunId: () => "workflow-exhausted",
@@ -1006,6 +1049,7 @@ describe("workflow controller", () => {
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		let calls = 0;
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: {
 				async run(run, workflowNode, attempt) {
 					calls++;
@@ -1051,6 +1095,7 @@ describe("workflow controller", () => {
 			data: createWorkflowBinding(running),
 		}];
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: { async run() { return { ok: false, stage: "transport", error: "unused" }; } },
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 			now: () => 10,
@@ -1109,6 +1154,7 @@ describe("workflow controller", () => {
 			},
 		};
 		controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter,
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 			createRunId: () => "workflow-detached",
@@ -1166,6 +1212,7 @@ describe("workflow controller", () => {
 			data: createWorkflowBinding(waiting),
 		}];
 		const createController = () => createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: { async run() { return { ok: false, stage: "transport", error: "unused" }; } },
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 			now: () => 10,
@@ -1218,6 +1265,7 @@ describe("workflow controller", () => {
 			data: createWorkflowBinding(waiting),
 		}];
 		const createController = () => createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: { async run() { return { ok: false, stage: "transport", error: "unused" }; } },
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 			now: () => 50,
@@ -1228,6 +1276,7 @@ describe("workflow controller", () => {
 		assert.equal(createController().recover(ctx)?.nodes["research-a"]?.status, "waiting");
 		// Advance now past the deadline -> the node is failed so it can be retried.
 		const createControllerLate = () => createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: { async run() { return { ok: false, stage: "transport", error: "unused" }; } },
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 			now: () => 500,
@@ -1249,6 +1298,7 @@ describe("workflow controller", () => {
 		const waiting = store.append("workflow-wait-metadata", { id: "waiting", type: "node.waiting", at: 4, nodeId: "research-a", attemptId: "research-a:1", reason: "detached", childRunId: "child-without-metadata" });
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [{ type: "custom", customType: WORKFLOW_BINDING_ENTRY_TYPE, data: createWorkflowBinding(waiting) }];
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: { async run() { return { ok: false, stage: "transport", error: "unused" }; } },
 			appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 			now: () => 50,
@@ -1311,7 +1361,8 @@ describe("workflow controller", () => {
 		const reviewerResult: WorkflowResult = { version: 1, summary: { text: "review", covers: [], omissions: [], confidence: "high" }, outputs: { review: { kind: "value", value: "review" } }, diagnostics: { gaps: [], conflicts: [], warnings: [] }, recommendations: [], review: { verdict: "pass" }, extensions: { release: { release: true, gapsAccepted: true, conflictsAccepted: true, rationale: "gaps/conflicts acceptable" } } };
 		acceptNode("reviewer", "reviewer", reviewerResult, ["editor"]);
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [{ type: "custom", customType: WORKFLOW_BINDING_ENTRY_TYPE, data: createWorkflowBinding(store.load(runId)) }];
-		const controller = createWorkflowController({ adapter: { async run() { return { ok: false, stage: "transport", error: "unused" }; } }, appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }), now: () => 8, resolveBranch: () => "main" });
+		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(), adapter: { async run() { return { ok: false, stage: "transport", error: "unused" }; } }, appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }), now: () => 8, resolveBranch: () => "main" });
 		const ctx = fakeContext(cwd, entries);
 		// readyToComplete is true (reviewer released gaps/conflicts), but length gate fails.
 		const before = controller.recover(ctx)!;
@@ -1336,6 +1387,7 @@ describe("workflow controller", () => {
 		let controller!: ReturnType<typeof createWorkflowController>;
 		let ctx!: ExtensionContext;
 		controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: {
 				async run(run, node, attempt) {
 					controller.handleForegroundCompletion(ctx, {
@@ -1381,6 +1433,7 @@ describe("workflow controller", () => {
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		const cancelledChildren: string[] = [];
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: {
 				async run(run, node, attempt) {
 					return {
@@ -1423,6 +1476,7 @@ describe("workflow controller", () => {
 		const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
 		const cancelledChildren: string[] = [];
 		const controller = createWorkflowController({
+			interaction: createTuiWorkflowInteraction(),
 			adapter: {
 				async run(run, node, attempt) {
 					return {

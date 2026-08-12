@@ -6,7 +6,7 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { canInvokeAgent, effectiveAgentInvocation, resolveAgentName, type AgentConfig, type AgentInvocationOrigin, type AgentScope } from "../../agents/agents.ts";
 import { getArtifactsDir, getProjectChainRunsDir } from "../../shared/artifacts.ts";
-import { ChainClarifyComponent, type ChainClarifyResult } from "./chain-clarify.ts";
+import type { BehaviorOverride, ExecutionClarificationRequest, ExecutionClarificationResult } from "../shared/execution-clarifier.ts";
 import { resolveEffectiveThinking, toModelInfo, type ModelInfo } from "../../shared/model-info.ts";
 import { executeChain } from "./chain-execution.ts";
 import {
@@ -131,7 +131,7 @@ import { enqueueChainAppendRequest, readPendingChainAppendRequests, runnerStepOu
 import { ChainOutputValidationError, validateChainOutputBindingsWithContext } from "../shared/chain-outputs.ts";
 import { validateExecutionAcceptance } from "../shared/acceptance.ts";
 import { createForkContextResolver, forkedChildRequiresThinkingOff } from "../../shared/fork-context.ts";
-import { resolveCurrentSessionId } from "../../shared/session-identity.ts";
+import { resolveCurrentSessionId, resolveRequiredParentSessionId } from "../../shared/session-identity.ts";
 import { applyIntercomBridgeToAgent, INTERCOM_BRIDGE_MARKER, resolveIntercomBridge, resolveIntercomSessionTarget, resolveSubagentIntercomTarget, type IntercomBridgeState } from "../../intercom/intercom-bridge.ts";
 import { formatControlIntercomMessage, formatControlNoticeMessage, resolveControlConfig, shouldNotifyControlEvent } from "../shared/subagent-control.ts";
 import { resolveTurnBudgetConfig } from "../shared/turn-budget.ts";
@@ -253,6 +253,7 @@ export async function runForegroundParallelTasks(input: ForegroundParallelRunInp
 		input.sessionFileForTask(input.tasks[i]!.agent, i, input.modelOverrides[i]);
 	}
 	const completedResults: SingleResult[] = [];
+	const parentSessionId = resolveRequiredParentSessionId(input.ctx.sessionManager);
 	if (input.foregroundControl) retainForegroundSchedulingOwner(input.foregroundControl);
 	return mapConcurrent(input.tasks, input.concurrencyLimit, async (task, index) => {
 		const budgetState = usageBudgetState(input.usageBudget, sumResultsCost(completedResults));
@@ -306,7 +307,7 @@ export async function runForegroundParallelTasks(input: ForegroundParallelRunInp
 			: undefined;
 		let detachedReceipt = false;
 		const result = await runSync(input.ctx.cwd, input.agents, task.agent, taskText, {
-			parentSessionId: input.ctx.sessionManager.getSessionId() ?? undefined,
+			parentSessionId,
 			context: input.contextPolicy.contextForAgent(task.agent),
 			cwd: taskCwd,
 			signal: input.signal,
@@ -325,6 +326,7 @@ export async function runForegroundParallelTasks(input: ForegroundParallelRunInp
 			outputMode: behavior?.outputMode,
 			maxSubagentDepth: input.maxSubagentDepths[index],
 			waitToolEnabled: input.waitToolEnabled,
+			environmentProfile: input.environmentProfile,
 			capabilityCeiling: input.capabilityCeiling,
 			controlConfig: input.controlConfig,
 			onControlEvent: input.onControlEvent,
@@ -483,32 +485,46 @@ export async function runParallelPath(data: ExecutionContextData, deps: Executor
 		resolveEffectiveSubagentModel(behaviorOverrides[i]?.model, agentConfigs[i]?.model, parentModel, availableModels, currentProvider, { scope: data.modelScope }),
 	);
 
-	if (params.clarify === true && ctx.hasUI) {
+	if (params.clarify === true) {
+		if (!deps.clarifier) {
+			return {
+				content: [{ type: "text", text: "Clarification requested but no execution clarifier is available. Pausing for explicit decision." }],
+				isError: true,
+				details: { mode: "parallel", results: [] },
+			};
+		}
 		const behaviors = agentConfigs.map((c, i) =>
 			resolveStepBehavior(c, behaviorOverrides[i]!),
 		);
 		const availableSkills = discoverAvailableSkills(effectiveCwd);
 
-		const result = await ctx.ui.custom<ChainClarifyResult>(
-			(tui, theme, _kb, done) =>
-				new ChainClarifyComponent(
-					tui, theme,
-					agentConfigs,
-					taskTexts,
-					"",
-					undefined,
-					behaviors,
-					availableModels,
-					currentProvider,
-					availableSkills,
-					done,
-					"parallel",
-				),
-			{ overlay: true, overlayOptions: { anchor: "center", width: "95%", minWidth: 40, maxWidth: 84, maxHeight: "80%" } },
-		);
+		const clarifyRequest: ExecutionClarificationRequest = {
+			mode: "parallel",
+			agentConfigs,
+			templates: taskTexts,
+			originalTask: "",
+			chainDir: undefined,
+			resolvedBehaviors: behaviors,
+			availableModels,
+			preferredProvider: currentProvider,
+			availableSkills,
+			ctx,
+			evidence: { agents: agentConfigs.map((a) => a.name), tasks: taskTexts },
+		};
 
-		if (!result || !result.confirmed) {
-			return { content: [{ type: "text", text: "Cancelled" }], details: { mode: "parallel", results: [] } };
+		let result: ExecutionClarificationResult;
+		try {
+			result = await deps.clarifier.decide(clarifyRequest, signal);
+		} catch (error) {
+			return {
+				content: [{ type: "text", text: `Clarification failed: ${error instanceof Error ? error.message : String(error)}. Pausing for explicit decision.` }],
+				isError: true,
+				details: { mode: "parallel", results: [] },
+			};
+		}
+
+		if (result.verdict !== "approve") {
+			return { content: [{ type: "text", text: result.verdict === "reject" ? "Cancelled" : `${result.verdict}: ${result.reason}` }], details: { mode: "parallel", results: [] } };
 		}
 
 		taskTexts = result.templates;
@@ -536,11 +552,12 @@ export async function runParallelPath(data: ExecutionContextData, deps: Executor
 				};
 			}
 			const id = randomUUID();
+			const parentSessionId = resolveRequiredParentSessionId(ctx.sessionManager);
 			const asyncCtx = {
 				pi: deps.pi,
 				cwd: ctx.cwd,
 				currentSessionId: deps.state.currentSessionId!,
-				parentSessionId: ctx.sessionManager.getSessionId() ?? undefined,
+				parentSessionId,
 				currentModelProvider: parentModel?.provider,
 				currentModel: parentModel,
 				modelScope: data.modelScope,
@@ -692,6 +709,7 @@ export async function runParallelPath(data: ExecutionContextData, deps: Executor
 			globalSemaphore: new Semaphore(deps.config.globalConcurrencyLimit ?? DEFAULT_GLOBAL_CONCURRENCY_LIMIT),
 			maxSubagentDepths,
 			waitToolEnabled: deps.waitToolEnabled,
+			environmentProfile: data.environmentProfile,
 			liveResults,
 			liveProgress,
 			onUpdate,

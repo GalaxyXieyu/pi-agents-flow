@@ -1044,6 +1044,7 @@ Do work
 			assert.equal(agent.thinking, false);
 
 			const { args } = buildPiArgs({
+				parentSessionId: "agent-frontmatter-parent",
 				baseArgs: ["-p"],
 				task: "hello",
 				sessionEnabled: false,

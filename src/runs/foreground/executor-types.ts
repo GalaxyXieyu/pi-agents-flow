@@ -27,6 +27,7 @@ import type { ResolvedSubagentCapabilityCeiling } from "../shared/capability-cei
 import type { ContextMode, ContextSummary } from "../shared/context-mode.ts";
 import type { ParentModel } from "../shared/model-fallback.ts";
 import type { ModelScopeConfig } from "../shared/model-scope.ts";
+import type { ExecutionClarifier } from "../shared/execution-clarifier.ts";
 
 export interface TaskParam {
 	agent: string;
@@ -116,6 +117,21 @@ export interface ExecutorDeps {
 	discoverAgents: (cwd: string, scope: AgentScope) => { agents: AgentConfig[]; modelScope?: ModelScopeConfig };
 	allowMutatingManagementActions?: boolean;
 	kill?: (pid: number, signal?: NodeJS.Signals | 0) => boolean;
+	/**
+	 * UI-neutral clarifier for subagent/chain clarification.
+	 *
+	 * Interactive deployments inject an adapter that delegates to ChainClarifyComponent.
+	 * Headless deployments inject a HeadlessDecisionProvider-backed adapter.
+	 * Missing clarifier means clarify requests fail-closed (pause).
+	 */
+	clarifier?: ExecutionClarifier;
+	/**
+	 * Child environment policy for every subagent launch. Interactive deployments
+	 * keep `"interactive"` (provider/network capable); headless server deployments
+	 * pass `"minimal"` so child env excludes secret/MCP/extensions sentinels and
+	 * only carries explicit parent identity. Defaults to `"interactive"`.
+	 */
+	environmentProfile?: import("../shared/child-environment.ts").ChildEnvironmentProfile;
 }
 
 export type ForkSessionFileForTask = (agentName: string, idx?: number, modelOverride?: string) => string | undefined;
@@ -161,4 +177,6 @@ export interface ExecutionContextData {
 	parentModel?: ParentModel;
 	parentSessionId: string | null;
 	capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
+	/** Child environment policy for this launch. Interactive when unset. */
+	environmentProfile?: import("../shared/child-environment.ts").ChildEnvironmentProfile;
 }

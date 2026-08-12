@@ -66,6 +66,8 @@ import {
 	Semaphore,
 } from "../shared/parallel-utils.ts";
 import { applyThinkingSuffix, buildPiArgs, cleanupTempDir, projectLaunchResolvedChildExtensions, resolvePiLaunchToolPlan } from "../shared/pi-args.ts";
+import { buildChildEnvironment, type ChildEnvironmentProfile } from "../shared/child-environment.ts";
+import { assertRequiredParentSessionId } from "../../shared/session-identity.ts";
 import { readRuntimeAcknowledgedExtensions } from "../shared/runtime-acknowledged-extensions.ts";
 import { outputEntryFromAsyncResult, resolveOutputReferences } from "../shared/chain-outputs.ts";
 import { createStructuredOutputRuntime, readStructuredOutput } from "../shared/structured-output.ts";
@@ -446,10 +448,12 @@ function runPiStreaming(
 	args: string[],
 	cwd: string,
 	outputFile: string,
-	env?: Record<string, string | undefined>,
-	piPackageRoot?: string,
-	piArgv1?: string,
-	maxSubagentDepth?: number,
+	env: Record<string, string | undefined> | undefined,
+	piPackageRoot: string | undefined,
+	piArgv1: string | undefined,
+	maxSubagentDepth: number | undefined,
+	parentSessionId: string,
+	environmentProfile: ChildEnvironmentProfile | undefined,
 	childEventContext?: ChildEventContext,
 	registerInterrupt?: (interrupt: (() => void) | undefined) => void,
 	onChildEvent?: (event: ChildEvent) => void,
@@ -463,10 +467,18 @@ function runPiStreaming(
 ): Promise<RunPiStreamingResult> {
 	return new Promise((resolve) => {
 		const startedAt = Date.now();
+		const resolvedParentSessionId = assertRequiredParentSessionId(parentSessionId);
 		const processInstanceId = randomUUID();
 		onWriterProcess?.({ state: "spawning" });
 		const outputStream = fs.createWriteStream(outputFile, { flags: "w" });
-		const spawnEnv = { ...process.env, ...(env ?? {}), ...getSubagentDepthEnv(maxSubagentDepth) };
+		const profile = environmentProfile ?? "interactive";
+		const spawnEnv = buildChildEnvironment({
+			profile,
+			base: process.env,
+			overlay: { ...(env ?? {}), ...getSubagentDepthEnv(maxSubagentDepth) },
+			parentSessionId: resolvedParentSessionId,
+			allowModelNetwork: profile === "interactive",
+		});
 		const spawnSpec = getPiSpawnCommand(args, {
 			...(piPackageRoot ? { piPackageRoot } : {}),
 			...(piArgv1 ? { argv1: piArgv1 } : {}),
@@ -1284,6 +1296,8 @@ async function runSingleStep(
 			ctx.piPackageRoot,
 			ctx.piArgv1,
 			step.maxSubagentDepth,
+			step.parentSessionId,
+			step.environmentProfile,
 			{ eventsPath, runId: ctx.id, stepIndex: ctx.flatIndex, agent: step.agent },
 			ctx.registerInterrupt,
 			ctx.onChildEvent,

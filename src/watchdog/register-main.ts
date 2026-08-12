@@ -14,6 +14,7 @@ import {
 	type WatchdogWarningDetails,
 } from "./types.ts";
 import { createWatchdogWarningMessage } from "./warning-format.ts";
+import { buildWatchdogStatus } from "./status.ts";
 
 interface RegisterMainWatchdogOptions {
 	runtime?: MainWatchdogRuntime;
@@ -103,53 +104,6 @@ function lspLine(snapshot: ReturnType<MainWatchdogRuntime["getSnapshot"]>): stri
 		: "";
 	const message = lsp.message ? ` · ${lsp.message}` : "";
 	return `LSP diagnostics: ${lsp.enabled ? "on" : "off"} · ${lsp.status}${provider}${counts}${message}`;
-}
-
-export function buildWatchdogStatus(snapshot: ReturnType<MainWatchdogRuntime["getSnapshot"]>, ctx: ExtensionContext): string {
-	const lines = [
-		"Subagent watchdog",
-		`Main: ${boolLabel(snapshot.enabled)}${!snapshot.config.enabled && snapshot.sessionOverride === undefined ? " (default off)" : ""}`,
-		`Runtime: ${statusLabel(snapshot.status)}${snapshot.bufferedDeltas > 0 ? ` · buffered deltas ${snapshot.bufferedDeltas}` : ""}`,
-		`Review trigger: ${snapshot.reviewTrigger === "repo-edits" ? "repo edits only" : "every non-empty turn delta"}`,
-		`Scope context: ${snapshot.config.scope.enabled ? "on" : "off"}`,
-		`Cadence: ${snapshot.config.cadence.everyNTools === null ? "boundary only" : `every ${snapshot.config.cadence.everyNTools} tools + boundary`}`,
-		lspLine(snapshot),
-		`Session override: ${snapshot.sessionOverride === undefined ? "none" : boolLabel(snapshot.sessionOverride)}`,
-		mainModelLine(snapshot, ctx),
-		`Main thinking: ${mainThinkingLine(snapshot, ctx)}`,
-		childrenLine(snapshot),
-		recommendationLine(ctx),
-		`Agent-end timeout: ${snapshot.config.agentEndTimeoutMs}ms`,
-		`Auto-follow: ${snapshot.enabled && snapshot.config.autoFollow.blockers ? "on for blockers" : "off"} · attempts ${snapshot.autoFollowAttempts}${snapshot.config.autoFollow.maxAttempts === null ? "" : `/${snapshot.config.autoFollow.maxAttempts}`}${snapshot.autoFollowQueued ? " · queued" : ""}${snapshot.autoFollowStalemate ? " · stalemate" : ""}`,
-		`Review model call: ${snapshot.reviewDescription}`,
-	];
-	if (snapshot.failedReviews > 0) lines.push(`Failed reviews: ${snapshot.failedReviews}`);
-	if (snapshot.staleReviews > 0) lines.push(`Stale reviews: ${snapshot.staleReviews}`);
-	if (snapshot.changedPaths?.length) {
-		lines.push(`Changed paths: ${snapshot.changedPaths.slice(0, 8).join(", ")}${snapshot.changedPaths.length > 8 ? `, +${snapshot.changedPaths.length - 8} more` : ""}`);
-	}
-	if (snapshot.lastWarning) {
-		lines.push(`Last warning: ${snapshot.lastWarning.severity} · ${snapshot.lastWarning.state ?? "candidate"} · ${snapshot.lastWarning.summary}`);
-	}
-	if (snapshot.lastError) lines.push(`Last error: ${snapshot.lastError}`);
-	if (!snapshot.configOk) {
-		lines.push("", "Config errors:", ...snapshot.errors.map((error) => `- ${error.message}`), "Watchdog is disabled until the config is fixed.");
-	} else {
-		lines.push("", "Config: ok");
-	}
-	lines.push(
-		"Sources:",
-		...snapshot.sources.map(sourceLine),
-		"",
-		"Model commands:",
-		"- /subagents-watchdog recommend-model",
-		"- /subagents-watchdog model recommended",
-		"- /subagents-watchdog model <provider/model[:thinking]>",
-		"- /subagents-watchdog model inherit",
-		"- /subagents-watchdog session model recommended",
-		"Agent action: subagent({ action: \"watchdog.configure\", model: \"recommended\", scope: \"session\" })",
-	);
-	return lines.join("\n");
 }
 
 function parseTestCommand(input: string): { severity: "concern" | "blocker"; text: string } | undefined {

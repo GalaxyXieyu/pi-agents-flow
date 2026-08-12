@@ -7,7 +7,7 @@ import * as path from "node:path";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig } from "../../agents/agents.ts";
-import { ChainClarifyComponent, type ChainClarifyResult, type BehaviorOverride } from "./chain-clarify.ts";
+import { type BehaviorOverride, type ExecutionClarificationRequest, type ExecutionClarificationResult, type ExecutionClarifier } from "../shared/execution-clarifier.ts";
 import { resolveEffectiveThinking, toModelInfo, type ModelInfo } from "../../shared/model-info.ts";
 import {
 	resolveChainTemplates,
@@ -113,6 +113,7 @@ interface ChainExecutionDetailsInput {
 
 interface ParallelChainRunInput {
 	step: ParallelStep;
+	parentSessionId: string;
 	parallelTemplates: string[];
 	parallelBehaviors: ResolvedStepBehavior[];
 	agents: AgentConfig[];
@@ -381,7 +382,7 @@ async function runParallelChainTasks(input: ParallelChainRunInput): Promise<Sing
 			let result!: SingleResult;
 			try {
 				result = await runSync(input.ctx.cwd, input.agents, task.agent, taskStr, {
-				parentSessionId: input.ctx.sessionManager.getSessionId() ?? undefined,
+				parentSessionId: input.parentSessionId,
 				capabilityCeiling: input.capabilityCeiling,
 				context: input.contextForAgent?.(task.agent),
 				cwd: taskCwd,
@@ -487,6 +488,7 @@ async function runParallelChainTasks(input: ParallelChainRunInput): Promise<Sing
 
 interface ChainExecutionParams {
 	chain: ChainStep[];
+	parentSessionId: string;
 	task?: string;
 	agents: AgentConfig[];
 	ctx: ExtensionContext;
@@ -505,6 +507,7 @@ interface ChainExecutionParams {
 	artifactConfig: ArtifactConfig;
 	includeProgress?: boolean;
 	clarify?: boolean;
+	clarifier?: ExecutionClarifier;
 	onUpdate?: (r: AgentToolResult<Details>) => void;
 	onControlEvent?: (event: ControlEvent) => void;
 	controlConfig: ResolvedControlConfig;
@@ -576,6 +579,7 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 		chainSkills: chainSkillsParam,
 		chainDir: chainDirBase,
 		modelScope,
+		clarifier,
 	} = params;
 	const chainSkills = chainSkillsParam ?? [];
 
@@ -647,12 +651,21 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 	const chainDir = createChainDir(runId, chainDirBase);
 	const hasParallelSteps = chainSteps.some((step) => isParallelStep(step) || isDynamicParallelStep(step) || isCheckpointStep(step));
 	let templates: ResolvedTemplates = resolveChainTemplates(chainSteps);
-	const shouldClarify = clarify === true && ctx.hasUI && !hasParallelSteps;
+	const shouldClarify = clarify === true && !hasParallelSteps;
 	let tuiBehaviorOverrides: (BehaviorOverride | undefined)[] | undefined;
 	const availableModels: ModelInfo[] = ctx.modelRegistry.getAvailable().map(toModelInfo);
 	const availableSkills = discoverAvailableSkills(cwd ?? ctx.cwd);
 
 	if (shouldClarify) {
+		if (!clarifier) {
+			removeChainDir(chainDir);
+			return {
+				content: [{ type: "text", text: "Chain clarification requested but no execution clarifier is available. Pausing for explicit decision." }],
+				isError: true,
+				details: buildChainExecutionDetails(makeDetailsInput()),
+			};
+		}
+
 		const seqSteps = chainSteps as SequentialStep[];
 		const agentConfigs: AgentConfig[] = [];
 		for (const step of seqSteps) {
@@ -682,31 +695,36 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 		);
 		const flatTemplates = templates as string[];
 
-		const result = await ctx.ui.custom<ChainClarifyResult>(
-			(tui, theme, _kb, done) =>
-				new ChainClarifyComponent(
-					tui,
-					theme,
-					agentConfigs,
-					flatTemplates,
-					originalTask,
-					chainDir,
-					resolvedBehaviors,
-					availableModels,
-					ctx.model?.provider,
-					availableSkills,
-					done,
-				),
-			{
-				overlay: true,
-				overlayOptions: { anchor: "center", width: "95%", minWidth: 40, maxWidth: 84, maxHeight: "80%" },
-			},
-		);
+		const clarifyRequest: ExecutionClarificationRequest = {
+			mode: "chain",
+			agentConfigs,
+			templates: flatTemplates,
+			originalTask: originalTask ?? "",
+			chainDir,
+			resolvedBehaviors,
+			availableModels,
+			preferredProvider: ctx.model?.provider,
+			availableSkills,
+			ctx,
+			evidence: { agents: agentConfigs.map((a) => a.name), templates: flatTemplates, originalTask },
+		};
 
-		if (!result || !result.confirmed) {
+		let result: ExecutionClarificationResult;
+		try {
+			result = await clarifier.decide(clarifyRequest, signal);
+		} catch (error) {
 			removeChainDir(chainDir);
 			return {
-				content: [{ type: "text", text: "Chain cancelled" }],
+				content: [{ type: "text", text: `Chain clarification failed: ${error instanceof Error ? error.message : String(error)}. Pausing for explicit decision.` }],
+				isError: true,
+				details: buildChainExecutionDetails(makeDetailsInput()),
+			};
+		}
+
+		if (result.verdict !== "approve") {
+			removeChainDir(chainDir);
+			return {
+				content: [{ type: "text", text: result.verdict === "reject" ? "Chain cancelled" : `Chain ${result.verdict}: ${result.reason}` }],
 				details: buildChainExecutionDetails(makeDetailsInput()),
 			};
 		}
@@ -804,6 +822,7 @@ ${step.message}` : ""}` }],
 
 				const parallelResults = await runParallelChainTasks({
 					step,
+					parentSessionId: params.parentSessionId,
 					parallelTemplates,
 					parallelBehaviors,
 					agents,
@@ -1063,6 +1082,7 @@ ${step.message}` : ""}` }],
 			createParallelDirs(chainDir, stepIndex, dynamicParallelStep.parallel.length, dynamicParallelStep.parallel.map((task) => task.agent));
 			const parallelResults = await runParallelChainTasks({
 				step: dynamicParallelStep,
+				parentSessionId: params.parentSessionId,
 				parallelTemplates,
 				parallelBehaviors,
 				agents,
@@ -1340,7 +1360,7 @@ ${step.message}` : ""}` }],
 					dynamicGroupStatuses,
 				});
 				r = await runSync(ctx.cwd, agents, seqStep.agent, stepTask, {
-				parentSessionId: ctx.sessionManager.getSessionId() ?? undefined,
+				parentSessionId: params.parentSessionId,
 				capabilityCeiling: params.capabilityCeiling,
 				context: params.contextForAgent?.(seqStep.agent),
 				cwd: resolveChildCwd(cwd ?? ctx.cwd, seqStep.cwd),

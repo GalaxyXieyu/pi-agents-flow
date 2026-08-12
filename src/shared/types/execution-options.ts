@@ -8,11 +8,12 @@ import type { AcceptanceInput, UsageBudgetConfig, SingleResult, Details } from "
 import type { ArtifactDirPreference, ArtifactConfig } from "./artifacts.ts";
 import type { NestedRouteInfo } from "./async-execution.ts";
 import type { IntercomEventBus } from "./error-handling.ts";
+import type { ChildEnvironmentProfile } from "../../runs/shared/child-environment.ts";
 
 
 export interface RunSyncOptions {
 	/** Session id of the direct parent session for permission-system ask forwarding. */
-	parentSessionId?: string;
+	parentSessionId: string;
 	/** Resolved launch context for this child. */
 	context?: "fresh" | "fork";
 	cwd?: string;
@@ -53,6 +54,8 @@ export interface RunSyncOptions {
 	outputPath?: string;
 	outputMode?: OutputMode;
 	maxSubagentDepth?: number;
+	/** Explicit child environment policy; ordinary interactive launches retain provider capability. */
+	environmentProfile?: ChildEnvironmentProfile;
 	/** Effective parent wait-tool setting propagated to the child runtime. */
 	waitToolEnabled?: boolean;
 	capabilityCeiling?: ResolvedSubagentCapabilityCeiling;

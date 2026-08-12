@@ -175,6 +175,7 @@ describe("buildPiArgs session wiring", () => {
 		try {
 			const sessionFile = path.join(tempDir, "nested", "session.jsonl");
 			const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 				baseArgs: ["-p"],
 				task: "hello",
 				sessionEnabled: true,
@@ -196,6 +197,7 @@ describe("buildPiArgs session wiring", () => {
 
 	it("keeps fresh mode behavior (sessionDir + no session file)", () => {
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: true,
@@ -223,21 +225,21 @@ describe("buildPiArgs session wiring", () => {
 		assert.equal(env[SUBAGENT_PARENT_SESSION_ENV], "direct-parent");
 	});
 
-	it("falls back to inherited parent session env for permission forwarding", () => {
+	it("fails closed instead of using an inherited parent session env", () => {
 		process.env.PI_SUBAGENT_PARENT_SESSION = "inherited-parent";
-		const { env } = buildPiArgs({
+		assert.throws(() => buildPiArgs({
+			parentSessionId: "",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
 			inheritProjectContext: false,
 			inheritSkills: false,
-		});
-
-		assert.equal(env[SUBAGENT_PARENT_SESSION_ENV], "inherited-parent");
+		}), /explicit non-empty parentSessionId/);
 	});
 
 	it("passes foreground steering transport paths to the child runtime", () => {
 		const { env } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -254,11 +256,13 @@ describe("buildPiArgs session wiring", () => {
 
 	it("passes the effective wait-tool setting explicitly to children", () => {
 		assert.equal(buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: [], task: "test", sessionEnabled: false,
 			inheritProjectContext: true, inheritSkills: true,
 			waitToolEnabled: false,
 		}).env[WAIT_TOOL_ENABLED_ENV], "false");
 		assert.equal(buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: [], task: "test", sessionEnabled: false,
 			inheritProjectContext: true, inheritSkills: true,
 			waitToolEnabled: true,
@@ -267,6 +271,7 @@ describe("buildPiArgs session wiring", () => {
 
 	it("passes child watchdog config only when explicitly provided", () => {
 		const withoutWatchdog = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -276,6 +281,7 @@ describe("buildPiArgs session wiring", () => {
 		assert.equal(withoutWatchdog.env[CHILD_WATCHDOG_CONFIG_ENV], undefined);
 
 		const withWatchdog = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -316,6 +322,7 @@ describe("buildPiArgs session wiring", () => {
 describe("buildPiArgs model wiring", () => {
 	it("uses --model for provider-qualified model ids", () => {
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -331,6 +338,7 @@ describe("buildPiArgs model wiring", () => {
 
 	it("uses --model for bare model ids too", () => {
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -347,6 +355,7 @@ describe("buildPiArgs model wiring", () => {
 
 	it("preserves thinking suffixes on model args", () => {
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -363,6 +372,7 @@ describe("buildPiArgs model wiring", () => {
 
 	it("passes max thinking through to the model argument", () => {
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			model: "openai/gpt-5",
@@ -381,6 +391,7 @@ describe("buildPiArgs model wiring", () => {
 
 	it("passes explicit thinking off through to the model arg", () => {
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -403,6 +414,7 @@ describe("buildPiArgs model wiring", () => {
 		assert.equal(applyThinkingSuffix(once, false), model);
 
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -420,6 +432,7 @@ describe("buildPiArgs model wiring", () => {
 	it("leaves provider-specific model suffixes untouched when thinking is disabled", () => {
 		const model = "openai-compatible/qwen2.5-coder:7b";
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -437,6 +450,7 @@ describe("buildPiArgs model wiring", () => {
 describe("buildPiArgs system prompt mode wiring", () => {
 	it("uses --append-system-prompt by default", () => {
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -451,6 +465,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 
 	it("uses --system-prompt when systemPromptMode=replace", () => {
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -466,6 +481,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 
 	it("injects the subagent prompt runtime extension and env flags", () => {
 		const { args, env } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -483,6 +499,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 
 	it("keeps context file loading enabled when project context is inherited", () => {
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -495,6 +512,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 
 	it("passes tool budget through env", () => {
 		const { env } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -510,6 +528,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 	it("clears inherited zero tool-budget authorization unless this launch owns it", () => {
 		process.env[TOOL_BUDGET_ZERO_AUTH_ENV] = "1";
 		const inherited = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -520,6 +539,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		assert.equal(inherited.env[TOOL_BUDGET_ZERO_AUTH_ENV], undefined);
 
 		const owned = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -535,6 +555,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		for (const staleValue of [JSON.stringify(["fixture_search"]), "not-json"]) {
 			process.env[MCP_DIRECT_CHILD_TOOLS_ENV] = staleValue;
 			const { env } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 				baseArgs: ["-p"],
 				task: "hello",
 				sessionEnabled: false,
@@ -551,6 +572,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		process.env[PI_INTERCOM_STABLE_ID_ENV] = "subagent-chat-parent";
 		process.env[PI_INTERCOM_SESSION_ID_ENV] = "session-parent-runtime";
 		const { env } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -580,6 +602,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		process.env[PI_INTERCOM_STABLE_ID_ENV] = "subagent-chat-parent";
 		process.env[PI_INTERCOM_SESSION_ID_ENV] = "session-parent-runtime";
 		const { env } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -591,8 +614,9 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		assert.equal(env[PI_INTERCOM_SESSION_ID_ENV], undefined);
 	});
 
-	it("does not create a supervisor channel without an exact parent session id", () => {
-		const { env } = buildPiArgs({
+	it("does not create a supervisor channel with an empty parent session id", () => {
+		assert.throws(() => buildPiArgs({
+			parentSessionId: "",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -602,14 +626,12 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			runId: "78f659a3",
 			childAgentName: "worker",
 			childIndex: 2,
-		});
-
-		assert.equal(env[SUBAGENT_ORCHESTRATOR_SESSION_ID_ENV], undefined);
-		assert.equal(env[SUBAGENT_SUPERVISOR_CHANNEL_DIR_ENV], undefined);
+		}), /explicit non-empty parentSessionId/);
 	});
 
 	it("emits explicit builtin tool allowlists", () => {
 		const { args, env, toolDiagnosticPath } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -626,6 +648,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 
 	it("keeps structured_output available under explicit tool allowlists", () => {
 		const { args, env } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -646,6 +669,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 	it("forwards the Pi package root to child processes for host peer resolution", () => {
 		process.env[PI_CODING_AGENT_PACKAGE_ROOT_ENV] = "/opt/pi-coding-agent";
 		const { env } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -658,6 +682,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 
 	it("keeps read in runtime defaults when skills must be loaded lazily", () => {
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -672,6 +697,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 
 	it("does not duplicate read when base Agent tools include it", () => {
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -729,6 +755,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		writeMcpFixture(fixture);
 
 		const { args, env } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -747,6 +774,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 	it("keeps runtime defaults for explicit empty tool declarations", () => {
 		for (const requireReadTool of [false, true]) {
 			const { args, env } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 				baseArgs: ["-p"],
 				task: "hello",
 				sessionEnabled: false,
@@ -767,6 +795,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			writeMcpFixture(fixture);
 
 			const { args, env } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 				baseArgs: ["-p"],
 				task: "hello",
 				sessionEnabled: false,
@@ -789,6 +818,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			});
 
 			const { args, env } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 				baseArgs: ["-p"],
 				task: "hello",
 				sessionEnabled: false,
@@ -812,6 +842,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		});
 
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -838,6 +869,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			});
 
 			const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 				baseArgs: ["-p"],
 				task: "hello",
 				sessionEnabled: false,
@@ -861,6 +893,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		});
 
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -879,6 +912,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			mcpServers: { "chrome-devtools": { command: "npx", args: ["chrome-devtools-mcp"] } },
 		});
 		const missingCache = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -892,6 +926,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		const invalidFixture = createMcpFixture();
 		writeMcpFixture(invalidFixture, { cachedAt: Date.now() - 8 * 24 * 60 * 60 * 1000 });
 		const staleCache = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -914,6 +949,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		});
 
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -932,6 +968,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		writeMcpFixture(fixture, { tools: [{ name: "take_screenshot" }] });
 
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -951,6 +988,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 
 	it("loads subagent-only extension paths only through child process extension args", () => {
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -970,6 +1008,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 
 	it("authorizes child fanout only from exact declared builtin subagent", () => {
 		const { args, env } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -1000,6 +1039,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 
 	it("clears all fanout routing env values for non-fanout children", () => {
 		const { args, env } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -1039,6 +1079,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		process.env[SUBAGENT_PARENT_CAPABILITY_TOKEN_ENV] = "inherited-token";
 
 		const fanout = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -1056,6 +1097,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		assert.equal(fanout.env[SUBAGENT_PARENT_CAPABILITY_TOKEN_ENV], "inherited-token");
 
 		const nonFanout = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -1086,6 +1128,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		process.env[SUBAGENT_PARENT_CAPABILITY_TOKEN_ENV] = "inherited-token";
 
 		const { env } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -1111,6 +1154,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		});
 
 		const { args, env } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -1128,6 +1172,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 
 	it("keeps child-safe fanout registration in explicit extensions mode", () => {
 		const { args, env } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
@@ -1146,6 +1191,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 
 	it("emits an empty prompt file when replace mode is used with an empty prompt", () => {
 		const { args } = buildPiArgs({
+			parentSessionId: "pi-args-test-parent",
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,

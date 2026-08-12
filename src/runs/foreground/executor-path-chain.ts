@@ -6,7 +6,6 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { canInvokeAgent, effectiveAgentInvocation, resolveAgentName, type AgentConfig, type AgentInvocationOrigin, type AgentScope } from "../../agents/agents.ts";
 import { getArtifactsDir, getProjectChainRunsDir } from "../../shared/artifacts.ts";
-import { ChainClarifyComponent, type ChainClarifyResult } from "./chain-clarify.ts";
 import { resolveEffectiveThinking, toModelInfo, type ModelInfo } from "../../shared/model-info.ts";
 import { executeChain } from "./chain-execution.ts";
 import {
@@ -133,7 +132,7 @@ import { enqueueChainAppendRequest, readPendingChainAppendRequests, runnerStepOu
 import { ChainOutputValidationError, validateChainOutputBindingsWithContext } from "../shared/chain-outputs.ts";
 import { validateExecutionAcceptance } from "../shared/acceptance.ts";
 import { createForkContextResolver, forkedChildRequiresThinkingOff } from "../../shared/fork-context.ts";
-import { resolveCurrentSessionId } from "../../shared/session-identity.ts";
+import { resolveCurrentSessionId, resolveRequiredParentSessionId } from "../../shared/session-identity.ts";
 import { applyIntercomBridgeToAgent, INTERCOM_BRIDGE_MARKER, resolveIntercomBridge, resolveIntercomSessionTarget, resolveSubagentIntercomTarget, type IntercomBridgeState } from "../../intercom/intercom-bridge.ts";
 import { formatControlIntercomMessage, formatControlNoticeMessage, resolveControlConfig, shouldNotifyControlEvent } from "../shared/subagent-control.ts";
 import { resolveTurnBudgetConfig } from "../shared/turn-budget.ts";
@@ -265,8 +264,10 @@ export async function runChainPath(data: ExecutionContextData, deps: ExecutorDep
 	const chain = wrapChainTasksForFork(params.chain as ChainStep[], contextPolicy);
 	const currentMaxSubagentDepth = resolveCurrentMaxSubagentDepth(deps.config.maxSubagentDepth);
 	const chainCtx = normalizeParentModel(ctx.model) || !data.parentModel ? ctx : { ...ctx, model: data.parentModel };
+	const parentSessionId = resolveRequiredParentSessionId(ctx.sessionManager);
 	const chainResult = await executeChain({
 		chain,
+		parentSessionId,
 		task: params.task,
 		agents,
 		ctx: chainCtx,
@@ -285,6 +286,7 @@ export async function runChainPath(data: ExecutionContextData, deps: ExecutorDep
 		artifactConfig,
 		includeProgress: params.includeProgress,
 		clarify: params.clarify,
+		clarifier: deps.clarifier,
 		onUpdate,
 		onControlEvent,
 		controlConfig,
@@ -334,7 +336,7 @@ export async function runChainPath(data: ExecutionContextData, deps: ExecutorDep
 			pi: deps.pi,
 			cwd: ctx.cwd,
 			currentSessionId: deps.state.currentSessionId!,
-			parentSessionId: ctx.sessionManager.getSessionId() ?? undefined,
+			parentSessionId,
 			currentModelProvider: parentModel?.provider,
 			currentModel: parentModel,
 			modelScope: data.modelScope,

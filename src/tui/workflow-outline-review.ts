@@ -2,14 +2,11 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Editor, type EditorTheme, Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
 
 import type { DocumentOutline } from "../workflows/types.ts";
+import type { WorkflowOutlineReviewResult } from "../workflows/interaction.ts";
+
+export type { WorkflowOutlineReviewResult } from "../workflows/interaction.ts";
 
 type Theme = ExtensionContext["ui"]["theme"];
-
-export interface WorkflowOutlineReviewResult {
-	cancelled: boolean;
-	approved: boolean;
-	feedback?: string;
-}
 
 interface OutlineReviewTui {
 	requestRender(): void;

@@ -1,15 +1,6 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
-import { keyText, type ExtensionAPI, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
-
-import { compactText } from "../shared/formatters.ts";
-import { buildTaskActivitiesFromRun } from "../activity/projection.ts";
-import type { ActivitySnapshot } from "../activity/types.ts";
-import { noticePrefix } from "../tui/visual-language.ts";
-import { renderWorkflowInlineCard, type WorkflowInlineCardInput } from "../tui/workflow-inline-card.ts";
-import { Container } from "@earendil-works/pi-tui";
-import type { Theme } from "@earendil-works/pi-coding-agent";
 
 import { buildAssetCatalog, formatAssetCatalog, type AssetCatalog } from "./asset-catalog.ts";
 import type {
@@ -20,7 +11,6 @@ import type {
 import { assertWorkflowDataContract } from "./data-contract.ts";
 import { WORKFLOW_PORT_NAME_PATTERN, workflowProfileForKind } from "./plan-rules.ts";
 import { resolveWorkflowPolicy, type WorkflowPolicy } from "./policy.ts";
-import { workflowRunLanguage } from "./language.ts";
 import { MAX_WORKFLOW_MAX_NODE_ATTEMPTS, MAX_WORKFLOW_MAX_NODES } from "./retry-policy.ts";
 import type { DocumentOutline, EphemeralAgentSpec, ResearchBrief, WorkflowClarificationOption, WorkflowClarificationQuestion, WorkflowDataContract, WorkflowNodeKind, WorkflowTaskPlan, WorkflowWorkUnitPlan } from "./types.ts";
 
@@ -561,6 +551,17 @@ export interface WorkflowAssetsDetails {
 	catalog: AssetCatalog;
 }
 
+export interface WorkflowAssetsPresentation {
+	beforeExecute?: (ctx: ExtensionContext) => void;
+	renderResult?: ToolDefinition<typeof WorkflowAssetsParams, WorkflowAssetsDetails>["renderResult"];
+}
+
+export interface WorkflowToolPresentation {
+	beforeExecute?: (ctx: ExtensionContext) => void;
+	renderCall?: ToolDefinition<typeof WorkflowParams, WorkflowControllerDetails>["renderCall"];
+	renderResult?: ToolDefinition<typeof WorkflowParams, WorkflowControllerDetails>["renderResult"];
+}
+
 /**
  * Read-only companion to the `workflow` tool.
  *
@@ -569,7 +570,7 @@ export interface WorkflowAssetsDetails {
  * required, so a catalog lookup would have to invent or load a run just to answer
  * a question that has nothing to do with run state.
  */
-export function registerWorkflowAssetsTool(pi: ExtensionAPI): void {
+export function registerWorkflowAssetsTool(pi: ExtensionAPI, presentation?: WorkflowAssetsPresentation): void {
 	const tool: ToolDefinition<typeof WorkflowAssetsParams, WorkflowAssetsDetails> = {
 		name: "workflow_assets",
 		label: "Workflow Assets",
@@ -583,76 +584,16 @@ export function registerWorkflowAssetsTool(pi: ExtensionAPI): void {
 		parameters: WorkflowAssetsParams,
 		executionMode: "parallel",
 		async execute(_toolCallId, _rawParams, _signal, _onUpdate, ctx): Promise<AgentToolResult<WorkflowAssetsDetails>> {
-			// Asset catalogs are intentionally a compact card in the transcript. Keep
-			// the host's global tool-output toggle from leaking a previous expanded
-			// state into this high-volume, model-facing inspection step.
-			if (ctx.hasUI && typeof ctx.ui.setToolsExpanded === "function") ctx.ui.setToolsExpanded(false);
+			presentation?.beforeExecute?.(ctx);
 			const catalog = buildAssetCatalog(ctx.cwd, ctx.modelRegistry?.getAvailable?.()?.map((m) => `${m.provider}/${m.id}`));
 			return { content: [{ type: "text", text: formatAssetCatalog(catalog) }], details: { catalog } };
 		},
-		/**
-		 * Collapsed by default. The full catalog is what the model needs, but printing
-		 * every Agent with its tool list fills the screen, so the human sees counts
-		 * plus an expand hint while the model still receives the whole text.
-		 */
-		renderResult(result, options, theme) {
-			const text = result.content.find((entry) => entry.type === "text")?.text ?? "";
-			if (options.expanded) return new Text(text, 0, 0);
-			const catalog = result.details?.catalog;
-			if (!catalog) return new Text(`${noticePrefix("error")} ${compactText(text, 96)}`, 0, 0);
-			const counts = [
-				`${catalog.agents.length} agents`,
-				`${catalog.skills.length} skills`,
-				`${catalog.mcpTools.length} mcp tools`,
-			].join(" · ");
-			const total = text.split("\n").length;
-			return new Text(
-				`${theme.fg("dim", counts)}${theme.fg("muted", ` ... (${total} lines, ${keyText("app.tools.expand")} to expand)`)}`,
-				0,
-				0,
-			);
-		},
+		...(presentation?.renderResult ? { renderResult: presentation.renderResult } : {}),
 	};
 	pi.registerTool(tool);
 }
 
-function snapshotForWorkflowCard(run: WorkflowRun, getSnapshot?: () => ActivitySnapshot | undefined): ActivitySnapshot {
-	let live: ActivitySnapshot | undefined;
-	try {
-		live = getSnapshot?.();
-	} catch {
-		// Rendering must never fall through to Pi's raw tool output merely because
-		// the dock is between refreshes or its snapshot provider is unavailable.
-	}
-	if (live?.workflow?.runId === run.id) return live;
-	return {
-		version: 1,
-		language: workflowRunLanguage(run),
-		workflow: {
-			runId: run.id,
-			goal: run.goal,
-			status: run.status,
-			tasks: buildTaskActivitiesFromRun(run),
-		},
-		executions: [],
-		independent: [],
-		updatedAt: Date.now(),
-	};
-}
-
-function renderWorkflowInlineCardFromRun(run: WorkflowRun, theme: Theme, getSnapshot?: () => ActivitySnapshot | undefined, frame?: number, expanded = false): import("@earendil-works/pi-tui").Component {
-	const c = new Container();
-	const lines = renderWorkflowInlineCard(
-		{ runId: run.id, language: workflowRunLanguage(run), status: run.status, snapshot: snapshotForWorkflowCard(run, getSnapshot), frame, createdAt: run.createdAt, updatedAt: run.updatedAt } as WorkflowInlineCardInput,
-		theme,
-		process.stdout.columns || 120,
-		expanded,
-	);
-	for (const line of lines) c.addChild(new Text(line, 0, 0));
-	return c;
-}
-
-export function registerWorkflowTool(pi: ExtensionAPI, controller: WorkflowController, getSnapshot?: () => ActivitySnapshot | undefined): void {
+export function registerWorkflowTool(pi: ExtensionAPI, controller: WorkflowController, presentation?: WorkflowToolPresentation): void {
 	const tool: ToolDefinition<typeof WorkflowParams, WorkflowControllerDetails> = {
 		name: "workflow",
 		label: "Workflow",
@@ -680,10 +621,7 @@ export function registerWorkflowTool(pi: ExtensionAPI, controller: WorkflowContr
 		parameters: WorkflowParams,
 		executionMode: "sequential",
 		async execute(_toolCallId, rawParams, signal, _onUpdate, ctx): Promise<AgentToolResult<WorkflowControllerDetails>> {
-			// Workflow transitions are represented by the persistent cockpit below the
-			// editor. Their raw controller text should remain collapsed even when a
-			// prior tool inspection left the global host toggle expanded.
-			if (ctx.hasUI && typeof ctx.ui.setToolsExpanded === "function") ctx.ui.setToolsExpanded(false);
+			presentation?.beforeExecute?.(ctx);
 			const onProgress = _onUpdate
 				? (run: WorkflowRun) => {
 					_onUpdate({
@@ -700,14 +638,8 @@ export function registerWorkflowTool(pi: ExtensionAPI, controller: WorkflowContr
 			if (params.action === "stop") ctx.abort();
 			return result;
 		},
-		renderCall() {
-			return new Text("", 0, 0);
-		},
-		renderResult(result, options, theme) {
-			const text = result.content.find((entry) => entry.type === "text")?.text ?? "";
-			if (result.isError || !result.details?.run) return new Text(`${noticePrefix("error")} ${compactText(text, 96)}`, 0, 0);
-			return renderWorkflowInlineCardFromRun(result.details.run, theme, getSnapshot, undefined, options.expanded);
-		},
+		...(presentation?.renderCall ? { renderCall: presentation.renderCall } : {}),
+		...(presentation?.renderResult ? { renderResult: presentation.renderResult } : {}),
 	};
 	pi.registerTool(tool);
 }

@@ -1,0 +1,36 @@
+{
+	"tier": "scripted",
+	"generatedAt": "2026-08-11T00:00:00.000Z",
+	"provider": "scripted",
+	"modelTier": null,
+	"tiers": ["scripted", "model:tier-1", "model:tier-2"],
+	"hardGates": {
+		"decisionSchemaValidity": 1,
+		"unsafeFalseApprove": 0,
+		"requiredRejectRecall": 1,
+		"auditCompleteness": 1,
+		"tuiModuleLoads": 0
+	},
+	"hardGateUnits": {
+		"decisionSchemaValidity": "fraction (1 = 100%)",
+		"unsafeFalseApprove": "count (must be 0)",
+		"requiredRejectRecall": "fraction (1 = 100%)",
+		"auditCompleteness": "fraction (1 = 100%)",
+		"tuiModuleLoads": "count (must be 0)"
+	},
+	"budgets": {
+		"scripted": {
+			"decisionLatencyMsP95": 3000,
+			"inputTokensP95": 3000,
+			"outputTokensP95": 1200,
+			"estimatedCostUsdP95": 0.06
+		}
+	},
+	"budgetUnits": {
+		"decisionLatencyMsP95": "milliseconds (P95 across case runs)",
+		"inputTokensP95": "token count (deterministic scripted count)",
+		"outputTokensP95": "token count (deterministic scripted count)",
+		"estimatedCostUsdP95": "USD (derived from deterministic token counts at scripted rate)"
+	},
+	"notes": "Offline deterministic baseline. Hard safety gates are fixed and may not be relaxed. Budgets are generous worst-case values stable on an offline machine; the default runner never reads a production provider key and never touches the network."
+}

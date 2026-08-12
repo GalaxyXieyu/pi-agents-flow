@@ -61,6 +61,7 @@ import { finalizeProcessTerminal, readProcessTerminal } from "./process-terminal
 import { SUBAGENT_PROCESS_TERMINAL_EVENT } from "../../shared/types.ts";
 import { assertAgentAllowedByCapabilityCeiling, decodeSubagentCapabilityCeiling, intersectSubagentCapabilityCeilings, resolveCurrentSubagentCapabilityCeiling, SUBAGENT_CAPABILITY_CEILING_ENV, type ResolvedSubagentCapabilityCeiling } from "../shared/capability-ceiling.ts";
 import { agentDefinitionDigest, launchBindingDigest } from "../../shared/launch-contract.ts";
+import { assertRequiredParentSessionId } from "../../shared/session-identity.ts";
 
 const require = createRequire(import.meta.url);
 const piPackageRoot = resolvePiPackageRoot();
@@ -116,7 +117,7 @@ interface AsyncExecutionContext {
 	cwd: string;
 	currentSessionId: string;
 	/** Parent session id used by permission-system ask forwarding. */
-	parentSessionId?: string;
+	parentSessionId: string;
 	currentModelProvider?: string;
 	currentModel?: ParentModel;
 	/** Optional model-scope enforcement resolved from subagent settings. */
@@ -124,6 +125,18 @@ interface AsyncExecutionContext {
 	/** Whether the parent session has an interactive UI. */
 	interactive?: boolean;
 }
+
+interface AsyncLaunchEffects {
+	mkdir(dir: string): void;
+	writePrivateJson(file: string, value: unknown): void;
+	spawn(config: object, suffix: string, cwd: string, onProcessTerminal?: (proof: unknown) => void): { pid?: number; error?: string };
+}
+
+const defaultAsyncLaunchEffects: AsyncLaunchEffects = {
+	mkdir(dir) { fs.mkdirSync(dir, { recursive: true }); },
+	writePrivateJson(file, value) { writePrivateAtomicJson(file, value); },
+	spawn: spawnRunner,
+};
 
 interface AsyncChainParams {
 	chain: ChainStep[];
@@ -166,6 +179,7 @@ interface AsyncChainParams {
 	/** Global cap on simultaneously-running subagent tasks within the async run. */
 	globalConcurrencyLimit?: number;
 	capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
+	launchEffects?: AsyncLaunchEffects;
 }
 
 interface AsyncSingleParams {
@@ -211,6 +225,7 @@ interface AsyncSingleParams {
 	usageBudget?: UsageBudgetConfig;
 	configToolBudget?: ResolvedToolBudget;
 	capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
+	launchEffects?: AsyncLaunchEffects;
 }
 
 interface AsyncExecutionResult {
@@ -722,7 +737,7 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 		});
 		const launchResolvedExtensions = projectLaunchResolvedChildExtensions(toolPlan);
 		return {
-			parentSessionId: ctx.parentSessionId ?? ctx.currentSessionId,
+			parentSessionId: ctx.parentSessionId,
 			...(params.capabilityCeiling ? { capabilityCeiling: params.capabilityCeiling } : {}),
 			agent: s.agent,
 			task,
@@ -903,6 +918,8 @@ export function executeAsyncChain(
 	id: string,
 	params: AsyncChainParams,
 ): AsyncExecutionResult {
+	const parentSessionId = assertRequiredParentSessionId(params.ctx.parentSessionId);
+	const launchEffects = params.launchEffects ?? defaultAsyncLaunchEffects;
 	const {
 		chain,
 		agents,
@@ -932,7 +949,7 @@ export function executeAsyncChain(
 		? path.join(TEMP_ROOT_DIR, "nested-subagent-runs", inheritedNestedRoute.rootRunId, id)
 		: path.join(ASYNC_DIR, id);
 	try {
-		fs.mkdirSync(asyncDir, { recursive: true });
+		launchEffects.mkdir(asyncDir);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		return {
@@ -997,7 +1014,7 @@ export function executeAsyncChain(
 
 	let spawnResult: { pid?: number; error?: string } = {};
 	try {
-		spawnResult = spawnRunner(
+		spawnResult = launchEffects.spawn(
 			{
 				id,
 				steps,
@@ -1163,6 +1180,8 @@ export function executeAsyncSingle(
 	id: string,
 	params: AsyncSingleParams,
 ): AsyncExecutionResult {
+	const parentSessionId = assertRequiredParentSessionId(params.ctx.parentSessionId);
+	const launchEffects = params.launchEffects ?? defaultAsyncLaunchEffects;
 	const {
 		agent,
 		agentConfig,
@@ -1217,7 +1236,7 @@ export function executeAsyncSingle(
 		? path.join(TEMP_ROOT_DIR, "nested-subagent-runs", inheritedNestedRoute.rootRunId, id)
 		: path.join(ASYNC_DIR, id);
 	try {
-		fs.mkdirSync(asyncDir, { recursive: true });
+		launchEffects.mkdir(asyncDir);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		return {
@@ -1343,18 +1362,18 @@ export function executeAsyncSingle(
 		...(capabilityCeiling ? { capabilityCeiling } : {}),
 	};
 	try {
-		writePrivateAtomicJson(path.join(asyncDir, "recovery-descriptor.json"), recoveryDescriptor);
+		launchEffects.writePrivateJson(path.join(asyncDir, "recovery-descriptor.json"), recoveryDescriptor);
 	} catch (error) {
 		return formatAsyncStartError("single", `Failed to persist async recovery descriptor for '${id}': ${error instanceof Error ? error.message : String(error)}`);
 	}
 	let spawnResult: { pid?: number; error?: string } = {};
 	try {
-		spawnResult = spawnRunner(
+		spawnResult = launchEffects.spawn(
 			{
 				id,
 				steps: [
 					{
-						parentSessionId: ctx.parentSessionId ?? ctx.currentSessionId,
+						parentSessionId,
 						...(capabilityCeiling ? { capabilityCeiling } : {}),
 						agent,
 						task: taskWithOutputInstruction,

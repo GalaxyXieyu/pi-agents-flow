@@ -17,7 +17,7 @@ import type { WorkflowQualityReport } from "./quality.ts";
 import { resolveWorkflowMaxNodeAttempts } from "./retry-policy.ts";
 import type { WorkflowTodoAdapterResult } from "./todo-adapter.ts";
 import type { WorkflowTodoProjection } from "./todo-projection.ts";
-import type { WorkflowOutlineReviewResult } from "../tui/workflow-outline-review.ts";
+import type { WorkflowInteraction, WorkflowOutlineReviewResult } from "./interaction.ts";
 import type {
 	DocumentOutline,
 	ResearchBrief,
@@ -91,6 +91,8 @@ export interface WorkflowContinuationDecision {
 
 export interface CreateWorkflowControllerOptions {
 	adapter: WorkflowDelegationAdapter;
+	/** Required UI-neutral decision seam. Missing interactions must never imply approval. */
+	interaction: WorkflowInteraction;
 	appendEntry: (customType: string, data?: unknown) => void;
 	createRunId?: () => string;
 	createEventId?: () => string;

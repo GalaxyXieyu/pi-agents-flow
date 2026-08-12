@@ -9,8 +9,7 @@ import { DEFAULT_WORKFLOW_CONCURRENCY, loadConfig } from "../extension/config.ts
 import { classifyWorkflowFailure, normalizeParentModel } from "../runs/shared/model-fallback.ts";
 import { toModelInfo } from "../shared/model-info.ts";
 import type { SubagentForegroundCompleteEvent } from "../shared/types.ts";
-import { collectWorkflowClarification } from "../tui/workflow-clarify.ts";
-import { collectWorkflowOutlineReview, type WorkflowOutlineReviewResult } from "../tui/workflow-outline-review.ts";
+import type { WorkflowInteraction } from "./interaction.ts";
 import type { WorkflowDelegationAdapter } from "./delegation-adapter.ts";
 import { createLocalWorkflowArtifactStore, writeAtomicTextFile } from "./artifact-store.ts";
 import { assertWorkflowBinding, createWorkflowBinding, type WorkflowBinding } from "./branch-binding.ts";
@@ -86,6 +85,10 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 	const maxNodeAttempts = resolveWorkflowMaxNodeAttempts(options.maxNodeAttempts ?? extensionConfig.workflowMaxNodeAttempts ?? DEFAULT_WORKFLOW_MAX_NODE_ATTEMPTS);
 	const activeRuns = new Map<string, AbortController>();
 	const activeSchedulers = new Map<string, WorkflowScheduler>();
+	const requireInteraction = (): WorkflowInteraction => {
+		if (!options.interaction) throw new Error("Workflow interaction adapter is required; the decision remains blocked.");
+		return options.interaction;
+	};
 	const pendingForegroundCompletions = new Map<string, SubagentForegroundCompleteEvent>();
 	const persistBinding = (run: WorkflowRun): void => options.appendEntry(WORKFLOW_BINDING_ENTRY_TYPE, createWorkflowBinding(run));
 	const requireCodingImplementationApproval = async (
@@ -96,9 +99,6 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 	): Promise<void> => {
 		const gateNode = run.nodes[gateNodeId];
 		if (!gateNode?.dataContract.annotations?.[CODING_APPROVAL_ANNOTATION]) return;
-		if (!ctx.hasUI || typeof ctx.ui.confirm !== "function") {
-			throw new Error(`Accepting or superseding '${gateNode.id}' requires native user approval before Coding implementation can start.`);
-		}
 		const planSummary = run.nodes["coding-plan"]?.result?.summary.text;
 		const reviewSummary = options.replacementNodeId
 			? run.nodes[options.replacementNodeId]?.result?.summary.text
@@ -110,8 +110,15 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 			planSummary ? `Plan:\n${bounded(planSummary, 3_000)}` : undefined,
 			reviewSummary ? `Plan check:\n${bounded(reviewSummary, 1_500)}` : undefined,
 		].filter((entry): entry is string => entry !== undefined).join("\n\n");
-		const approved = await ctx.ui.confirm("Approve Coding implementation?", approvalContext);
-		if (!approved) throw new Error("Coding implementation approval was declined; the plan gate remains unchanged.");
+		const confirmation = await requireInteraction().confirm({
+			ctx,
+			kind: "checkpoint",
+			title: "Approve Coding implementation?",
+			message: approvalContext,
+			evidence: { runId: run.id, gateNodeId: gateNode.id, replacementNodeId: options.replacementNodeId, planSummary, reviewSummary },
+			forbiddenCapabilities: ["platform-sensitive-tool-approval", "funds-approval", "capability-ceiling"],
+		});
+		if (!confirmation.approved) throw new Error(`Coding implementation approval was declined; the plan gate remains unchanged.${confirmation.reason ? ` ${confirmation.reason}` : ""}`);
 	};
 	const classifiedFailure = (error: string, context: Parameters<typeof classifyWorkflowFailure>[1] = {}) => {
 		const classification = classifyWorkflowFailure(error, context);
@@ -529,7 +536,6 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 			switch (params.action) {
 				case "clarify": {
 					if (run.mode !== "deep-research") throw new Error("Interactive research clarification is only supported in deep-research mode.");
-					if (!ctx.hasUI) throw new Error("Interactive clarification requires Pi TUI/RPC UI. Ask the questions in chat and stop until the user answers.");
 					if (params.questions.length < 1 || params.questions.length > 5) throw new Error("Interactive clarification requires 1-5 questions.");
 					const questionIds = new Set<string>();
 					for (const question of params.questions) {
@@ -543,7 +549,13 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 						}
 					}
 					if (signal?.aborted) throw signal.reason ?? new Error("Clarification aborted.");
-					const clarification = await collectWorkflowClarification(ctx, params.questions, workflowRunLanguage(run));
+					const clarification = await requireInteraction().clarify({
+						ctx,
+						questions: params.questions,
+						language: workflowRunLanguage(run),
+						evidence: { runId: run.id, mode: run.mode, goal: run.goal, previousClarifications: run.clarifications?.length ?? 0 },
+						...(signal ? { signal } : {}),
+					});
 					if (!clarification || clarification.cancelled || clarification.answers.length !== params.questions.length) {
 						return {
 							text: "Clarification cancelled. Do not apply a plan; wait for the user to restart or clarify the request.",
@@ -573,14 +585,14 @@ export function createWorkflowController(options: CreateWorkflowControllerOption
 					if (run.mode !== "deep-research") throw new Error("Document outlines are only supported in deep-research mode.");
 					if (!run.researchBrief) throw new Error("Record the research brief before setting the document outline.");
 					if (params.outline.approval === "user") {
-						if (!ctx.hasUI) {
-							return {
-								text: "Outline not recorded. User approval requires Pi TUI/RPC UI; present the outline in chat and stop until the user explicitly approves or requests changes.",
-								details: { run, evaluation: evaluateWorkflow(run), outlineReview: { cancelled: false, approved: false } },
-							};
-						}
 						if (signal?.aborted) throw signal.reason ?? new Error("Outline review aborted.");
-						const review = await collectWorkflowOutlineReview(ctx, params.outline, workflowRunLanguage(run));
+						const review = await requireInteraction().reviewOutline({
+							ctx,
+							outline: params.outline,
+							language: workflowRunLanguage(run),
+							evidence: { runId: run.id, goal: run.goal, researchBrief: run.researchBrief },
+							...(signal ? { signal } : {}),
+						});
 						if (!review || review.cancelled) {
 							return {
 								text: "Outline review cancelled. The outline was not recorded and document-production planning remains blocked.",
