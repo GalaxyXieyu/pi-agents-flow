@@ -55,6 +55,17 @@ Every node must declare a `dataContract` with:
 - `inputs`: array of input bindings (may be empty for root nodes)
 - `outputs`: map of named output ports
 
+`profile` is determined by the node `kind`; it is not a free choice. The runtime rejects any mismatch (`workflowProfileForKind`):
+
+| node `kind` | required `profile` |
+|---|---|
+| `research`, `verification` | `research` |
+| `section-writer`, `writer`, `editor` | `writer` |
+| `reviewer` | `reviewer` |
+| `outline`, `custom` | `generic` |
+
+Custom roles such as planners, checkers, or orchestrators use `kind: "custom"` with `profile: "generic"` — never `writer`, even if they produce a document. `generic` means "no built-in role contract": the runtime applies no extra output-format rules beyond what you declare in `outputs`.
+
 Input bindings:
 
 ```json
