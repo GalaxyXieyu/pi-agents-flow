@@ -158,7 +158,7 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 			const outputPath = path.join(tempDir, "report.md");
 			conflictingReportsCall(outputPath, "satisfied", "not-satisfied");
 
-			const result = await runSync!(tempDir, makeAgentConfigs(["worker"]), "worker", "Write the findings report.", {
+			const result = await runSync!(tempDir, makeAgentConfigs(["worker"]), "worker", "Write the findings report.", { parentSessionId: "test-parent",
 				runId: "acceptance-file-only",
 				outputPath,
 				outputMode: "file-only",
@@ -179,7 +179,7 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 				writeFiles: [{ path: outputPath, content: fileReport }],
 			});
 
-			const result = await runSync!(tempDir, makeAgentConfigs(["worker"]), "worker", "Write the findings report.", {
+			const result = await runSync!(tempDir, makeAgentConfigs(["worker"]), "worker", "Write the findings report.", { parentSessionId: "test-parent",
 				runId: "acceptance-foreground-saved-receipt",
 				outputPath,
 				outputMode: "file-only",
@@ -204,6 +204,7 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 			mockPi.onCall({ output: acceptanceReport("satisfied", "report-only evidence") });
 
 			const result = await runSync!(tempDir, [makeAgent("worker", { completionGuard: false })], "worker", "Implement and report the fix.", {
+				parentSessionId: "test-parent",
 				runId: "acceptance-report-only",
 				acceptance: { level: "checked", criteria: ["Report the findings"] },
 				artifactsDir,
@@ -225,7 +226,7 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 			const artifactsDir = path.join(tempDir, "rejected-artifacts");
 			conflictingReportsCall(outputPath, "satisfied", "not-satisfied");
 
-			const result = await runSync!(tempDir, makeAgentConfigs(["worker"]), "worker", "Write the findings report.", {
+			const result = await runSync!(tempDir, makeAgentConfigs(["worker"]), "worker", "Write the findings report.", { parentSessionId: "test-parent",
 				runId: "acceptance-inline-text-first",
 				outputPath,
 				acceptance: { level: "checked", criteria: ["Report the findings"] },
@@ -248,7 +249,7 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 			const outputPath = path.join(tempDir, "report.md");
 			conflictingReportsCall(outputPath, "not-satisfied", "satisfied");
 
-			const result = await runSync!(tempDir, makeAgentConfigs(["worker"]), "worker", "Write the findings report.", {
+			const result = await runSync!(tempDir, makeAgentConfigs(["worker"]), "worker", "Write the findings report.", { parentSessionId: "test-parent",
 				runId: "acceptance-inline-file-fallback-only",
 				outputPath,
 				acceptance: { level: "checked", criteria: ["Report the findings"] },
@@ -281,7 +282,7 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 				],
 			});
 
-			const result = await runSync!(tempDir, makeAgentConfigs(["worker"]), "worker", "Write the findings report.", {
+			const result = await runSync!(tempDir, makeAgentConfigs(["worker"]), "worker", "Write the findings report.", { parentSessionId: "test-parent",
 				runId: "acceptance-failed-write",
 				outputPath,
 				outputMode: "file-only",
@@ -304,7 +305,7 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 				writeFiles: [{ path: outputPath, content: malformedReport }],
 			});
 
-			const result = await runSync!(tempDir, makeAgentConfigs(["worker"]), "worker", "Write the findings report.", {
+			const result = await runSync!(tempDir, makeAgentConfigs(["worker"]), "worker", "Write the findings report.", { parentSessionId: "test-parent",
 				runId: "acceptance-malformed-file-report",
 				outputPath,
 				outputMode: "file-only",
@@ -323,7 +324,7 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 				agent: "worker",
 				task: "Write the findings report.",
 				agentConfig: makeAgent("worker", { completionGuard: false }),
-				ctx: { pi: { events: { emit() {} } }, cwd: tempDir, currentSessionId: "session-file-report" },
+				ctx: { pi: { events: { emit() {} } }, cwd: tempDir, currentSessionId: "session-file-report", parentSessionId: "test-parent" },
 				artifactConfig,
 				artifactsDir: path.join(tempDir, ".pi/agents-flow", "artifacts"),
 				shareEnabled: false,

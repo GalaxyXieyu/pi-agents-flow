@@ -137,7 +137,7 @@ describe("runSync error handling", { skip: !piAvailable ? "pi packages not avail
 		mockPi.onCall({ exitCode: 2, stderr: "Fatal: out of memory" });
 		const agents = makeAgentConfigs(["crash"]);
 
-		const result = await runSync(tempDir, agents, "crash", "Do heavy work", {});
+		const result = await runSync(tempDir, agents, "crash", "Do heavy work", { parentSessionId: "test-parent" });
 
 		assert.equal(result.exitCode, 2);
 		assert.ok(result.error?.includes("out of memory"));
@@ -154,7 +154,7 @@ describe("runSync error handling", { skip: !piAvailable ? "pi packages not avail
 		});
 		const agents = makeAgentConfigs(["deployer"]);
 
-		const result = await runSync(tempDir, agents, "deployer", "Deploy app", {});
+		const result = await runSync(tempDir, agents, "deployer", "Deploy app", { parentSessionId: "test-parent" });
 
 		assert.notEqual(result.exitCode, 0, "should detect hidden failure");
 		assert.ok(result.error?.includes("connection refused"));
@@ -169,6 +169,7 @@ describe("runSync error handling", { skip: !piAvailable ? "pi packages not avail
 		setTimeout(() => controller.abort(), 200);
 
 		const result = await runSync(tempDir, agents, "slow", "Slow task", {
+			parentSessionId: "test-parent",
 			signal: controller.signal,
 		});
 		const elapsed = Date.now() - start;
@@ -208,6 +209,7 @@ describe("chain error propagation", { skip: !chainAvailable ? "chain module not 
 		return {
 			chain,
 			agents,
+			parentSessionId: "test-parent",
 			ctx: makeMinimalCtx(tempDir),
 			runId: "test-err",
 			shareEnabled: false,

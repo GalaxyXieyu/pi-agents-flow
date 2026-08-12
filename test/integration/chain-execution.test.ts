@@ -25,6 +25,7 @@ import {
 	events,
 } from "../support/helpers.ts";
 import { INTERCOM_DETACH_REQUEST_EVENT } from "../../src/shared/types.ts";
+import { createInteractiveExecutionClarifier } from "../../src/runs/foreground/chain-clarify.ts";
 
 interface TestSequentialStep {
 	agent: string;
@@ -163,6 +164,7 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 		return {
 			chain,
 			agents,
+			parentSessionId: "test-parent",
 			ctx: makeMinimalCtx(tempDir),
 			runId: `test-${Date.now().toString(36)}`,
 			shareEnabled: false,
@@ -309,7 +311,7 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 			makeChainParams(
 				[{ agent: "analyst", task: "Analyze the code" }, { agent: "reporter" }],
 				agents,
-				{ ctx, clarify: true },
+				{ ctx, clarify: true, clarifier: createInteractiveExecutionClarifier() },
 			),
 		);
 
@@ -1327,6 +1329,7 @@ describe("chain execution — parallel steps", { skip: !available ? "pi packages
 		return {
 			chain,
 			agents,
+			parentSessionId: "test-parent",
 			ctx: makeMinimalCtx(tempDir),
 			runId: `test-${Date.now().toString(36)}`,
 			shareEnabled: false,

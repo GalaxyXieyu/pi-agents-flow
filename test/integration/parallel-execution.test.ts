@@ -152,7 +152,7 @@ describe("parallel agent execution", { skip: !piAvailable ? "pi packages not ava
 			tasks.map((task, i) => ({ agent: agents[i].name, task, index: i })),
 			3,
 			async ({ agent, task, index }: any) => {
-				return runSync(tempDir, agents, agent, task, { index });
+				return runSync(tempDir, agents, agent, task, { parentSessionId: "test-parent", index });
 			},
 		);
 
@@ -173,7 +173,7 @@ describe("parallel agent execution", { skip: !piAvailable ? "pi packages not ava
 				{ agent: "b", task: "Task B" },
 			],
 			2,
-			async ({ agent, task }: any, i: number) => runSync(tempDir, agents, agent, task, { index: i }),
+			async ({ agent, task }: any, i: number) => runSync(tempDir, agents, agent, task, { parentSessionId: "test-parent", index: i }),
 		);
 
 		assert.equal(results.length, 2);

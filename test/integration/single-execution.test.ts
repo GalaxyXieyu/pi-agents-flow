@@ -347,7 +347,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const agents = makeAgentConfigs(["echo"]);
 
 		const sessionFile = path.join(tempDir, "child-session.jsonl");
-		const result = await runSync(tempDir, agents, "echo", "Say hello", { sessionFile });
+		const result = await runSync(tempDir, agents, "echo", "Say hello", { parentSessionId: "test-parent", sessionFile });
 
 		assert.equal(result.exitCode, 0);
 		assert.equal(result.agent, "echo");
@@ -1080,7 +1080,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const agents = [makeAgent("worker")];
 		const controlEvents: Array<{ message: string }> = [];
 
-		const result = await runSync(tempDir, agents, "worker", "Implement the approved file changes", {
+		const result = await runSync(tempDir, agents, "worker", "Implement the approved file changes", { parentSessionId: "test-parent",
 			runId: "guard-run",
 			onControlEvent: (event: { message: string }) => controlEvents.push(event),
 		});
@@ -1101,7 +1101,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "Plan only" });
 		const agents = [makeAgent("worker", { tools: ["read", "write"] })];
 
-		const result = await runSync(tempDir, agents, "worker", "Implement the approved file changes", {
+		const result = await runSync(tempDir, agents, "worker", "Implement the approved file changes", { parentSessionId: "test-parent",
 			runId: "v1-no-acceptance",
 			agentContract: { version: 1 },
 		});
@@ -1120,7 +1120,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "Done\n```acceptance-report\n{\"criteriaSatisfied\":[{\"id\":\"criterion-1\",\"status\":\"not-satisfied\",\"evidence\":\"no proof\"}]}\n```" });
 		const agents = [makeAgent("worker", { tools: ["read"], completionGuard: false })];
 
-		const result = await runSync(tempDir, agents, "worker", "Summarize the fix", {
+		const result = await runSync(tempDir, agents, "worker", "Summarize the fix", { parentSessionId: "test-parent",
 			runId: "v1-acceptance-reject",
 			agentContract: { version: 1 },
 			acceptance: { level: "checked", criteria: ["Return required proof"] },
@@ -1138,7 +1138,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "Plan only" });
 		const agents = [makeAgent("worker", { tools: ["read", "write"], completionGuard: true })];
 
-		const result = await runSync(tempDir, agents, "worker", "Implement the approved file changes", {
+		const result = await runSync(tempDir, agents, "worker", "Implement the approved file changes", { parentSessionId: "test-parent",
 			runId: "v1-completion-effect",
 			agentContract: { version: 1 },
 		});
@@ -1275,7 +1275,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "I’ll do that now and report back after implementing." });
 		const agents = [makeAgent("worker")];
 
-		const result = await runSync(tempDir, agents, "worker", "Implement the approved fixes", {
+		const result = await runSync(tempDir, agents, "worker", "Implement the approved fixes", { parentSessionId: "test-parent",
 			runId: "guard-future-tense",
 		});
 
@@ -1287,7 +1287,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "Validation report after the patch" });
 		const agents = [makeAgent("architect", { tools: ["read", "grep", "find", "ls"] })];
 
-		const result = await runSync(tempDir, agents, "architect", "Produce a proposal that implements the approved fix", {
+		const result = await runSync(tempDir, agents, "architect", "Produce a proposal that implements the approved fix", { parentSessionId: "test-parent",
 			runId: "guard-readonly-tools",
 		});
 
@@ -1304,13 +1304,13 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			makeAgent("test-runner-optout", { tools: ["read", "grep", "bash", "ls"], completionGuard: false }),
 		];
 
-		const withoutOptOut = await runSync(tempDir, agents, "test-runner", "Patch the cold start test", {
+		const withoutOptOut = await runSync(tempDir, agents, "test-runner", "Patch the cold start test", { parentSessionId: "test-parent",
 			runId: "guard-bash-conservative",
 		});
 		assert.equal(withoutOptOut.exitCode, 1);
 		assert.match(withoutOptOut.error ?? "", /completed without making edits/);
 
-		const withOptOut = await runSync(tempDir, agents, "test-runner-optout", "Patch the cold start test", {
+		const withOptOut = await runSync(tempDir, agents, "test-runner-optout", "Patch the cold start test", { parentSessionId: "test-parent",
 			runId: "guard-bash-optout",
 		});
 		assert.equal(withOptOut.exitCode, 0);
@@ -1335,7 +1335,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		});
 		const agents = [makeAgent("worker")];
 
-		const result = await runSync(tempDir, agents, "worker", "Implement the approved file changes", {
+		const result = await runSync(tempDir, agents, "worker", "Implement the approved file changes", { parentSessionId: "test-parent",
 			runId: "guard-success",
 		});
 
@@ -1357,7 +1357,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 
 	it("returns error for unknown agent", async () => {
 		const agents = makeAgentConfigs(["echo"]);
-		const result = await runSync(tempDir, agents, "nonexistent", "Do something", {});
+		const result = await runSync(tempDir, agents, "nonexistent", "Do something", { parentSessionId: "test-parent" });
 
 		assert.equal(result.exitCode, 1);
 		assert.ok(result.error?.includes("Unknown agent"));
@@ -1374,7 +1374,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const agents = makeAgentConfigs(["echo"]);
 		const controlEvents: NonNullable<RunSyncResult["controlEvents"]> = [];
 
-		const result = await runSync(tempDir, agents, "echo", "Investigate behavior", {
+		const result = await runSync(tempDir, agents, "echo", "Investigate behavior", { parentSessionId: "test-parent",
 			runId: "run-active",
 			controlConfig: { enabled: true, activeNoticeAfterTurns: 2, activeNoticeAfterMs: 999_999, activeNoticeAfterTokens: 999_999, notifyOn: ["active_long_running", "needs_attention"] },
 			onControlEvent: (event: NonNullable<RunSyncResult["controlEvents"]>[number]) => controlEvents.push(event),
@@ -1407,7 +1407,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const agents = [makeAgent("worker")];
 		const controlEvents: NonNullable<RunSyncResult["controlEvents"]> = [];
 
-		const result = await runSync(tempDir, agents, "worker", "Implement the approved fixes", {
+		const result = await runSync(tempDir, agents, "worker", "Implement the approved fixes", { parentSessionId: "test-parent",
 			runId: "run-failures",
 			controlConfig: { enabled: true, failedToolAttemptsBeforeAttention: 3, notifyOn: ["active_long_running", "needs_attention"] },
 			onControlEvent: (event: NonNullable<RunSyncResult["controlEvents"]>[number]) => controlEvents.push(event),
@@ -1431,7 +1431,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const agents = makeAgentConfigs(["echo"]);
 		const controlEvents: NonNullable<RunSyncResult["controlEvents"]> = [];
 
-		const result = await runSync(tempDir, agents, "echo", "Investigate behavior", {
+		const result = await runSync(tempDir, agents, "echo", "Investigate behavior", { parentSessionId: "test-parent",
 			runId: "run-control-disabled",
 			controlConfig: { enabled: false, activeNoticeAfterTurns: 1, activeNoticeAfterMs: 1, activeNoticeAfterTokens: 1, notifyOn: ["active_long_running", "needs_attention"] },
 			onControlEvent: (event: NonNullable<RunSyncResult["controlEvents"]>[number]) => controlEvents.push(event),
@@ -1447,7 +1447,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ exitCode: 1, stderr: "Something went wrong" });
 		const agents = makeAgentConfigs(["fail"]);
 
-		const result = await runSync(tempDir, agents, "fail", "Do something", {});
+		const result = await runSync(tempDir, agents, "fail", "Do something", { parentSessionId: "test-parent" });
 
 		assert.equal(result.exitCode, 1);
 		assert.ok(result.error?.includes("Something went wrong"));
@@ -1461,7 +1461,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			fallbackModels: ["anthropic/claude-sonnet-4"],
 		})];
 
-		const result = await runSync(tempDir, agents, "worker", "Do work", {
+		const result = await runSync(tempDir, agents, "worker", "Do work", { parentSessionId: "test-parent",
 			runId: "startup-retry-sync",
 			acceptance: false,
 		});
@@ -1484,7 +1484,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			fallbackModels: ["anthropic/claude-sonnet-4"],
 		})];
 
-		const result = await runSync(tempDir, agents, "worker", "Read a file", {
+		const result = await runSync(tempDir, agents, "worker", "Read a file", { parentSessionId: "test-parent",
 			runId: "startup-no-retry-after-tool",
 			acceptance: false,
 		});
@@ -1499,7 +1499,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "must not run" });
 		const agents = [makeAgent("worker", { model: "openai/gpt-5-mini" })];
 
-		const result = await runSync(tempDir, agents, "worker", "Do work", {
+		const result = await runSync(tempDir, agents, "worker", "Do work", { parentSessionId: "test-parent",
 			runId: "startup-no-retry-after-signal",
 			acceptance: false,
 		});
@@ -1515,7 +1515,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ stderr: "INFO benign startup line\n", signal: "SIGTERM" });
 		const agents = [makeAgent("worker", { model: "openai/gpt-5-mini" })];
 
-		const result = await runSync(tempDir, agents, "worker", "Do work", {
+		const result = await runSync(tempDir, agents, "worker", "Do work", { parentSessionId: "test-parent",
 			runId: "signal-error-over-stderr",
 			acceptance: false,
 		});
@@ -1531,7 +1531,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "must not run" });
 		const agents = [makeAgent("worker", { model: "openai/gpt-5-mini" })];
 
-		const result = await runSync(tempDir, agents, "worker", "Do work", {
+		const result = await runSync(tempDir, agents, "worker", "Do work", { parentSessionId: "test-parent",
 			runId: "startup-no-retry-after-stdout-diagnostic",
 			acceptance: false,
 		});
@@ -1549,7 +1549,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			fallbackModels: ["anthropic/claude-sonnet-4"],
 		})];
 
-		const result = await runSync(tempDir, agents, "worker", "Do work", {
+		const result = await runSync(tempDir, agents, "worker", "Do work", { parentSessionId: "test-parent",
 			runId: "startup-retry-exhausted-sync",
 			acceptance: false,
 		});
@@ -1566,7 +1566,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const longTask = "Analyze ".repeat(2000); // ~16KB
 		const agents = makeAgentConfigs(["echo"]);
 
-		const result = await runSync(tempDir, agents, "echo", longTask, {});
+		const result = await runSync(tempDir, agents, "echo", longTask, { parentSessionId: "test-parent" });
 
 		assert.equal(result.exitCode, 0);
 		const output = getFinalOutput(result.messages);
@@ -1577,7 +1577,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "Done" });
 		const agents = [makeAgent("echo", { model: "anthropic/claude-sonnet-4" })];
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {});
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent" });
 
 		assert.equal(result.exitCode, 0);
 		// result.model is set from agent config via applyThinkingSuffix, then
@@ -1590,7 +1590,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "Done" });
 		const agents = [makeAgent("echo", { model: "anthropic/claude-sonnet-4" })];
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			modelOverride: "openai/gpt-4o",
 		});
 
@@ -1602,7 +1602,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "Done" });
 		const agents = [makeAgent("echo", { model: "gpt-5-mini" })];
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			availableModels: [
 				{ provider: "openai", id: "gpt-5-mini", fullId: "openai/gpt-5-mini" },
 				{ provider: "github-copilot", id: "gpt-5-mini", fullId: "github-copilot/gpt-5-mini" },
@@ -1622,14 +1622,14 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			line.subarray(0, unicodeStart + 1).toString("base64"),
 			line.subarray(unicodeStart + 1).toString("base64"),
 		] });
-		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Read fragmented output", { acceptance: false });
+		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Read fragmented output", { parentSessionId: "test-parent", acceptance: false });
 		assert.equal(result.exitCode, 0);
 		assert.equal(getFinalOutput(result.messages), "你好 from fragmented JSON");
 	});
 
 	it("fails with protocol_output_limit when a child emits an oversized stdout line", async () => {
 		mockPi.onCall({ stdoutRaw: "x".repeat(MAX_CHILD_PENDING_LINE_BYTES + 1) });
-		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Emit malformed output", { acceptance: false });
+		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Emit malformed output", { parentSessionId: "test-parent", acceptance: false });
 		assert.equal(result.exitCode, 1);
 		assert.equal(result.protocolError?.code, "protocol_output_limit");
 		assert.equal(result.protocolError?.stream, "stdout");
@@ -1638,7 +1638,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 
 	it("keeps only a bounded UTF-8 stderr tail", async () => {
 		mockPi.onCall({ output: "failed", stderr: `${"x".repeat(MAX_CHILD_STDERR_BYTES + 1024)}终`, exitCode: 1 });
-		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Fail noisily", { acceptance: false });
+		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Fail noisily", { parentSessionId: "test-parent", acceptance: false });
 		assert.equal(result.exitCode, 1);
 		assert.ok(Buffer.byteLength(result.error ?? "") <= MAX_CHILD_STDERR_BYTES);
 		assert.match(result.error ?? "", /终$/);
@@ -1650,7 +1650,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			{ delay: 1400, jsonl: [events.assistantMessage("settled response"), { type: "agent_end", willRetry: false }, { type: "agent_settled" }] },
 		] });
 		const startedAt = Date.now();
-		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Retry once", { acceptance: false });
+		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Retry once", { parentSessionId: "test-parent", acceptance: false });
 		assert.equal(result.exitCode, 0);
 		assert.equal(getFinalOutput(result.messages), "settled response");
 		assert.ok(Date.now() - startedAt >= 1200, "foreground runner must not terminate during the retry delay");
@@ -1661,7 +1661,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		nonTerminalMessage.message.stopReason = "length";
 		mockPi.onCall({ jsonl: [nonTerminalMessage, { type: "agent_settled" }], keepAliveAfterFinalMessageMs: 5000 });
 		const startedAt = Date.now();
-		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Wait until settled", { acceptance: false });
+		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Wait until settled", { parentSessionId: "test-parent", acceptance: false });
 		assert.equal(result.exitCode, 0);
 		assert.equal(result.error, undefined);
 		assert.equal(getFinalOutput(result.messages), "settled without a terminal assistant stop");
@@ -1672,7 +1672,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "Done" });
 		const agents = makeAgentConfigs(["echo"]);
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {});
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent" });
 
 		assert.equal(result.usage.turns, 1);
 		assert.equal(result.usage.input, 100); // from mock
@@ -1700,7 +1700,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			fallbackModels: ["anthropic/claude-sonnet-4"],
 		})];
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "startup-then-fallback-sync",
 			acceptance: false,
 		});
@@ -1735,7 +1735,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			fallbackModels: ["anthropic/claude-sonnet-4"],
 		})];
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "fallback-sync",
 		});
 
@@ -1769,7 +1769,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			fallbackModels: ["anthropic/claude-sonnet-4"],
 		})];
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "fallback-zero-exit-provider-error",
 		});
 
@@ -1798,7 +1798,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			fallbackModels: ["anthropic/claude-sonnet-4"],
 		})];
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "fallback-zero-exit-empty-output",
 		});
 
@@ -1834,7 +1834,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			fallbackModels: ["anthropic/claude-sonnet-4"],
 		})];
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "fallback-empty-output-after-tool-error",
 		});
 
@@ -1860,7 +1860,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		});
 		const agents = [makeAgent("echo", { model: "openai/gpt-5-mini" })];
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "zero-exit-provider-error-no-fallback",
 		});
 
@@ -1878,7 +1878,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		});
 		const agents = makeAgentConfigs(["echo"]);
 
-		const result = await runSync(tempDir, agents, "echo", "Inspect files", {
+		const result = await runSync(tempDir, agents, "echo", "Inspect files", { parentSessionId: "test-parent",
 			runId: "recovered-tool-error",
 		});
 
@@ -1908,7 +1908,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		});
 		const agents = makeAgentConfigs(["echo"]);
 
-		const result = await runSync(tempDir, agents, "echo", "Recover from provider error", {
+		const result = await runSync(tempDir, agents, "echo", "Recover from provider error", { parentSessionId: "test-parent",
 			runId: "recovered-provider-error",
 		});
 
@@ -1938,7 +1938,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		});
 		const agents = makeAgentConfigs(["echo"]);
 
-		const result = await runSync(tempDir, agents, "echo", "Recover from provider error", {
+		const result = await runSync(tempDir, agents, "echo", "Recover from provider error", { parentSessionId: "test-parent",
 			runId: "provider-error-empty-stop",
 		});
 
@@ -1969,7 +1969,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			fallbackModels: ["anthropic/claude-sonnet-4"],
 		})];
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "zero-exit-provider-error-all-fallbacks-fail",
 		});
 
@@ -2000,7 +2000,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			fallbackModels: ["anthropic/claude-sonnet-4"],
 		})];
 
-		const runPromise = runSync(tempDir, agents, "echo", "Task", {
+		const runPromise = runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "fallback-output-per-attempt",
 			outputPath,
 		});
@@ -2024,7 +2024,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			fallbackModels: ["anthropic/claude-sonnet-4"],
 		})];
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "no-fallback-task-failure",
 		});
 
@@ -2037,7 +2037,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "Done" });
 		const agents = makeAgentConfigs(["echo"]);
 
-		const result = await runSync(tempDir, agents, "echo", "Task", { index: 3 });
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent", index: 3 });
 
 		assert.ok(result.progress, "should have progress");
 		assert.equal(result.progress.agent, "echo");
@@ -2058,7 +2058,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const agents = makeAgentConfigs(["echo"]);
 		const artifactsDir = path.join(tempDir, "artifacts");
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "live-progress",
 			artifactsDir,
 			artifactConfig: { enabled: true, includeInput: true, includeOutput: true, includeMetadata: true },
@@ -2091,7 +2091,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			],
 		});
 
-		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", {
+		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", { parentSessionId: "test-parent",
 			runId: "delayed-tool-attention",
 			controlConfig: { enabled: true, needsAttentionAfterMs: 200, activeNoticeAfterMs: 999_999, notifyOn: ["needs_attention"] },
 			onUpdate: (update: { details?: { progress?: ProgressSummary[] } }) => updates.push(update),
@@ -2108,7 +2108,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ exitCode: 1 });
 		const agents = makeAgentConfigs(["fail"]);
 
-		const result = await runSync(tempDir, agents, "fail", "Task", {});
+		const result = await runSync(tempDir, agents, "fail", "Task", { parentSessionId: "test-parent" });
 
 		assert.equal(result.progress.status, "failed");
 	});
@@ -2124,7 +2124,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		});
 		const agents = makeAgentConfigs(["scout"]);
 
-		const result = await runSync(tempDir, agents, "scout", "List files", {});
+		const result = await runSync(tempDir, agents, "scout", "List files", { parentSessionId: "test-parent" });
 
 		assert.equal(result.exitCode, 0);
 		const output = getFinalOutput(result.messages);
@@ -2139,7 +2139,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			mockPi.onCall({ output: "Done" });
 			const agents = [makeAgent("echo", { skills: ["task-cwd-skill"] })];
 
-			const result = await runSync(tempDir, agents, "echo", "Task", { cwd: taskCwd });
+			const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent", cwd: taskCwd });
 
 			assert.equal(result.exitCode, 0);
 			assert.deepEqual(result.skills, ["task-cwd-skill"]);
@@ -2157,7 +2157,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		fs.writeFileSync(skillFile, "---\ndescription: local skill description\n---\nLocal skill body\n", "utf-8");
 		const agents = [makeAgent("worker", { filePath: agentFile, skills: ["local"], skillPath: ["./skills"] })];
 
-		const result = await runSync(tempDir, agents, "worker", "Task", {});
+		const result = await runSync(tempDir, agents, "worker", "Task", { parentSessionId: "test-parent" });
 
 		assert.equal(result.exitCode, 0);
 		assert.deepEqual(result.skills, ["local"]);
@@ -2173,7 +2173,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "Done" });
 		const agents = [makeAgent("echo", { skills: ["runtime-fallback-skill"] })];
 
-		const result = await runSync(tempDir, agents, "echo", "Task", { cwd: taskCwd });
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent", cwd: taskCwd });
 
 		assert.equal(result.exitCode, 0);
 		assert.deepEqual(result.skills, ["runtime-fallback-skill"]);
@@ -2183,7 +2183,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 	it("fails foreground runs on explicit unavailable pi-agents-flow skill requests without spawning", async () => {
 		const agents = [makeAgent("worker")];
 
-		const result = await runSync(tempDir, agents, "worker", "Task", { skills: ["pi-agents-flow"] });
+		const result = await runSync(tempDir, agents, "worker", "Task", { parentSessionId: "test-parent", skills: ["pi-agents-flow"] });
 
 		assert.equal(result.exitCode, 1);
 		assert.equal(result.error, "Skills not found: pi-agents-flow");
@@ -2193,7 +2193,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 	it("fails foreground runs when an agent default requests pi-agents-flow skill", async () => {
 		const agents = [makeAgent("worker", { skills: ["pi-agents-flow"] })];
 
-		const result = await runSync(tempDir, agents, "worker", "Task", {});
+		const result = await runSync(tempDir, agents, "worker", "Task", { parentSessionId: "test-parent" });
 
 		assert.equal(result.exitCode, 1);
 		assert.equal(result.error, "Skills not found: pi-agents-flow");
@@ -2209,7 +2209,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const agents = [makeAgent("echo", { extensions: [privateExtension] })];
 		const artifactsDir = path.join(tempDir, "artifacts");
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "test-run",
 			artifactsDir,
 			artifactConfig: { enabled: true, includeInput: true, includeOutput: true, includeMetadata: true },
@@ -2263,7 +2263,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "", stderr: "model unavailable", exitCode: 1 });
 		const artifactsDir = path.join(tempDir, "artifacts-failed-output");
 
-		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", {
+		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", { parentSessionId: "test-parent",
 			runId: "failed-no-output",
 			artifactsDir,
 			artifactConfig: { enabled: true, includeInput: true, includeOutput: true, includeMetadata: true },
@@ -2284,7 +2284,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const agents = makeAgentConfigs(["echo"]);
 		const artifactsDir = path.join(tempDir, "artifacts-disabled-transcript");
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "test-run-no-transcript",
 			artifactsDir,
 			artifactConfig: { enabled: true, includeInput: true, includeOutput: true, includeTranscript: false, includeMetadata: true },
@@ -2306,7 +2306,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: `Wrote to ${outputPath}`, delay: 100 });
 		const agents = makeAgentConfigs(["echo"]);
 
-		const runPromise = runSync(tempDir, agents, "echo", "Task", {
+		const runPromise = runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "output-file-preserved",
 			outputPath,
 			artifactsDir,
@@ -2331,7 +2331,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "fresh assistant output" });
 		const agents = makeAgentConfigs(["echo"]);
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "output-file-fallback",
 			outputPath,
 		});
@@ -2701,7 +2701,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 	it("rejects file-only mode without an output path before spawning", async () => {
 		const agents = makeAgentConfigs(["echo"]);
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "output-file-only-missing-path",
 			outputMode: "file-only",
 		});
@@ -2717,7 +2717,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "full saved output\nwith details" });
 		const agents = makeAgentConfigs(["echo"]);
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "output-file-only",
 			outputPath,
 			outputMode: "file-only",
@@ -2745,7 +2745,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		delete process.env.PI_SUBAGENT_MAX_DEPTH;
 
 		try {
-			const result = await runSync(tempDir, agents, "echo", "Task", {
+			const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 				runId: "depth-env",
 				maxSubagentDepth: 1,
 			});
@@ -2765,7 +2765,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 
 	it("passes the effective wait-tool setting through to child execution", async () => {
 		mockPi.onCall({ echoEnv: [WAIT_TOOL_ENABLED_ENV] });
-		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", {
+		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", { parentSessionId: "test-parent",
 			runId: "wait-tool-env",
 			waitToolEnabled: false,
 		});
@@ -2783,7 +2783,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			inheritSkills: false,
 		})];
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "prompt-inheritance-env",
 		});
 
@@ -2811,7 +2811,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 
 			mockPi.onCall({ echoEnv: envKeys });
 			const fanoutAgents = [makeAgent("delegator", { tools: ["read", "subagent"] })];
-			const fanout = await runSync(tempDir, fanoutAgents, "delegator", "Task", { runId: "fanout-run", index: 2 });
+			const fanout = await runSync(tempDir, fanoutAgents, "delegator", "Task", { parentSessionId: "test-parent", runId: "fanout-run", index: 2 });
 			assert.equal(fanout.exitCode, 0);
 			assert.deepEqual(JSON.parse(fanout.finalOutput ?? "{}"), {
 				PI_SUBAGENT_FANOUT_CHILD: "1",
@@ -2823,7 +2823,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 
 			mockPi.onCall({ echoEnv: envKeys });
 			const nonFanoutAgents = [makeAgent("worker", { tools: ["read"] })];
-			const nonFanout = await runSync(tempDir, nonFanoutAgents, "worker", "Task", { runId: "non-fanout-run" });
+			const nonFanout = await runSync(tempDir, nonFanoutAgents, "worker", "Task", { parentSessionId: "test-parent", runId: "non-fanout-run" });
 			assert.equal(nonFanout.exitCode, 0);
 			assert.deepEqual(JSON.parse(nonFanout.finalOutput ?? "{}"), {
 				PI_SUBAGENT_FANOUT_CHILD: "0",
@@ -2850,7 +2850,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		] });
 		const agents = makeAgentConfigs(["echo"]);
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "78f659a3",
 			index: 2,
 			intercomSessionName: "subagent-echo-78f659a3-3",
@@ -2871,7 +2871,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "Model incorrectly claimed success", missingTools: ["fixture_search"] });
 		const agents = [makeAgent("extension-worker", { tools: ["read", "fixture_search"], fallbackModels: ["mock/fallback-model"] })];
 
-		const result = await runSync(tempDir, agents, "extension-worker", "Use fixture search", { runId: "missing-extension-tool" });
+		const result = await runSync(tempDir, agents, "extension-worker", "Use fixture search", { parentSessionId: "test-parent", runId: "missing-extension-tool" });
 
 		assert.equal(result.exitCode, 1);
 		assert.match(result.error ?? "", /requested unavailable child tools: fixture_search/);
@@ -2887,7 +2887,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			extensions: ["./allowed-ext.ts"],
 		})];
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "tool-extension-allowlist",
 		});
 
@@ -2906,7 +2906,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			subagentOnlyExtensions: ["./child-only-tool.ts"],
 		})];
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "subagent-only-extension",
 		});
 
@@ -2926,7 +2926,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			const agents = makeAgentConfigs(["echo"]);
 
 			const start = Date.now();
-			const result = await runSync(tempDir, agents, "echo", "Task", { runId: "watchdog-child-run" });
+			const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent", runId: "watchdog-child-run" });
 			const elapsed = Date.now() - start;
 
 			assert.ok(elapsed < 5000, `unconfigured watchdog status should not delay final drain, took ${elapsed}ms`);
@@ -2949,7 +2949,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			const agents = makeAgentConfigs(["echo"]);
 
 			const start = Date.now();
-			const result = await runSync(tempDir, agents, "echo", "Task", { runId: "watchdog-child-run" });
+			const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent", runId: "watchdog-child-run" });
 			const elapsed = Date.now() - start;
 
 			assert.ok(elapsed >= 1200, `watchdog settlement should delay final drain, took ${elapsed}ms`);
@@ -2970,7 +2970,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			const agents = makeAgentConfigs(["echo"]);
 
 			const start = Date.now();
-			const result = await runSync(tempDir, agents, "echo", "Task", { runId: "watchdog-child-run" });
+			const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent", runId: "watchdog-child-run" });
 			const elapsed = Date.now() - start;
 
 			assert.ok(elapsed < 5000, `watchdog tail fallback should not hang, took ${elapsed}ms`);
@@ -2991,7 +2991,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const agents = makeAgentConfigs(["echo"]);
 
 		const start = Date.now();
-		const result = await runSync(tempDir, agents, "echo", "Task", {});
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent" });
 		const elapsed = Date.now() - start;
 
 		assert.ok(elapsed < 4000, `should clean up shortly after terminal stop, took ${elapsed}ms`);
@@ -3018,7 +3018,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const agents = makeAgentConfigs(["echo"]);
 
 		const start = Date.now();
-		const result = await runSync(tempDir, agents, "echo", "Task", {});
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent" });
 		const elapsed = Date.now() - start;
 
 		assert.ok(elapsed < 4000, `should clean up shortly after empty terminal stop, took ${elapsed}ms`);
@@ -3046,7 +3046,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		});
 		const agents = makeAgentConfigs(["echo"]);
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {});
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent" });
 
 		assert.equal(result.exitCode, 1);
 		assert.equal(result.error, "provider exploded");
@@ -3061,7 +3061,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const start = Date.now();
 		setTimeout(() => controller.abort(), 200);
 
-		const result = await runSync(tempDir, agents, "slow", "Slow task", {
+		const result = await runSync(tempDir, agents, "slow", "Slow task", { parentSessionId: "test-parent",
 			signal: controller.signal,
 		});
 		const elapsed = Date.now() - start;
@@ -3077,7 +3077,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const agents = makeAgentConfigs(["slow"]);
 
 		const start = Date.now();
-		const result = await runSync(tempDir, agents, "slow", "Slow task", {
+		const result = await runSync(tempDir, agents, "slow", "Slow task", { parentSessionId: "test-parent",
 			timeoutMs: 150,
 		});
 		const elapsed = Date.now() - start;
@@ -3099,7 +3099,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		});
 		const agents = makeAgentConfigs(["worker"]);
 
-		const result = await runSync(tempDir, agents, "worker", "Use the final grace turn to wrap up.", {
+		const result = await runSync(tempDir, agents, "worker", "Use the final grace turn to wrap up.", { parentSessionId: "test-parent",
 			turnBudget: { maxTurns: 1, graceTurns: 1 },
 			runId: "foreground-turn-budget-soft",
 		});
@@ -3141,7 +3141,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			status?: string;
 		}> = [];
 
-		const result = await runSync(tempDir, agents, "worker", "Finish active tool work before enforcing the hard limit.", {
+		const result = await runSync(tempDir, agents, "worker", "Finish active tool work before enforcing the hard limit.", { parentSessionId: "test-parent",
 			turnBudget: { maxTurns: 1, graceTurns: 0 },
 			runId: "foreground-turn-budget-deferred",
 			onUpdate(update: { details?: { results?: Array<{ turnBudget?: { outcome?: string; terminationDeferredAtTurn?: number }; turnBudgetExceeded?: boolean; error?: string }>; progress?: Array<{ currentTool?: string; status?: string }> } }) {
@@ -3190,7 +3190,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ jsonl: [events.assistantMessage(report)], keepAliveAfterFinalMessageMs: 10000 });
 		const agents = makeAgentConfigs(["slow"]);
 
-		const result = await runSync(tempDir, agents, "slow", "Slow task", {
+		const result = await runSync(tempDir, agents, "slow", "Slow task", { parentSessionId: "test-parent",
 			timeoutMs: 150,
 			acceptance: {
 				level: "verified",
@@ -3219,7 +3219,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const start = Date.now();
 		setTimeout(() => controller.abort(), 200);
 
-		const result = await runSync(tempDir, agents, "slow", "Slow task", {
+		const result = await runSync(tempDir, agents, "slow", "Slow task", { parentSessionId: "test-parent",
 			runId: "interrupt-run",
 			interruptSignal: controller.signal,
 			onControlEvent: (event: { type?: string; to?: string }) => {
@@ -3242,7 +3242,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const controller = new AbortController();
 
 		setTimeout(() => controller.abort(), 100);
-		const result = await runSync(tempDir, agents, "slow", "Slow task", {
+		const result = await runSync(tempDir, agents, "slow", "Slow task", { parentSessionId: "test-parent",
 			interruptSignal: controller.signal,
 			timeoutMs: 500,
 		});
@@ -3263,7 +3263,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		let duplicateAccepted = true;
 		let recoveredResult: RunSyncResult | undefined;
 
-		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Keep working", {
+		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Keep working", { parentSessionId: "test-parent",
 			runId: "user-foreground-detach",
 			acceptance: false,
 			onDetachReady: (detach: (reason?: string) => boolean) => {
@@ -3295,12 +3295,12 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "authoritative answer" });
 		mockPi.onCall({ steps: [{ delay: 75, jsonl: [events.assistantMessage("authoritative answer")] }] });
 		const agents = makeAgentConfigs(["echo"]);
-		const attached = await runSync(tempDir, agents, "echo", "Equivalent task", {
+		const attached = await runSync(tempDir, agents, "echo", "Equivalent task", { parentSessionId: "test-parent",
 			runId: "attached-authoritative-result",
 			acceptance: false,
 		});
 		let terminal: RunSyncResult | undefined;
-		const receipt = await runSync(tempDir, agents, "echo", "Equivalent task", {
+		const receipt = await runSync(tempDir, agents, "echo", "Equivalent task", { parentSessionId: "test-parent",
 			runId: "detached-authoritative-result",
 			acceptance: false,
 			onDetachReady: (detach) => assert.equal(detach("user request"), true),
@@ -3372,7 +3372,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		let detach: ((reason?: string) => boolean) | undefined;
 		let detached = false;
 		let terminal: RunSyncResult | undefined;
-		const receipt = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Keep the receipt isolated", {
+		const receipt = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Keep the receipt isolated", { parentSessionId: "test-parent",
 			runId: "detached-deep-receipt-isolation",
 			agentContract: { version: 1 },
 			acceptance: {
@@ -3465,7 +3465,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		})];
 		let terminal: RunSyncResult | undefined;
 
-		const receipt = await runSync(tempDir, agents, "echo", "Task", {
+		const receipt = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "detached-fallback-loop",
 			acceptance: false,
 			onDetachReady: (detach) => assert.equal(detach("user request"), true),
@@ -3489,7 +3489,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ steps: [{ delay: 75, jsonl: [events.assistantMessage("answer before callback failure")] }] });
 		let terminal: RunSyncResult | undefined;
 		let callbackCount = 0;
-		const receipt = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", {
+		const receipt = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", { parentSessionId: "test-parent",
 			runId: "detached-completion-pipeline-throw",
 			acceptance: { level: "checked", criteria: ["result is checked"] },
 			agentContract: { version: 1 },
@@ -3543,7 +3543,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 
 	it("contains a synchronous onDetachReady throw and completes attached", async () => {
 		mockPi.onCall({ output: "completed while attached" });
-		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", {
+		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", { parentSessionId: "test-parent",
 			runId: "throwing-detach-ready-consumer",
 			acceptance: false,
 			onDetachReady: () => {
@@ -3563,7 +3563,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		] });
 		const artifactsDir = path.join(tempDir, "artifact-output-failure");
 		let sabotaged = false;
-		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", {
+		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", { parentSessionId: "test-parent",
 			runId: "artifact-output-result-field",
 			acceptance: false,
 			artifactsDir,
@@ -3584,7 +3584,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ steps: [{ delay: 100, jsonl: [events.assistantMessage("completed after metadata recovery")] }] });
 		const artifactsDir = path.join(tempDir, "receipt-metadata-failure");
 		let terminal: RunSyncResult | undefined;
-		const receipt = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", {
+		const receipt = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", { parentSessionId: "test-parent",
 			runId: "detach-receipt-metadata-failure",
 			acceptance: false,
 			artifactsDir,
@@ -3607,7 +3607,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 	it("contains a throwing detached-exit callback", async () => {
 		mockPi.onCall({ steps: [{ delay: 50, jsonl: [events.assistantMessage("done")] }] });
 		let callbackCount = 0;
-		const receipt = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", {
+		const receipt = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", { parentSessionId: "test-parent",
 			runId: "throwing-detached-exit-callback",
 			acceptance: false,
 			onDetachReady: (detach) => assert.equal(detach("user request"), true),
@@ -3625,7 +3625,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ steps: [{ delay: 10_000, jsonl: [events.assistantMessage("too late")] }] });
 		const interrupt = new AbortController();
 		let terminal: RunSyncResult | undefined;
-		const receipt = await runSync(tempDir, makeAgentConfigs(["slow"]), "slow", "Task", {
+		const receipt = await runSync(tempDir, makeAgentConfigs(["slow"]), "slow", "Task", { parentSessionId: "test-parent",
 			runId: "detached-interrupted-acceptance",
 			acceptance: { level: "checked", criteria: ["result is checked"] },
 			interruptSignal: interrupt.signal,
@@ -3650,7 +3650,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const origin = new AbortController();
 		const interrupt = new AbortController();
 		let terminal: RunSyncResult | undefined;
-		const receipt = await runSync(tempDir, makeAgentConfigs(["slow"]), "slow", "Keep working", {
+		const receipt = await runSync(tempDir, makeAgentConfigs(["slow"]), "slow", "Keep working", { parentSessionId: "test-parent",
 			runId: "detach-origin-abort-race",
 			acceptance: false,
 			signal: origin.signal,
@@ -3675,7 +3675,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ delay: 10_000 });
 		const origin = new AbortController();
 		let detachAccepted = true;
-		const result = await runSync(tempDir, makeAgentConfigs(["slow"]), "slow", "Abort first", {
+		const result = await runSync(tempDir, makeAgentConfigs(["slow"]), "slow", "Abort first", { parentSessionId: "test-parent",
 			runId: "origin-abort-wins-detach",
 			signal: origin.signal,
 			onDetachReady: (detach) => {
@@ -3692,7 +3692,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		let recoveredResult: RunSyncResult | undefined;
 		const startedAt = Date.now();
 
-		const result = await runSync(tempDir, makeAgentConfigs(["slow"]), "slow", "Do not run forever", {
+		const result = await runSync(tempDir, makeAgentConfigs(["slow"]), "slow", "Do not run forever", { parentSessionId: "test-parent",
 			runId: "user-detach-timeout",
 			timeoutMs: 150,
 			acceptance: false,
@@ -3733,7 +3733,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			// `intercomStarted=true`. Using a fixed delay here races the mock's
 			// cold spawn and flakes under load.
 			let detachEmitted = false;
-			const runPromise = runSync(tempDir, agents, "echo", "Task", {
+			const runPromise = runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 				runId: `${toolName}-detach`,
 				allowIntercomDetach: true,
 				intercomEvents: eventBus,
@@ -3765,7 +3765,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ steps: [{ jsonl: [events.toolStart("contact_supervisor", { reason: "need_decision", message: "Need decision" })] }, { delay: 10_000 }] });
 		const origin = new AbortController();
 		let requested = false;
-		const abortedResult = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", {
+		const abortedResult = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", { parentSessionId: "test-parent",
 			runId: "intercom-abort-race-loss",
 			allowIntercomDetach: true,
 			intercomEvents: abortBus,
@@ -3785,7 +3785,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		repeatedBus.on(INTERCOM_DETACH_RESPONSE_EVENT, (payload) => repeatedResponses.push((payload as { accepted: boolean }).accepted));
 		mockPi.onCall({ steps: [{ jsonl: [events.toolStart("contact_supervisor", { reason: "need_decision", message: "Need decision" })] }, { delay: 50, jsonl: [events.assistantMessage("done")] }] });
 		let repeated = false;
-		const repeatedReceipt = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", {
+		const repeatedReceipt = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", { parentSessionId: "test-parent",
 			runId: "intercom-repeated-detach",
 			allowIntercomDetach: true,
 			intercomEvents: repeatedBus,
@@ -3812,6 +3812,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const fallbackTerminal = new Promise<RunSyncResult>((resolve) => { resolveFallbackTerminal = resolve; });
 		let fallbackRequested = false;
 		const receipt = await runSync(tempDir, [makeAgent("echo", { model: "openai/gpt-5-mini", fallbackModels: ["anthropic/claude-sonnet-4"] })], "echo", "Task", {
+			parentSessionId: "test-parent",
 			runId: "intercom-no-fallback",
 			acceptance: false,
 			allowIntercomDetach: true,
@@ -3834,7 +3835,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		let resolveTimeoutTerminal!: (result: RunSyncResult) => void;
 		const timeoutTerminal = new Promise<RunSyncResult>((resolve) => { resolveTimeoutTerminal = resolve; });
 		let timeoutRequested = false;
-		const timeoutReceipt = await runSync(tempDir, makeAgentConfigs(["slow"]), "slow", "Task", {
+		const timeoutReceipt = await runSync(tempDir, makeAgentConfigs(["slow"]), "slow", "Task", { parentSessionId: "test-parent",
 			runId: "intercom-timeout-enforced",
 			acceptance: false,
 			timeoutMs: 125,
@@ -3867,7 +3868,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		] });
 		let detachEmitted = false;
 		let recoveredResult: RunSyncResult | undefined;
-		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Detach then emit malformed output", {
+		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Detach then emit malformed output", { parentSessionId: "test-parent",
 			runId: "detached-protocol-limit",
 			allowIntercomDetach: true,
 			intercomEvents: eventBus,
@@ -3899,7 +3900,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const outputPath = path.join(tempDir, "detached-output.md");
 		let detachEmitted = false;
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "detached-file-only-output",
 			allowIntercomDetach: true,
 			intercomEvents: eventBus,
@@ -3934,7 +3935,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		let detachEmitted = false;
 		let recoveredResult: RunSyncResult | undefined;
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "detached-file-only-post-exit-output",
 			allowIntercomDetach: true,
 			intercomEvents: eventBus,
@@ -3980,7 +3981,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const controller = new AbortController();
 		let aborted = false;
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 			runId: "contact-supervisor-abort-without-handoff",
 			allowIntercomDetach: true,
 			signal: controller.signal,
@@ -4013,7 +4014,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			});
 			const agents = makeAgentConfigs(["echo"]);
 
-			const result = await runSync(tempDir, agents, "echo", "Task", {
+			const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 				runId: `${testCase.toolName}-blocking-detach`,
 				allowIntercomDetach: true,
 			});
@@ -4039,7 +4040,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			});
 			const agents = makeAgentConfigs(["echo"]);
 
-			const result = await runSync(tempDir, agents, "echo", "Task", {
+			const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent",
 				runId: `${testCase.toolName}-nonblocking`,
 				allowIntercomDetach: true,
 			});
@@ -4062,7 +4063,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ delay: 500, output: "quiet child done" });
 		const agents = makeAgentConfigs(["quiet", "intercom"]);
 
-		const quietRun = runSync(tempDir, agents, "quiet", "Quiet task", {
+		const quietRun = runSync(tempDir, agents, "quiet", "Quiet task", { parentSessionId: "test-parent",
 			runId: "quiet-listener",
 			allowIntercomDetach: true,
 			intercomEvents: eventBus,
@@ -4079,7 +4080,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		});
 
 		let detachEmitted = false;
-		const intercomRun = runSync(tempDir, agents, "intercom", "Intercom task", {
+		const intercomRun = runSync(tempDir, agents, "intercom", "Intercom task", { parentSessionId: "test-parent",
 			runId: "active-intercom",
 			allowIntercomDetach: true,
 			intercomEvents: eventBus,
@@ -4106,7 +4107,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({ output: "Success", stderr: "Warning: something", exitCode: 0 });
 		const agents = makeAgentConfigs(["echo"]);
 
-		const result = await runSync(tempDir, agents, "echo", "Task", {});
+		const result = await runSync(tempDir, agents, "echo", "Task", { parentSessionId: "test-parent" });
 
 		assert.equal(result.exitCode, 0);
 	});

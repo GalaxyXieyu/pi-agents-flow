@@ -6,6 +6,7 @@ import type { MockPi } from "../support/helpers.ts";
 import { createEventBus, createMockPi, createTempDir, events, removeTempDir, tryImport } from "../support/helpers.ts";
 import { discoverAgents } from "../../src/agents/agents.ts";
 import { DEFAULT_FORK_PREAMBLE, INTERCOM_DETACH_REQUEST_EVENT, SUBAGENT_ASYNC_STARTED_EVENT } from "../../src/shared/types.ts";
+import { createInteractiveExecutionClarifier } from "../../src/runs/foreground/chain-clarify.ts";
 
 interface ExecutorModule {
 	createSubagentExecutor?: (...args: unknown[]) => {
@@ -148,6 +149,7 @@ describe("fork context execution wiring", { skip: !available ? "subagent executo
 			getSubagentSessionRoot: () => tempDir,
 			expandTilde: (p: string) => p,
 			discoverAgents: discoverAgentsImpl,
+			clarifier: createInteractiveExecutionClarifier(),
 		}), { eventsApi });
 	}
 
@@ -1683,7 +1685,17 @@ describe("fork context execution wiring", { skip: !available ? "subagent executo
 			},
 			new AbortController().signal,
 			undefined,
-			makeCtx(makeSessionManagerRecorder().manager),
+			{
+				...makeCtx(makeSessionManagerRecorder().manager),
+				hasUI: true,
+				ui: {
+					custom: async () => ({
+						confirmed: true,
+						templates: ["task one", "task two"],
+						behaviorOverrides: [undefined, undefined],
+					}),
+				},
+			},
 		);
 
 		assert.equal(result.isError, undefined);
