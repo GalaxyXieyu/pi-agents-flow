@@ -25,7 +25,7 @@ try {
 	assert.equal(Array.isArray(packed), true);
 	const entry = packed[0];
 	assert.equal(entry?.name, "pi-agents-flow");
-	assert.equal(entry?.version, "0.1.0-alpha.1");
+	assert.equal(entry?.version, "0.1.0-alpha.2");
 	const files = new Set((entry?.files ?? []).map((file) => file.path));
 	for (const required of [
 		"index.ts",
