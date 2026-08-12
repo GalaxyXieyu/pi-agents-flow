@@ -312,12 +312,19 @@ function taskActivities(run: WorkflowRun, workUnits: WorkUnitActivity[]): TaskAc
 		items.push(unit);
 		byTask.set(unit.taskId, items);
 	}
+	// Terminal-failure states sink to the bottom of the task tree so active and
+	// successful work stays visible at the top. Order is preserved within each group.
+	const STATE_SINK: Record<string, number> = { failed: 1, cancelled: 1, superseded: 1 };
+	const byStateThenOrder = (left: WorkUnitActivity, right: WorkUnitActivity): number =>
+		(STATE_SINK[left.state] ?? 0) - (STATE_SINK[right.state] ?? 0)
+		|| left.order - right.order
+		|| left.id.localeCompare(right.id);
 	const built = new Map<string, TaskActivity>();
 	const build = (taskId: string): TaskActivity => {
 		const cached = built.get(taskId);
 		if (cached) return cached;
 		const plan = run.tasks[taskId]!;
-		const ownUnits = [...(byTask.get(taskId) ?? [])].sort((left, right) => left.order - right.order || left.id.localeCompare(right.id));
+		const ownUnits = [...(byTask.get(taskId) ?? [])].sort(byStateThenOrder);
 		const children = Object.values(run.tasks)
 			.filter((task) => task.parentId === taskId)
 			.sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))

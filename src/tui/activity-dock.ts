@@ -36,10 +36,15 @@ function badge(state: ActivityState, theme: Theme, frame: number): string {
 	return statusBadge(state, theme, 1, state === "running" ? frame : undefined);
 }
 
+const TERMINAL_SINK = new Set<ActivityState>(["failed", "cancelled", "superseded"]);
+
 function taskRows(task: TaskActivity, depth: number, rows: ActivitySelection[]): void {
 	rows.push({ kind: "task", key: `task:${task.id}`, task });
 	if (TERMINAL.has(task.state)) return;
-	for (const child of task.children) taskRows(child, depth + 1, rows);
+	// Active children first, terminal-failure children sink to the bottom.
+	const active = task.children.filter((child) => !TERMINAL_SINK.has(child.state));
+	const sunk = task.children.filter((child) => TERMINAL_SINK.has(child.state));
+	for (const child of [...active, ...sunk]) taskRows(child, depth + 1, rows);
 	for (const workUnit of task.workUnits) rows.push({ kind: "work-unit", key: `work-unit:${workUnit.id}`, task, workUnit });
 }
 

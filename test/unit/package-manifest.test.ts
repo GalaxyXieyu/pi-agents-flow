@@ -62,7 +62,7 @@ test("published extension APIs use supported package entrypoints", async () => {
 		"./preflight": "./src/api/preflight.ts",
 	});
 	assert.equal(packageJson.name, "pi-agents-flow");
-	assert.equal(packageJson.version, "0.1.0-alpha.1");
+	assert.equal(packageJson.version, "0.1.0-alpha.2");
 	assert.equal(packageJson.engines?.node, ">=22.19.0");
 	const backgroundWork = await import("pi-agents-flow/background-work");
 	assert.equal(backgroundWork.BACKGROUND_WORK_PROTOCOL_VERSION, 1);
