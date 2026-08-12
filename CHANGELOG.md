@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Headless execution
+- Added `src/headless/` module with decision contract, audit trail, and scripted decision provider for non-interactive workflow and subagent execution.
+- Added `src/activity/fleet-projection` for unified activity view across workflow, chain, and parallel runs.
+- Added `src/watchdog/status` and TUI workflow interaction adapter for structured child-supervisor communication.
+- Refactored `src/extension/index` to a slim entrypoint with extracted core module.
+- Added executor clarify, control, and chain execution improvements.
+- Added integration tests for headless workflow and subagent execution, plus security attack PoC scripts.
+
+### Documentation
+- Pinned kind-to-profile mapping in dynamic-workflow skill guidance to prevent `apply_plan` validation errors on custom roles.
+
 ### Runtime layout
 - Project runtime data now writes under `<cwd>/.pi/agents-flow/` (workflows, compositions, artifacts, chain-runs). Legacy `<cwd>/.pi-agents-flow/` is auto-migrated on extension load / write paths; split trees merge missing entries without overwriting conflicts, partial-copy failures roll back, and persisted legacy absolute paths are remapped to the preferred runtime.
 
