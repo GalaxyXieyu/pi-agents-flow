@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { buildActivitySnapshot } from "../../src/activity/projection.ts";
-import { activitySelections, createActivityDockController, renderActivityDock, ACTIVITY_DOCK_WIDGET_KEY } from "../../src/tui/activity-dock.ts";
+import { activitySelections, createActivityDockController, renderActivityDock, visibleActivitySelections, ACTIVITY_DOCK_WIDGET_KEY } from "../../src/tui/activity-dock.ts";
 import type { SubagentState } from "../../src/shared/types.ts";
 import type { WorkflowNode, WorkflowRun } from "../../src/workflows/types.ts";
 
@@ -104,6 +104,19 @@ function liveState() {
 	return s;
 }
 
+function failedReviewerSnapshot() {
+	const snapshot = buildActivitySnapshot(liveState(), run());
+	return {
+		...snapshot,
+		executions: snapshot.executions.map((execution) => execution.agent === "reviewer"
+			? { ...execution, state: "failed" as const, error: "structured output failed" }
+			: execution),
+		independent: snapshot.independent.map((execution) => execution.agent === "reviewer"
+			? { ...execution, state: "failed" as const, error: "structured output failed" }
+			: execution),
+	};
+}
+
 describe("activity dock projection", () => {
 	it("groups work units under tasks and keeps independent agents separate", () => {
 		const snapshot = buildActivitySnapshot(liveState(), run());
@@ -140,6 +153,19 @@ describe("activity dock projection", () => {
 		assert.doesNotMatch(lines, /Duration unavailable/);
 		assert.doesNotMatch(lines, /deepseek-v4-flash/);
 		assert.doesNotMatch(lines, /thinking/);
+	});
+
+	it("hides failed Agents by default and keeps the f toggle in the header", () => {
+		const snapshot = failedReviewerSnapshot();
+		const hidden = renderActivityDock(snapshot, 140, theme as never, { active: true, perspective: "agents" }).join("\n");
+		assert.match(hidden, /\[Agents\]/);
+		assert.match(hidden, /f 显示失败 \(1\)/);
+		assert.doesNotMatch(hidden, /✕ reviewer/);
+		assert.doesNotMatch(hidden, /structured output failed/);
+		const shown = renderActivityDock(snapshot, 140, theme as never, { active: true, perspective: "agents", showFailedAgents: true }).join("\n");
+		assert.match(shown, /f 隐藏失败 \(1\)/);
+		assert.match(shown, /✕ reviewer/);
+		assert.match(shown, /structured output failed/);
 	});
 
 	it("uses the agreed status symbols and no status words", () => {
@@ -265,6 +291,31 @@ describe("activity dock controller", () => {
 		}
 	});
 
+	it("toggles hidden failed Agents with f in the Agents perspective", () => {
+		const ui = fakeUi();
+		const snapshot = failedReviewerSnapshot();
+		const controller = createActivityDockController({
+			getSnapshot: () => snapshot,
+			openSelection: () => {},
+		});
+		try {
+			controller.setContext(ui.ctx);
+			renderDock(ui, 140);
+			const handler = ui.handler()!;
+			handler("\x1b[B");
+			handler("v");
+			const hidden = renderDock(ui, 140).join("\n");
+			assert.match(hidden, /f 显示失败 \(1\)/);
+			assert.doesNotMatch(hidden, /✕ reviewer/);
+			assert.deepEqual(handler("f"), { consume: true });
+			const shown = renderDock(ui, 140).join("\n");
+			assert.match(shown, /f 隐藏失败 \(1\)/);
+			assert.match(shown, /✕ reviewer/);
+		} finally {
+			controller.dispose();
+		}
+	});
+
 	it("follows a newly spawned top Agent while the user is following the head", async () => {
 		const ui = fakeUi();
 		const s = liveState();
@@ -377,6 +428,15 @@ describe("activity selections", () => {
 		const rows = activitySelections(snapshot, "agents");
 		assert.equal(rows.length, 5);
 		assert.ok(rows.every((row) => row.kind !== "execution" || row.execution.workUnitId !== "doc"));
+	});
+
+	it("hides failed Agents from the visible Agents roster by default", () => {
+		const snapshot = failedReviewerSnapshot();
+		assert.equal(activitySelections(snapshot, "agents").length, 5);
+		const visible = visibleActivitySelections(snapshot, "agents");
+		assert.equal(visible.length, 4);
+		assert.ok(visible.every((row) => row.kind !== "execution" || row.execution.agent !== "reviewer"));
+		assert.equal(visibleActivitySelections(snapshot, "agents", true).length, 5);
 	});
 
 	it("orders equal-state Agents newest first", () => {

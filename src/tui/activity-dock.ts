@@ -26,6 +26,7 @@ export interface ActivityDockState {
 	selectedKey?: string;
 	expandedKey?: string;
 	spinnerFrame?: number;
+	showFailedAgents?: boolean;
 }
 
 function badge(state: ActivityState, theme: Theme, frame: number): string {
@@ -37,6 +38,24 @@ function badge(state: ActivityState, theme: Theme, frame: number): string {
 }
 
 const TERMINAL_SINK = new Set<ActivityState>(["failed", "cancelled", "superseded"]);
+
+export function isFailedAgentExecution(execution: AgentExecutionActivity): boolean {
+	return TERMINAL_SINK.has(execution.state);
+}
+
+export function visibleActivitySelections(
+	snapshot: ActivitySnapshot,
+	perspective: ActivityPerspective,
+	showFailedAgents = false,
+): ActivitySelection[] {
+	const rows = activitySelections(snapshot, perspective);
+	if (perspective !== "agents" || showFailedAgents) return rows;
+	return rows.filter((row) => row.kind !== "execution" || !isFailedAgentExecution(row.execution));
+}
+
+function failedAgentCount(snapshot: ActivitySnapshot): number {
+	return snapshot.executions.filter(isFailedAgentExecution).length;
+}
 
 function taskRows(task: TaskActivity, depth: number, rows: ActivitySelection[]): void {
 	rows.push({ kind: "task", key: `task:${task.id}`, task });
@@ -182,15 +201,27 @@ export function renderActivityDock(snapshot: ActivitySnapshot, width: number, th
 	// over; keeping a stale "↓/Tab expand" row beneath the editor is noise.
 	if (snapshot.workflow && isWorkflowTerminal(snapshot.workflow.status)) return [];
 	const perspective = state.perspective ?? (snapshot.workflow ? "work" : "agents");
-	const rows = activitySelections(snapshot, perspective);
-	if (rows.length === 0) return [];
+	const showFailedAgents = Boolean(state.showFailedAgents);
+	const failedCount = failedAgentCount(snapshot);
+	const rows = visibleActivitySelections(snapshot, perspective, showFailedAgents);
+	if (rows.length === 0 && (perspective !== "agents" || failedCount === 0)) return [];
 	if (!state.active) return [dockSummaryLine(snapshot, theme, width, state.spinnerFrame ?? 0)];
 	const tasksLabel = snapshot.language === "zh" ? "任务" : "Tasks";
 	const header = perspective === "work"
 		? `${theme.bold(`[${tasksLabel}]`)}  Agents`
 		: `${tasksLabel}  ${theme.bold("[Agents]")}`;
-	const hint = state.active ? localize(snapshot.language, "v view · ↑↓/jk · x · Enter · Esc", "v 视图 · ↑↓/jk · x · 回车 · Esc") : localize(snapshot.language, "↓ activity", "↓ 活动");
+	const failedHint = perspective === "agents" && failedCount
+		? `f ${showFailedAgents ? localize(snapshot.language, "hide failed", "隐藏失败") : localize(snapshot.language, "show failed", "显示失败")} (${failedCount})`
+		: undefined;
+	const hint = [
+		localize(snapshot.language, "v view · ↑↓/jk · x · Enter · Esc", "v 视图 · ↑↓/jk · x · 回车 · Esc"),
+		failedHint,
+	].filter(Boolean).join(" · ");
 	const lines = [rightAlign(header, theme.fg("dim", hint), width)];
+	if (rows.length === 0) {
+		lines.push(theme.fg("dim", localize(snapshot.language, `${failedCount} failed hidden`, `${failedCount} 个失败已隐藏`)));
+		return lines;
+	}
 	const selectedIndex = Math.max(0, rows.findIndex((row) => row.key === state.selectedKey));
 	const rowCount = width >= 110 ? 6 : 4;
 	const start = Math.max(0, Math.min(selectedIndex, Math.max(0, rows.length - rowCount)));
@@ -260,8 +291,11 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 	let expandedKey: string | undefined;
 	let spinnerFrame = 0;
 	let inspectorOpen = false;
+	let showFailedAgents = false;
+	let hiddenFailedSelectionKey: string | undefined;
 
-	const selections = () => snapshot ? activitySelections(snapshot, perspective ?? (snapshot.workflow ? "work" : "agents")) : [];
+	const currentPerspective = () => perspective ?? (snapshot?.workflow ? "work" : "agents");
+	const selections = () => snapshot ? visibleActivitySelections(snapshot, currentPerspective(), showFailedAgents) : [];
 	const editorHasFocus = (): boolean => {
 		const focused = tui?.focusedComponent;
 		if (!focused || typeof focused !== "object") return false;
@@ -274,7 +308,7 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 		if (!rows.some((row) => row.key === selectedKey)) selectedKey = rows[0]?.key;
 		if (!rows.some((row) => row.key === expandedKey)) expandedKey = undefined;
 	};
-	const renderState = (): ActivityDockState => ({ active, perspective, selectedKey, expandedKey, spinnerFrame });
+	const renderState = (): ActivityDockState => ({ active, perspective, selectedKey, expandedKey, spinnerFrame, showFailedAgents });
 	const hide = () => {
 		if (!registered || !ui) return;
 		ui.setWidget(ACTIVITY_DOCK_WIDGET_KEY, undefined);
@@ -294,10 +328,26 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 		const rows = selections();
 		const index = Math.max(0, rows.findIndex((row) => row.key === selectedKey));
 		if (data === "v") {
-			perspective = (perspective ?? (snapshot.workflow ? "work" : "agents")) === "work" ? "agents" : "work";
+			perspective = currentPerspective() === "work" ? "agents" : "work";
 			selectedKey = undefined;
 			expandedKey = undefined;
 			clampSelection();
+			requestRender();
+			return { consume: true };
+		}
+		if (data === "f" && currentPerspective() === "agents") {
+			if (showFailedAgents) {
+				const selected = activitySelections(snapshot, "agents").find((row) => row.key === selectedKey);
+				hiddenFailedSelectionKey = selected?.kind === "execution" && isFailedAgentExecution(selected.execution) ? selected.key : undefined;
+				showFailedAgents = false;
+				clampSelection();
+			} else {
+				showFailedAgents = true;
+				const rows = selections();
+				if (hiddenFailedSelectionKey && rows.some((row) => row.key === hiddenFailedSelectionKey)) selectedKey = hiddenFailedSelectionKey;
+				hiddenFailedSelectionKey = undefined;
+				clampSelection();
+			}
 			requestRender();
 			return { consume: true };
 		}
@@ -322,7 +372,7 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 		if (matchesKey(data, Key.enter)) {
 			const selected = rows[index];
 			if (!selected) return { consume: true };
-			const selectedPerspective = perspective ?? (snapshot.workflow ? "work" : "agents");
+			const selectedPerspective = currentPerspective();
 			inspectorOpen = true;
 			hide();
 			void Promise.resolve(options.openSelection(selected, selectedPerspective)).catch((error) => ctx?.ui.notify(error instanceof Error ? error.message : String(error), "error")).finally(() => {
@@ -374,13 +424,13 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 			if (!ctx || !ui) return;
 			try {
 				const previousSnapshot = snapshot;
-				const previousAgentRows = previousSnapshot ? activitySelections(previousSnapshot, "agents") : [];
+				const previousAgentRows = previousSnapshot ? visibleActivitySelections(previousSnapshot, "agents", showFailedAgents) : [];
 				const previousAgentHead = previousAgentRows[0]?.key;
 				const wasFollowingAgentHead = !active || selectedKey === undefined || selectedKey === previousAgentHead;
 				const previousAgentKeys = new Set(previousAgentRows.map((row) => row.key));
 				const nextSnapshot = options.getSnapshot();
 				const nextPerspective = perspective ?? (nextSnapshot.workflow ? "work" : "agents");
-				const nextAgentRows = activitySelections(nextSnapshot, "agents");
+				const nextAgentRows = visibleActivitySelections(nextSnapshot, "agents", showFailedAgents);
 				const hasNewAgent = previousSnapshot !== undefined && nextAgentRows.some((row) => !previousAgentKeys.has(row.key));
 				snapshot = nextSnapshot;
 				if (!perspective) perspective = nextPerspective;
@@ -401,7 +451,9 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 					expandedKey = undefined;
 				}
 				clampSelection();
-				if (inspectorOpen || selections().length === 0) { hide(); return; }
+				const visibleRows = selections();
+				const keepEmptyFailedRoster = nextPerspective === "agents" && failedAgentCount(nextSnapshot) > 0;
+				if (inspectorOpen || (visibleRows.length === 0 && !keepEmptyFailedRoster)) { hide(); return; }
 				if (!registered) {
 					ui.setWidget(ACTIVITY_DOCK_WIDGET_KEY, (nextTui, theme) => {
 						tui = nextTui;

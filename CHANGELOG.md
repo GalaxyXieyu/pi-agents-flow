@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Activity Dock
+- Hid failed, cancelled, and superseded Agents in the Activity Dock Agents roster by default, matching the Activity Board. Press `f` to show or hide them.
+
 ### Headless execution
 - Added `src/headless/` module with decision contract, audit trail, and scripted decision provider for non-interactive workflow and subagent execution.
 - Added `src/activity/fleet-projection` for unified activity view across workflow, chain, and parallel runs.

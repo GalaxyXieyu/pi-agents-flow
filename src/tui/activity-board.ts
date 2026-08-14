@@ -7,7 +7,7 @@ import type { ActivityArtifact, ActivityPerspective, ActivitySelection, Activity
 import { formatDuration, formatTokens, shortenPath, sumDefinedNumbers } from "../shared/formatters.ts";
 import type { SubagentState } from "../shared/types.ts";
 import { DEFAULT_WORKFLOW_MAX_NODE_ATTEMPTS, workflowNodeAttemptsExhausted } from "../workflows/retry-policy.ts";
-import { activitySelections } from "./activity-dock.ts";
+import { activitySelections, isFailedAgentExecution, visibleActivitySelections } from "./activity-dock.ts";
 import { FleetAvatarRenderer } from "./fleet-avatar.ts";
 import { fleetIdentity, type FleetIdentity } from "./fleet-identity.ts";
 import { fleetItemIdentityKey, openSubagentFleet } from "./fleet.ts";
@@ -51,8 +51,8 @@ function allAgentSelections(snapshot: ActivitySnapshot): Extract<ActivitySelecti
 	return activitySelections(snapshot, "agents").filter((selection): selection is Extract<ActivitySelection, { kind: "execution" }> => selection.kind === "execution");
 }
 
-function isFailedExecution(execution: AgentExecutionActivity): boolean {
-	return execution.state === "failed" || execution.state === "cancelled" || execution.state === "superseded";
+function visibleAgentSelections(snapshot: ActivitySnapshot, showFailedAgents: boolean): Extract<ActivitySelection, { kind: "execution" }>[] {
+	return visibleActivitySelections(snapshot, "agents", showFailedAgents).filter((selection): selection is Extract<ActivitySelection, { kind: "execution" }> => selection.kind === "execution");
 }
 
 function usageSummary(usage: ActivityUsage | undefined, language: ActivitySnapshot["language"]): string {
@@ -375,7 +375,7 @@ export class ActivityBoardComponent implements Component {
 		this.selectedKey = options.initialKey;
 		if (options.initialKey) {
 			const initial = allAgentSelections(getSnapshot()).find((selection) => selection.key === options.initialKey);
-			this.showFailedAgents = Boolean(initial && isFailedExecution(initial.execution));
+			this.showFailedAgents = Boolean(initial && isFailedAgentExecution(initial.execution));
 		}
 		this.openInspector = options.openInspector ?? ((initialKey, language) => openSubagentFleet(this.ctx, this.state, { initialKey, language }));
 		this.avatarRenderer = new FleetAvatarRenderer(theme);
@@ -383,10 +383,7 @@ export class ActivityBoardComponent implements Component {
 	}
 
 	private selections(snapshot = this.getSnapshot()): ActivitySelection[] {
-		if (this.perspective === "agents") {
-			const agents = allAgentSelections(snapshot);
-			return this.showFailedAgents ? agents : agents.filter((selection) => !isFailedExecution(selection.execution));
-		}
+		if (this.perspective === "agents") return visibleAgentSelections(snapshot, this.showFailedAgents);
 		const rows: ActivitySelection[] = [];
 		taskRows(snapshot.workflow?.tasks ?? [], this.collapsedTasks, rows);
 		return rows;
@@ -445,7 +442,7 @@ export class ActivityBoardComponent implements Component {
 		if (this.perspective === "agents" && data === "f" && this.focus === "roster") {
 			if (this.showFailedAgents) {
 				const selected = allAgentSelections(this.getSnapshot()).find((selection) => selection.key === this.selectedKey);
-				this.hiddenFailedSelectionKey = selected && isFailedExecution(selected.execution) ? selected.key : undefined;
+				this.hiddenFailedSelectionKey = selected && isFailedAgentExecution(selected.execution) ? selected.key : undefined;
 				this.showFailedAgents = false;
 				this.clampSelection();
 			} else {
@@ -501,7 +498,7 @@ export class ActivityBoardComponent implements Component {
 		const snapshot = this.getSnapshot();
 		const selections = this.selections(snapshot).filter((selection): selection is Extract<ActivitySelection, { kind: "execution" }> => selection.kind === "execution");
 		const allAgents = allAgentSelections(snapshot);
-		const failedCount = allAgents.filter((selection) => isFailedExecution(selection.execution)).length;
+		const failedCount = allAgents.filter((selection) => isFailedAgentExecution(selection.execution)).length;
 		const totalStats = snapshotExecutionStats(snapshot);
 		const selected = this.selected(selections);
 		const selectedExecution = selectionExecution(selected);
