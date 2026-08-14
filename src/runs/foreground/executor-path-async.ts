@@ -313,7 +313,7 @@ export function runAsyncPath(data: ExecutionContextData, deps: ExecutorDeps): Ag
 		const skillOverrides = params.tasks.map((task) => normalizeSkillInput(task.skill));
 		const parallelTasks = params.tasks.map((task, index) => ({
 			agent: task.agent,
-			task: shouldForkAgent(contextPolicy, task.agent) ? wrapForkTask(task.task) : task.task,
+			task: shouldForkAgent(contextPolicy, task.agent) ? wrapForkTask(task.task, contextPolicy.forkPreambleForAgent(task.agent)) : task.task,
 			cwd: task.cwd,
 			...(task.model !== undefined ? { model: task.model } : {}),
 			...(skillOverrides[index] !== undefined ? { skill: skillOverrides[index] } : {}),
@@ -428,7 +428,7 @@ export function runAsyncPath(data: ExecutionContextData, deps: ExecutorDeps): Ag
 		const modelOverride = resolveEffectiveSubagentModel(params.model as string | undefined, a.model, parentModel, availableModels, currentProvider, { scope: data.modelScope });
 		return executeAsyncSingle(id, {
 			agent: params.agent!,
-			task: shouldForkAgent(contextPolicy, params.agent!) ? wrapForkTask(params.task ?? "") : (params.task ?? ""),
+			task: shouldForkAgent(contextPolicy, params.agent!) ? wrapForkTask(params.task ?? "", contextPolicy.forkPreambleForAgent(params.agent!)) : (params.task ?? ""),
 			goal: params.task ?? "",
 			agentConfig: a,
 			ctx: asyncCtx,

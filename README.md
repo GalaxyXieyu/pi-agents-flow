@@ -1006,6 +1006,7 @@ Use these fields when an agent should see more:
 | `inheritProjectContext: true` | Keep inherited project instructions from files like `AGENTS.md` and `CLAUDE.md`. |
 | `inheritSkills: true` | Let the child see Pi’s discovered skills catalog. |
 | `defaultContext: fork` | Use forked session context when a launch omits `context`; explicit `context: "fresh"` still wins. |
+| `forkPreamble: <text>` | Override the fork preamble injected before the task for this agent; omit to use the shared default that tells forked children the inherited thread is reference-only. |
 
 Builtin agents opt into project instruction inheritance by default so they follow repo-specific rules out of the box. `delegate` also uses append mode because its job is orchestration inside the parent workflow.
 
@@ -1076,6 +1077,7 @@ Important fields:
 | `inheritProjectContext` | Keeps or strips inherited project instruction blocks. |
 | `inheritSkills` | Keeps or strips Pi’s discovered skills catalog. |
 | `defaultContext` | Optional `fresh` or `fork` launch context default for this agent. |
+| `forkPreamble` | Optional per-agent fork preamble injected before the task when the child runs with forked context. Replaces the shared `DEFAULT_FORK_PREAMBLE` for this agent. |
 | `skills` | Selects specific skills for the child, regardless of `inheritSkills`. |
 | `skillPath` | Invocation-private skill files or discovery directories. Relative paths resolve from the agent definition file. Local matches take precedence, while unresolved or unreadable matches fall back to normal skill discovery. This field discovers candidates only; `skills` still selects what the child receives. |
 | `output` | Default single-agent output file. |

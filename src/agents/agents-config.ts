@@ -1209,6 +1209,10 @@ export function loadAgentsFromDir(dir: string, source: AgentSource): AgentConfig
 			: frontmatter.defaultContext === "fresh"
 				? "fresh" as const
 				: undefined;
+		let forkPreamble: string | undefined;
+		if (frontmatter.forkPreamble !== undefined && frontmatter.forkPreamble.trim()) {
+			forkPreamble = frontmatter.forkPreamble;
+		}
 		let defaultAsync: boolean | undefined;
 		if (frontmatter.async !== undefined) {
 			if (frontmatter.async === "true") defaultAsync = true;
@@ -1285,6 +1289,7 @@ export function loadAgentsFromDir(dir: string, source: AgentSource): AgentConfig
 			inheritProjectContext,
 			inheritSkills,
 			defaultContext,
+			forkPreamble,
 			defaultAsync,
 			defaultTimeoutMs,
 			defaultTurnBudget,

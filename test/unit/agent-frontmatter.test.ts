@@ -367,6 +367,42 @@ Do work
 			assert.equal(agent?.defaultContext, "fork", `${name} should default to fork context`);
 		}
 	});
+
+	it("serializes forkPreamble into agent frontmatter", () => {
+		const agent: AgentConfig = {
+			name: "worker",
+			description: "Worker",
+			systemPrompt: "Do work",
+			systemPromptMode: "replace",
+			inheritProjectContext: true,
+			inheritSkills: false,
+			source: "project",
+			filePath: "/tmp/worker.md",
+			forkPreamble: "You are continuing an approved implementation plan.",
+		};
+
+		const serialized = serializeAgent(agent);
+		assert.match(serialized, /forkPreamble: You are continuing an approved implementation plan\./);
+	});
+
+	it("parses forkPreamble from discovered agent frontmatter", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-agents-flow-agent-fork-preamble-"));
+		tempDirs.push(dir);
+		const agentsDir = path.join(dir, ".pi", "agents");
+		fs.mkdirSync(agentsDir, { recursive: true });
+		fs.writeFileSync(path.join(agentsDir, "worker.md"), `---
+name: worker
+description: Worker
+forkPreamble: You are continuing an approved implementation plan.
+---
+
+Do work
+`, "utf-8");
+
+		const result = discoverAgents(dir, "project");
+		const worker = result.agents.find((agent) => agent.name === "worker");
+		assert.equal(worker?.forkPreamble, "You are continuing an approved implementation plan.");
+	});
 });
 
 describe("agent frontmatter launch defaults", () => {

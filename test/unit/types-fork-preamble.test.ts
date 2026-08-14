@@ -20,4 +20,15 @@ describe("wrapForkTask", () => {
 		const twice = wrapForkTask(once);
 		assert.equal(twice, once);
 	});
+
+	it("uses a custom preamble when provided", () => {
+		const wrapped = wrapForkTask("analyze diff", "You are continuing an approved plan.");
+		assert.match(wrapped, /^You are continuing an approved plan\.\n\nTask:\nanalyze diff$/);
+	});
+
+	it("falls back to the default preamble when custom preamble is undefined", () => {
+		const custom = wrapForkTask("analyze diff", undefined);
+		const fallback = wrapForkTask("analyze diff");
+		assert.equal(custom, fallback);
+	});
 });
