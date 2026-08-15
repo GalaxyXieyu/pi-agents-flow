@@ -14,7 +14,7 @@
 
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { keyText } from "@earendil-works/pi-coding-agent";
-import { Text, type Component } from "@earendil-works/pi-tui";
+import { Key, Text, type Component } from "@earendil-works/pi-tui";
 import { Box, Container, Spacer, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
 import { clearLegacyResultAnimationTimer, renderSubagentResult } from "../tui/render.ts";
@@ -282,6 +282,14 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 					},
 				});
 				core.activityDock = activityDock;
+
+				// The dock mounts above the editor (goal-panel style), so ↓ no longer
+				// enters the panel. Ctrl+Alt+A toggles expand/collapse from anywhere,
+				// including while the editor already holds text.
+				pi.registerShortcut(Key.ctrlAlt("a"), {
+					description: "Toggle the activity dock panel",
+					handler: () => activityDock.toggle(),
+				});
 
 				// Interactive slash + workflow commands.
 				registerSlashCommands(pi, core.state, {

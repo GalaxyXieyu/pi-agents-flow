@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { buildActivitySnapshot } from "../../src/activity/projection.ts";
-import { activitySelections, createActivityDockController, renderActivityDock, visibleActivitySelections, ACTIVITY_DOCK_WIDGET_KEY } from "../../src/tui/activity-dock.ts";
+import { ACTIVITY_DOCK_MAX_LINES, ACTIVITY_DOCK_WIDGET_KEY, activitySelections, createActivityDockController, renderActivityDock, visibleActivitySelections } from "../../src/tui/activity-dock.ts";
 import type { SubagentState } from "../../src/shared/types.ts";
 import type { WorkflowNode, WorkflowRun } from "../../src/workflows/types.ts";
 
@@ -181,7 +181,7 @@ describe("activity dock projection", () => {
 describe("activity dock controller", () => {
 	function fakeUi() {
 		let inputHandler: ((data: string) => { consume?: boolean } | undefined) | undefined;
-		const widgets = new Map<string, unknown>();
+		const widgets = new Map<string, { factory: unknown; options?: { placement?: string } }>();
 		const editor = {
 			render() { return []; },
 			invalidate() {},
@@ -192,9 +192,9 @@ describe("activity dock controller", () => {
 		const ctx = {
 			hasUI: true,
 			ui: {
-				setWidget(key: string, value: unknown) {
+				setWidget(key: string, value: unknown, options?: { placement?: string }) {
 					if (value === undefined) widgets.delete(key);
-					else widgets.set(key, value);
+					else widgets.set(key, { factory: value, options });
 				},
 				onTerminalInput(handler: typeof inputHandler) { inputHandler = handler; return () => { inputHandler = undefined; }; },
 				getEditorText() { return ""; },
@@ -207,11 +207,12 @@ describe("activity dock controller", () => {
 	}
 
 	function renderDock(ui: ReturnType<typeof fakeUi>, width = 100): string[] {
-		const component = (ui.widgets.get(ACTIVITY_DOCK_WIDGET_KEY) as (tui: unknown, theme: unknown) => { render(w: number): string[] })(ui.tui, theme as never);
+		const entry = ui.widgets.get(ACTIVITY_DOCK_WIDGET_KEY);
+		const component = (entry?.factory as (tui: unknown, theme: unknown) => { render(w: number): string[] })(ui.tui, theme as never);
 		return component.render(width);
 	}
 
-	it("registers one below-editor widget and switches perspective with v", () => {
+	it("registers one above-editor widget and switches perspective with v", () => {
 		const ui = fakeUi();
 		const controller = createActivityDockController({
 			getSnapshot: () => buildActivitySnapshot(liveState(), run()),
@@ -227,12 +228,55 @@ describe("activity dock controller", () => {
 
 			const handler = ui.handler();
 			assert.ok(handler);
-			assert.deepEqual(handler!("\x1b[B"), { consume: true }, "down activates the dock at an empty editor");
+			// The dock mounts above the editor now: ↑ (not ↓) steps up into the panel.
+			assert.deepEqual(handler!("\x1b[A"), { consume: true }, "up activates the dock at an empty editor");
 			assert.match(renderDock(ui).join("\n"), /\[任务\]/);
 			assert.deepEqual(handler!("v"), { consume: true });
 			assert.match(renderDock(ui).join("\n"), /\[Agents\]/);
 			assert.deepEqual(handler!("v"), { consume: true });
 			assert.match(renderDock(ui).join("\n"), /\[任务\]/);
+		} finally {
+			controller.dispose();
+		}
+	});
+
+	it("mounts above the editor like the goal panel", () => {
+		const ui = fakeUi();
+		const controller = createActivityDockController({
+			getSnapshot: () => buildActivitySnapshot(liveState(), run()),
+			openSelection: () => {},
+		});
+		try {
+			controller.setContext(ui.ctx);
+			assert.equal(ui.widgets.get(ACTIVITY_DOCK_WIDGET_KEY)?.options?.placement, "aboveEditor");
+		} finally {
+			controller.dispose();
+		}
+	});
+
+	it("toggles the panel via the shortcut hook and collapses with down past the last row", () => {
+		const ui = fakeUi();
+		const controller = createActivityDockController({
+			getSnapshot: () => buildActivitySnapshot(liveState(), run()),
+			openSelection: () => {},
+		});
+		try {
+			controller.setContext(ui.ctx);
+			// ↓ no longer activates the panel — it would move away from it.
+			const handler = ui.handler()!;
+			assert.equal(handler("\x1b[B"), undefined, "down must not activate an above-editor panel");
+			assert.equal(renderDock(ui).length, 1, "dock stays collapsed");
+			// The global shortcut toggles the panel regardless of editor content.
+			controller.toggle();
+			assert.match(renderDock(ui).join("\n"), /\[任务\]/, "toggle expands the panel");
+			controller.toggle();
+			assert.doesNotMatch(renderDock(ui).join("\n"), /\[任务\]/, "toggle collapses the panel");
+			// While expanded, ↓ pressed past the last row steps back down into the
+			// editor and collapses the panel (row count exceeds the visible window,
+			// so give it generous presses to land past the end).
+			controller.toggle();
+			for (let i = 0; i < 12; i++) handler("\x1b[B");
+			assert.doesNotMatch(renderDock(ui).join("\n"), /\[任务\]/, "down past the last row collapses the panel");
 		} finally {
 			controller.dispose();
 		}
@@ -250,7 +294,7 @@ describe("activity dock controller", () => {
 				controller.setContext(ui.ctx);
 				renderDock(ui);
 				const handler = ui.handler()!;
-				handler("\x1b[B");
+				handler("\x1b[A");
 				if (expectedPerspective === "agents") handler("v");
 				handler("\r");
 				await new Promise((resolve) => setImmediate(resolve));
@@ -273,7 +317,7 @@ describe("activity dock controller", () => {
 			controller.setContext(ui.ctx);
 			renderDock(ui, 120);
 			const handler = ui.handler()!;
-			handler("\x1b[B");
+			handler("\x1b[A");
 			// Selection starts on the terminal task; x must not add rows.
 			const folded = renderDock(ui, 120).length;
 			handler("x");
@@ -302,7 +346,7 @@ describe("activity dock controller", () => {
 			controller.setContext(ui.ctx);
 			renderDock(ui, 140);
 			const handler = ui.handler()!;
-			handler("\x1b[B");
+			handler("\x1b[A");
 			handler("v");
 			const hidden = renderDock(ui, 140).join("\n");
 			assert.match(hidden, /f 显示失败 \(1\)/);
@@ -328,7 +372,7 @@ describe("activity dock controller", () => {
 			controller.setContext(ui.ctx);
 			renderDock(ui);
 			const handler = ui.handler()!;
-			handler("\x1b[B");
+			handler("\x1b[A");
 			handler("v");
 			s.foregroundControls.set("newest", {
 				runId: "newest", mode: "single", startedAt: 50, updatedAt: 51,
@@ -356,7 +400,7 @@ describe("activity dock controller", () => {
 			controller.setContext(ui.ctx);
 			renderDock(ui);
 			const handler = ui.handler()!;
-			handler("\x1b[B");
+			handler("\x1b[A");
 			handler("v");
 			handler("j");
 			const browsedKey = activitySelections(buildActivitySnapshot(s, run()), "agents")[1]?.key;
@@ -410,7 +454,7 @@ describe("activity dock controller", () => {
 			controller.setContext(ui.ctx);
 			renderDock(ui);
 			const handler = ui.handler()!;
-			handler("\x1b[B"); // expand
+			handler("\x1b[A"); // expand
 			assert.ok(ui.widgets.has(ACTIVITY_DOCK_WIDGET_KEY));
 			// Simulate the workflow finishing while the dock is expanded.
 			currentRun = completed;
@@ -456,6 +500,18 @@ describe("activity selections", () => {
 	});
 });
 
+describe("activity dock above-editor budget", () => {
+	it("keeps the expanded panel within the max line budget", () => {
+		const snapshot = buildActivitySnapshot(liveState(), run());
+		const rows = visibleActivitySelections(snapshot, "work");
+		const lines = renderActivityDock(snapshot, 120, theme as never, {
+			active: true,
+			selectedKey: rows[0]?.key,
+		});
+		assert.ok(lines.length <= ACTIVITY_DOCK_MAX_LINES, `expanded dock must stay ≤ ${ACTIVITY_DOCK_MAX_LINES} lines, got ${lines.length}`);
+	});
+});
+
 describe("activity dock collapsed summary", () => {
 	it("defaults to a single aggregate line with counts and an expand hint (zh)", () => {
 		const snapshot = buildActivitySnapshot(liveState(), run());
@@ -467,7 +523,7 @@ describe("activity dock collapsed summary", () => {
 		// task-done is completed, task-doc is pending.
 		assert.match(line, /1 运行/);
 		assert.match(line, /1 完成/);
-		assert.match(line, /↓\/Tab 展开/);
+		assert.match(line, /\^⌥A\/↑ 展开/);
 		assert.doesNotMatch(line, /\[任务\]/);
 	});
 
@@ -477,7 +533,7 @@ describe("activity dock collapsed summary", () => {
 		assert.match(line, /Workflow/);
 		assert.match(line, /1 running/);
 		assert.match(line, /1 done/);
-		assert.match(line, /↓\/Tab expand/);
+		assert.match(line, /\^⌥A\/↑ expand/);
 	});
 
 	it("omits the failed count when nothing has failed and shows the running badge", () => {

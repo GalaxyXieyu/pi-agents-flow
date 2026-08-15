@@ -29,6 +29,13 @@ export interface ActivityDockState {
 	showFailedAgents?: boolean;
 }
 
+/**
+ * Number of rows the expanded dock can occupy above the editor. The dock lives
+ * at `aboveEditor` placement (like the goal panel), so every expanded line is
+ * prime screen real estate — keep the panel compact.
+ */
+export const ACTIVITY_DOCK_MAX_LINES = 12;
+
 function badge(state: ActivityState, theme: Theme, frame: number): string {
 	if (state === "waiting") return theme.fg("warning", "◌");
 	if (state === "paused") return theme.fg("warning", "⏸");
@@ -162,6 +169,9 @@ function expandedRows(selection: ActivitySelection, theme: Theme, width: number,
 
 /**
  * One-line collapsed summary shown while the dock is inactive.
+ * The dock mounts above the editor (same placement as the goal panel), so the
+ * collapsed line is the always-visible status strip and the full tree only
+ * appears when the user expands the panel (Ctrl+Alt+A / ↑ / Tab).
  *
  * The dock defaults to a single aggregate line so it never eats vertical space; the
  * full task tree only appears once the user expands it. Counts come from the shared
@@ -191,7 +201,7 @@ function dockSummaryLine(snapshot: ActivitySnapshot, theme: Theme, width: number
 		failed > 0 ? `${failed} ${zh ? "失败" : "failed"}` : undefined,
 	].filter((part): part is string => Boolean(part));
 	const left = `${badge(lead, theme, frame)} ${parts.join(" · ")}`;
-	const hint = zh ? "↓/Tab 展开" : "↓/Tab expand";
+	const hint = zh ? "^⌥A/↑ 展开" : "^⌥A/↑ expand";
 	return rightAlign(left, theme.fg("dim", hint), width);
 }
 
@@ -214,7 +224,7 @@ export function renderActivityDock(snapshot: ActivitySnapshot, width: number, th
 		? `f ${showFailedAgents ? localize(snapshot.language, "hide failed", "隐藏失败") : localize(snapshot.language, "show failed", "显示失败")} (${failedCount})`
 		: undefined;
 	const hint = [
-		localize(snapshot.language, "v view · ↑↓/jk · x · Enter · Esc", "v 视图 · ↑↓/jk · x · 回车 · Esc"),
+		localize(snapshot.language, "v view · ↑↓/jk · x · Enter · ^⌥A/Esc", "v 视图 · ↑↓/jk · x · 回车 · ^⌥A/Esc"),
 		failedHint,
 	].filter(Boolean).join(" · ");
 	const lines = [rightAlign(header, theme.fg("dim", hint), width)];
@@ -223,7 +233,9 @@ export function renderActivityDock(snapshot: ActivitySnapshot, width: number, th
 		return lines;
 	}
 	const selectedIndex = Math.max(0, rows.findIndex((row) => row.key === state.selectedKey));
-	const rowCount = width >= 110 ? 6 : 4;
+	// Above the editor every row is expensive — cap rows so header + rows + the
+	// trailing "… +N" line never exceed ACTIVITY_DOCK_MAX_LINES in total.
+	const rowCount = Math.min(width >= 110 ? 6 : 4, ACTIVITY_DOCK_MAX_LINES - 2);
 	const start = Math.max(0, Math.min(selectedIndex, Math.max(0, rows.length - rowCount)));
 	const visible = rows.slice(start, start + rowCount);
 	const now = snapshot.updatedAt;
@@ -272,6 +284,8 @@ export interface ActivityDockController {
 	setContext(ctx: ExtensionContext): void;
 	/** Last coherent snapshot used by the dock. Lazily initializes when possible. */
 	getSnapshot(): ActivitySnapshot | undefined;
+	/** Toggle the expanded panel; used by the global shortcut and /activity. */
+	toggle(): void;
 	refresh(): void;
 	dispose(): void;
 }
@@ -318,7 +332,10 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 	const handleKey = (data: string): { consume?: boolean } | undefined => {
 		if (!ctx || !snapshot || inspectorOpen || isKeyRelease(data) || !editorHasFocus()) return undefined;
 		if (!active) {
-			const wantsExpand = matchesKey(data, "down") || matchesKey(data, "tab");
+			// The dock lives above the editor now: pressing ↑ at the top of an
+			// empty editor naturally steps "up" into the panel. Tab works too.
+			// ↓ no longer activates — it would move away from the panel.
+			const wantsExpand = matchesKey(data, "up") || matchesKey(data, "tab");
 			if (!wantsExpand || ctx.ui.getEditorText() !== "") return undefined;
 			active = true;
 			clampSelection();
@@ -352,13 +369,20 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 			return { consume: true };
 		}
 		if (matchesKey(data, "down") || matchesKey(data, "j")) {
-			selectedKey = rows[Math.min(rows.length - 1, index + 1)]?.key;
+			// The panel sits above the editor: pressing ↓ past the last row steps
+			// back down into the editor and collapses the dock. j stays an in-panel
+			// navigation key and never collapses.
+			if (matchesKey(data, "down") && index >= rows.length - 1) {
+				active = false;
+				expandedKey = undefined;
+			} else {
+				selectedKey = rows[Math.min(rows.length - 1, index + 1)]?.key;
+			}
 			requestRender();
 			return { consume: true };
 		}
 		if (matchesKey(data, "up") || matchesKey(data, "k")) {
-			if (index === 0) active = false;
-			else selectedKey = rows[index - 1]?.key;
+			if (index > 0) selectedKey = rows[index - 1]?.key;
 			requestRender();
 			return { consume: true };
 		}
@@ -392,6 +416,13 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 	};
 
 	const controller: ActivityDockController = {
+		toggle() {
+			if (!ctx || !snapshot || inspectorOpen) return;
+			active = !active;
+			if (active) clampSelection();
+			else expandedKey = undefined;
+			requestRender();
+		},
 		setContext(next) {
 			if (!next.hasUI) return;
 			if (ui !== next.ui) {
@@ -458,7 +489,7 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 					ui.setWidget(ACTIVITY_DOCK_WIDGET_KEY, (nextTui, theme) => {
 						tui = nextTui;
 						return new ActivityDockComponent(() => snapshot, renderState, theme);
-					}, { placement: "belowEditor" });
+					}, { placement: "aboveEditor" });
 					registered = true;
 				} else requestRender();
 			} catch {
