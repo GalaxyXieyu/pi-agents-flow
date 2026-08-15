@@ -2,7 +2,6 @@
 name: research-verifier
 description: Targeted fact and conflict verifier for registered Deep Research claims and evidence
 tools: read, web_search, fetch_content, get_search_content, intercom
-subagentOnlyExtensions: npm:pi-web-access
 thinking: high
 systemPromptMode: replace
 inheritProjectContext: true

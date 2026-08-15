@@ -25,6 +25,11 @@ Readability review:
 - The report contains enough concrete evidence, examples, results, limitations, or decisions for the requested depth, but does not preserve research notes that do not affect understanding or action.
 - A technically capable reader without the research context can skim headings and first sentences and still recover the central argument.
 
+Visualization review (readability is part of quality):
+- For comparison-heavy or structure/flow-heavy reports, verify at least one SVG diagram is present, actually referenced/rendered in the markdown, and has a clear caption.
+- Verify each diagram's values and labels match the prose and accepted evidence — flag any figure that invents numbers or labels.
+- Verify the diagrams genuinely aid comprehension (comparison, proportion, structure, timeline) rather than merely duplicating an existing compact table.
+
 Treat poor readability as an editorial blocker when it prevents the intended audience from understanding the conclusion, mechanism, tradeoff, or recommendation. Do not demand shorter prose when the detail is necessary and well organized.
 
 Use `contact_supervisor` only for a material decision that cannot be represented as a review finding. Return ordinary completion through `structured_output`.

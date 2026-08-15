@@ -59,3 +59,20 @@ Do not confuse parallel research with parallel whole-document writing. Section W
 Do not print a standalone outline followed by a passive confirmation request when Pi UI is available. Call `set_outline` with `approval=user`; the runtime must persist the outline only after the user approves it in the inline review form. Revision feedback returns to the Supervisor and keeps document-production planning blocked until a revised outline is approved.
 
 Do not force certainty. A correct Deep Research result may contain explicit unresolved uncertainty when public evidence is insufficient.
+
+## Visualization & readability (mandatory for delivery)
+
+Deep Research output must be more than a wall of text. Readability is part of synthesis quality. Use a **progressive image priority** when producing the final report:
+
+1. **P0 — Official assets**: Research lanes should record official diagrams/logos/architecture figures when they encounter them in primary sources (URLs in `evidence.search.fetchedUrls`). The Lead Editor may reference these directly when the source explicitly publishes a diagram.
+2. **P1 — Auto-generated SVG diagrams**: The default and primary visualization path. The Lead Editor MUST use the `report-svg-diagrams` skill to generate standalone, deterministic SVG diagrams (comparison matrix / bar / radar, layered architecture, flow, timeline) for any report that compares systems or explains structure/flow. Write `.svg` files and reference them in the markdown with a one-line caption.
+3. **P2 — Generative image MCP (optional)**: For non-technical / hero / evocative images only, when a configured image-generation MCP (e.g. `image-this`) is available. Never use generative images for factual data that must be exact — prefer P1 SVG.
+
+Only encode values confirmed in accepted evidence in any diagram. Never invent numbers or labels for a figure. The Reviewer must verify diagram presence, takeaway clarity, and data consistency with the prose.
+
+SVG must be authored to be **scalable, fully visible, and never cropped**:
+- Root element MUST use `viewBox="0 0 <W> <H>"` plus `width="100%" height="100%"` plus `preserveAspectRatio="xMidYMid meet"`.
+- `meet` guarantees the whole diagram scales to fit (never clipped); `max-width:100%;height:auto` on the `<img>` guarantees it shrinks to the container and never overflows/crops.
+- Do NOT use fixed pixel `width`/`height` on the `<svg>` — that is the #1 cause of cropping/overflow in narrow viewers.
+- Leave ≥20px padding inside the canvas so content is never clipped at the edges.
+- Reference in markdown as `<img src="assets/xxx.svg" alt="..." style="max-width:100%;height:auto">` followed by a one-line caption.
