@@ -15,6 +15,8 @@
 
 ### Documentation
 - Pinned kind-to-profile mapping in dynamic-workflow skill guidance to prevent `apply_plan` validation errors on custom roles.
+- Added a `Capability overview` table and a "How this differs from a goal tool" section to `README.md`, clarifying the plugin's positioning against goal/objective tools such as `pi-goal-x`.
+- Added `README.zh-CN.md`, a full Simplified Chinese README covering the problem statement, goal-tool distinction, capability overview, quick start, core concepts, and direct commands.
 
 ### Runtime layout
 - Project runtime data now writes under `<cwd>/.pi/agents-flow/` (workflows, compositions, artifacts, chain-runs). Legacy `<cwd>/.pi-agents-flow/` is auto-migrated on extension load / write paths; split trees merge missing entries without overwriting conflicts, partial-copy failures roll back, and persisted legacy absolute paths are remapped to the preferred runtime.
