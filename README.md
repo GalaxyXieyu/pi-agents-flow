@@ -56,6 +56,40 @@ Pi is the parent session. A subagent is a focused child Pi session with its own 
 
 When you ask for a subagent, Pi starts the child, gives it the task, and brings the result back. Foreground runs stream in the conversation. Background runs keep working and can be checked later.
 
+## Capability overview
+
+`pi-agents-flow` turns the root Pi into a supervisor that delegates to bounded child agents. Its capabilities fall into a few buckets:
+
+| Area | What it gives you | Where to look |
+|------|-------------------|---------------|
+| **Multi-agent orchestration** | `single`, `parallel`, `chain`, and background (`async`) execution. Compose agents in sequences, static/dynamic parallel fan-outs, and saved workflows. | [Execution modes](#what-happens), [Direct commands](#direct-commands) |
+| **Supervisor-owned workflows** | A durable, typed dependency graph driven by a scheduler. The root Pi decides what runs next, gates acceptance, and only completes after explicit quality gates pass. Recovers from interruption via event sourcing. | [Experimental Workflows](#experimental-workflows), [Recommended orchestration pattern](#recommended-orchestration-pattern-scaffolding) |
+| **Ready-made workflow engines** | `/coding` (deterministic plan→build→verify), `/workflow run` (flexible general DAG), and `/deep-research` (source-grounded research with parallel lanes and independent review). | [Choosing an entry point](#choosing-an-entry-point) |
+| **15 builtin role agents** | `scout`, `researcher`, `planner`, `worker`, `reviewer`, `context-builder`, `oracle`, `delegate`, plus deep-research roles (`research-architect`, `research-verifier`, `research-section-writer`, `research-editor`, `research-reviewer`). | [Builtin agents in plain English](#builtin-agents-in-plain-english) |
+| **Per-agent context policy** | Each child runs `fork` (branched parent session, inherits discussion) or `fresh` (clean session) via `defaultContext`, with a `forkPreamble` for role-specific forked instructions. Mix both in one chain/parallel run. | [Agent frontmatter](#agent-frontmatter), [Prompt assembly](#prompt-assembly) |
+| **Progressive disclosure** | Keep agent catalogs and skill/tool surface small by default, then expose role capabilities on demand via `visibility`, `invocation`, lazy-loaded skills, and per-node tool allowlists. Saves tokens and reduces mis-picks. | [Optional shortcuts](#optional-shortcuts), [Tool and extension selection](#tool-and-extension-selection) |
+| **Capability ceilings** | Bound each node's model, context, tools, turn/tool budget, and subagent depth so a runaway child cannot blow past its scope. | [Capability ceilings](#capability-ceilings), [Worktree isolation](#worktree-isolation) |
+| **Acceptance & repair loop** | The supervisor evaluates every structured result and accepts, rejects, or adds a repair node. Independent review can gate a writer's output before completion. | [Delegation protocol](#delegation-protocol), [Native supervisor coordination](#native-supervisor-coordination) |
+| **Observability** | Tasks, Agents, Fleet, and Activity Dock views plus `events.jsonl` event sourcing. Watch plan, live execution, per-agent model/tools/system prompt/transcript, and cost (`/subagent-cost`). | [Where running subagents show up](#where-running-subagents-show-up) |
+| **Programmatic APIs** | Four exported extension APIs: delegation, background-work provider, capability ceiling, and preflight (fork readiness, model resolution). | [Extension delegation API](#extension-delegation-api) |
+
+Rule of thumb: start with plain-language delegation (no config), then reach for saved chains when you repeat a shape, and finally use a supervisor workflow when the job has dependencies and gates you want persisted and resumable.
+
+## How this differs from a goal tool
+
+If you already use a goal/objective extension (for example `pi-goal-x`), the two overlap on paper: both persist progress, track tasks, and gate completion with an independent check. The difference is the core problem each solves:
+
+| | Goal tool (e.g. `pi-goal-x`) | `pi-agents-flow` |
+|---|---|---|
+| **Problem it solves** | *How does one long-running objective stay tracked and audited across sessions?* | *How do you split one big task across many bounded agents and keep them isolated?* |
+| **Executors** | One main agent does the work; a single auditor verifies completion. | A supervisor delegates to N bounded child agents (15 builtin roles) and orchestrates them. |
+| **Decomposition** | A task tree the main agent walks itself. | A dependency graph of child agents run in sequence/parallel/fork. |
+| **Isolation** | Main agent runs in one context. | Each child gets its own `fork`/`fresh` context, tool allowlist, model, and budget. |
+| **Completion gate** | Auditor checks the objective/verification contract. | Supervisor evaluates every structured result, plus an independent reviewer can gate writers. |
+| **Best when** | One objective you keep grinding on with a single agent (research, debug, implement). | A task big enough to split, needs parallelism, isolation, or a resumable multi-step pipeline. |
+
+They are not mutually exclusive. A common pattern is a goal tool for the long-running objective and its progress/audit, with `pi-agents-flow` splitting a given stage into child agents when that stage is too big for one context.
+
 ## Experimental Workflows
 
 Dynamic Workflow, Deep Research, Coding Workflow, and Watchdog are experimental in Alpha. Their commands, schemas, persisted artifacts, and UI may change between prereleases. Core delegation, Agent discovery, invocation policy, saved chains, Fleet, and Activity surfaces are the primary Alpha scope.
