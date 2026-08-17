@@ -564,7 +564,7 @@ export async function runParallelPath(data: ExecutionContextData, deps: Executor
 				interactive: ctx.hasUI,
 			};
 			const parallelTasks = tasks.map((t, i) => {
-				const taskText = shouldForkAgent(contextPolicy, t.agent) ? wrapForkTask(taskTexts[i]!) : taskTexts[i]!;
+				const taskText = shouldForkAgent(contextPolicy, t.agent) ? wrapForkTask(taskTexts[i]!, contextPolicy.forkPreambleForAgent(t.agent)) : taskTexts[i]!;
 				const progress = taskDisallowsFileUpdates(taskText) ? false : behaviorOverrides[i]?.progress;
 				return {
 					agent: t.agent,
@@ -666,7 +666,7 @@ export async function runParallelPath(data: ExecutionContextData, deps: Executor
 
 		const taskDescriptions = taskTexts.map((taskText) => taskText.trim());
 		for (let i = 0; i < taskTexts.length; i++) {
-			if (shouldForkAgent(contextPolicy, tasks[i]!.agent)) taskTexts[i] = wrapForkTask(taskTexts[i]!);
+			if (shouldForkAgent(contextPolicy, tasks[i]!.agent)) taskTexts[i] = wrapForkTask(taskTexts[i]!, contextPolicy.forkPreambleForAgent(tasks[i]!.agent));
 		}
 
 		const deadlineAt = data.deadlineAt ?? (data.timeoutMs !== undefined ? Date.now() + data.timeoutMs : undefined);

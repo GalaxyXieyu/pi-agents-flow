@@ -139,6 +139,8 @@ export interface AgentConfig {
 	inheritProjectContext: boolean;
 	inheritSkills: boolean;
 	defaultContext?: AgentDefaultContext;
+	/** Optional per-agent override for the fork preamble injected when a child runs with forked context. */
+	forkPreamble?: string;
 	defaultAsync?: boolean;
 	defaultTimeoutMs?: number;
 	defaultTurnBudget?: TurnBudgetConfig;

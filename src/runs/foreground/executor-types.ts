@@ -140,6 +140,8 @@ export type ForkThinkingOverrideForTask = (agentName: string, idx?: number, mode
 export interface AgentDefaultContextPolicy {
 	params: SubagentParamsLike;
 	contextForAgent(agentName: string): ContextMode;
+	/** Optional per-agent fork preamble. Falls back to undefined (default preamble) when the agent declares none. */
+	forkPreambleForAgent(agentName: string): string | undefined;
 	contextSummary?: ContextSummary;
 	usesFork: boolean;
 }

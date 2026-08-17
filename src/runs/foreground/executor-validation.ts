@@ -230,12 +230,15 @@ export function resolveAgentDefaultContextPolicy(params: SubagentParamsLike, age
 	const byName = new Map(agents.map((agent) => [agent.name, agent]));
 	const contextForAgent = (agentName: string): ContextMode =>
 		byName.get(agentName)?.defaultContext === "fork" ? "fork" : "fresh";
+	const forkPreambleForAgent = (agentName: string): string | undefined =>
+		byName.get(agentName)?.forkPreamble;
 	const requestedAgentNames = collectRequestedAgentNames(params);
 	const contextSummary = summarizeContextModes(requestedAgentNames.map((name) => contextForAgent(name)));
 	const usesFork = contextSummary === "fork" || contextSummary === "mixed";
 	return {
 		params,
 		contextForAgent,
+		forkPreambleForAgent,
 		contextSummary,
 		usesFork,
 	};
@@ -246,6 +249,7 @@ export function resolveExplicitContextPolicy(params: SubagentParamsLike): AgentD
 	return {
 		params,
 		contextForAgent: () => context,
+		forkPreambleForAgent: () => undefined,
 		contextSummary: context,
 		usesFork: context === "fork",
 	};
@@ -489,7 +493,7 @@ export function wrapChainTasksForFork(chain: ChainStep[], contextPolicy: AgentDe
 				parallel: step.parallel.map((task) => ({
 					...task,
 					task: shouldForkAgent(contextPolicy, task.agent)
-						? wrapForkTask(task.task ?? "{previous}")
+						? wrapForkTask(task.task ?? "{previous}", contextPolicy.forkPreambleForAgent(task.agent))
 						: task.task,
 				})),
 			};
@@ -500,7 +504,7 @@ export function wrapChainTasksForFork(chain: ChainStep[], contextPolicy: AgentDe
 				parallel: {
 					...step.parallel,
 					task: shouldForkAgent(contextPolicy, step.parallel.agent)
-						? wrapForkTask(step.parallel.task ?? "{previous}")
+						? wrapForkTask(step.parallel.task ?? "{previous}", contextPolicy.forkPreambleForAgent(step.parallel.agent))
 						: step.parallel.task,
 				},
 			};
@@ -509,7 +513,7 @@ export function wrapChainTasksForFork(chain: ChainStep[], contextPolicy: AgentDe
 		return {
 			...sequential,
 			task: shouldForkAgent(contextPolicy, sequential.agent)
-				? wrapForkTask(sequential.task ?? (stepIndex === 0 ? "{task}" : "{previous}"))
+				? wrapForkTask(sequential.task ?? (stepIndex === 0 ? "{task}" : "{previous}"), contextPolicy.forkPreambleForAgent(sequential.agent))
 				: sequential.task,
 		};
 	});

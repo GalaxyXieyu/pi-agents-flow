@@ -90,5 +90,7 @@ describe("executor helpers", () => {
 		const forked = [{ agent: "worker", task: `${DEFAULT_FORK_PREAMBLE}\n\nTask:\nreal task` }];
 		assert.equal(resolveAsyncEventGoal(undefined, forked, true), "real task");
 		assert.equal(resolveAsyncEventGoal(undefined, forked, false), forked[0]!.task);
+		const customForked = [{ agent: "worker", task: `Custom preamble.\n\nTask:\nreal task` }];
+		assert.equal(resolveAsyncEventGoal(undefined, customForked, true), "real task");
 	});
 });

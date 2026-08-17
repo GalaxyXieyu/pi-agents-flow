@@ -15,6 +15,7 @@ export const KNOWN_FIELDS = new Set([
 	"inheritProjectContext",
 	"inheritSkills",
 	"defaultContext",
+	"forkPreamble",
 	"async",
 	"timeoutMs",
 	"turnBudget",
@@ -74,6 +75,7 @@ export function serializeAgent(config: AgentConfig, options: SerializeAgentOptio
 	if (!preservingExistingFrontmatter || preserve("inheritProjectContext")) lines.push(`inheritProjectContext: ${config.inheritProjectContext ? "true" : "false"}`);
 	if (!preservingExistingFrontmatter || preserve("inheritSkills")) lines.push(`inheritSkills: ${config.inheritSkills ? "true" : "false"}`);
 	if (config.defaultContext || preserve("defaultContext")) lines.push(`defaultContext: ${config.defaultContext ?? ""}`);
+	if (config.forkPreamble || preserve("forkPreamble")) lines.push(`forkPreamble: ${config.forkPreamble ?? ""}`);
 	if (config.defaultAsync !== undefined || preserve("async")) lines.push(`async: ${config.defaultAsync === undefined ? "" : config.defaultAsync ? "true" : "false"}`);
 	if (config.defaultTimeoutMs !== undefined || preserve("timeoutMs")) lines.push(`timeoutMs: ${config.defaultTimeoutMs ?? ""}`);
 	if (config.defaultTurnBudget || preserve("turnBudget")) lines.push(`turnBudget: ${config.defaultTurnBudget ? JSON.stringify(config.defaultTurnBudget) : ""}`);

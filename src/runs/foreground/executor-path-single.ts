@@ -357,7 +357,7 @@ export async function runSinglePath(data: ExecutionContextData, deps: ExecutorDe
 			};
 			return executeAsyncSingle(id, {
 				agent: params.agent!,
-				task: shouldForkAgent(contextPolicy, params.agent!) ? wrapForkTask(task) : task,
+				task: shouldForkAgent(contextPolicy, params.agent!) ? wrapForkTask(task, contextPolicy.forkPreambleForAgent(params.agent!)) : task,
 				goal: task,
 				agentConfig,
 				ctx: asyncCtx,
@@ -398,7 +398,7 @@ export async function runSinglePath(data: ExecutionContextData, deps: ExecutorDe
 	}
 
 	if (shouldForkAgent(contextPolicy, params.agent!)) {
-		task = wrapForkTask(task);
+		task = wrapForkTask(task, contextPolicy.forkPreambleForAgent(params.agent!));
 	}
 	const cleanTask = task;
 	const outputPath = resolveSingleOutputPath(effectiveOutput, ctx.cwd, effectiveCwd, resolveSingleRunOutputBaseDir(deps, artifactsDir, runId));

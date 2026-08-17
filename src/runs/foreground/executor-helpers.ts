@@ -13,7 +13,7 @@ import {
 	type ChainStep,
 	type SequentialStep,
 } from "../../shared/settings.ts";
-import { DEFAULT_FORK_PREAMBLE, type NestedRunSummary } from "../../shared/types.ts";
+import { type NestedRunSummary } from "../../shared/types.ts";
 import type { SubagentParamsLike } from "./subagent-executor.ts"; // type-only: no runtime cycle
 
 export function resolveRequestedCwd(runtimeCwd: string, requestedCwd: string | undefined): string {
@@ -107,6 +107,8 @@ export function resolveAsyncEventGoal(workflowTask: string | undefined, rawChain
 	if (workflowTask?.trim()) return workflowTask;
 	const fallback = firstRawChainTask(rawChain) || "";
 	if (!unwrapForkFallback) return fallback;
-	const forkPrefix = `${DEFAULT_FORK_PREAMBLE}\n\nTask:\n`;
-	return fallback.startsWith(forkPrefix) ? fallback.slice(forkPrefix.length) : fallback;
+	// Strip any fork preamble (default or per-agent custom) plus the "Task:" divider.
+	const taskDivider = "\n\nTask:\n";
+	const dividerIndex = fallback.lastIndexOf(taskDivider);
+	return dividerIndex >= 0 ? fallback.slice(dividerIndex + taskDivider.length) : fallback;
 }
