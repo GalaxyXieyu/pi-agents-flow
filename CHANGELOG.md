@@ -5,6 +5,8 @@
 ### Structured output
 - Flattened `structured_output` tool parameters to a plain object root. Provider/runtime gates reject root-level `anyOf`/`oneOf` unions (`tool parameter root must be an object type`); direct object results and XOR(`value`, `path`) remain accepted by runtime normalization/capture.
 - Clarified the two path systems so small results stay in the outer inline `value`, tool-level `path` only names an already-written submission-directory file, and inner `outputs[port].kind=file` writes to a preallocated slot before reporting it. Long documents should write the file first and keep `structured_output` compact.
+- Repair missing file-port paths at registration time when the file already exists at the slot or in the trusted submission directory. If the path is still missing, format-steer the child instead of failing the node as a non-retryable `output_registration_failed`.
+- Default writer / section-writer / editor timeouts to 30 minutes when the node does not set `timeoutMs`, so long documents are less likely to die mid-stream.
 
 ### Activity Dock
 - Moved the Activity Dock back below the editor. `↓` / Tab on an empty editor expands it; `↑` is reserved for conversation history again. `Ctrl+Alt+A` still toggles the panel from anywhere.

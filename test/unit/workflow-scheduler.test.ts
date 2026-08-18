@@ -568,4 +568,29 @@ describe("workflow scheduler", () => {
 		assert.deepEqual(turnBudget, { maxTurns: 8, graceTurns: 2 });
 		assert.deepEqual(toolBudget, { soft: 4, hard: 6, block: "*" });
 	});
+
+	it("gives long-document writers a 30-minute default timeout", async () => {
+		const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-scheduler-writer-timeout-"));
+		tempDirs.push(rootDir);
+		const store = createWorkflowStore({ rootDir });
+		store.create({ id: "workflow-writer-timeout", mode: "deep-research", goal: "Write", cwd: "/repo", sessionId: "session-1", branch: "main", at: 1 });
+		store.append("workflow-writer-timeout", {
+			id: "event-plan", type: "workflow.plan_applied", at: 2,
+			tasks: [{ id: "task-main", label: "Write", order: 0 }],
+			workUnits: [node("writer")],
+		});
+		let timeoutMs: number | undefined;
+		const scheduler = createWorkflowScheduler({
+			store,
+			adapter: {
+				async run(currentRun, workflowNode, attempt) {
+					timeoutMs = workflowNode.agentSpec.timeoutMs;
+					return { ok: true, response: completedResponse(attempt.requestId, currentRun.id, workflowNode.id, result("ok")) };
+				},
+			},
+			now: () => 10,
+		});
+		await scheduler.runReady("workflow-writer-timeout");
+		assert.equal(timeoutMs, 30 * 60 * 1000);
+	});
 });

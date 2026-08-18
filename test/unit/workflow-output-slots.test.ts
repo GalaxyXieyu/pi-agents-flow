@@ -154,6 +154,32 @@ describe("workflow output slots", () => {
 		}
 	});
 
+	it("salvages a missing file path from a long summary instead of failing registration", async () => {
+		const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-slots-"));
+		tempDirs.push(rootDir);
+		const store = createWorkflowStore({ rootDir });
+		createRun(store, "workflow-salvage-inline");
+		const document = `# document\n\n${"x".repeat(900)}`;
+		const adapter: WorkflowDelegationAdapter = {
+			async run(run, node, attempt) {
+				const slot = path.join(store.paths(run.id).artifacts, "staging", run.id, node.id, attempt.attemptId.replace(/:/g, "_"), "findings");
+				return {
+					ok: true,
+					response: completedResponse(attempt.requestId, run.id, node.id, {
+						...fileResult(slot),
+						summary: { text: document, covers: ["slot"], omissions: [], confidence: "high" },
+					}),
+				};
+			},
+		};
+		const scheduler = createWorkflowScheduler({ store, adapter, now: () => 10 });
+		const done = await scheduler.runReady("workflow-salvage-inline");
+		assert.equal(done.nodes["research-a"]?.status, "completed");
+		const output = done.nodes["research-a"]?.outputs?.findings;
+		assert.ok(output);
+		assert.equal(output.kind === "artifact" || output.kind === "inline", true);
+	});
+
 	it("tells the child to write the slot before reporting a missing file path", async () => {
 		const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-slots-"));
 		tempDirs.push(rootDir);

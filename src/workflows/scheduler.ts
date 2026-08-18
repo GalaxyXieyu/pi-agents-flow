@@ -253,9 +253,18 @@ function withWorkflowContext(store: WorkflowStore, run: WorkflowRun, node: Workf
 		taskContext,
 		outputSlots,
 	});
+	const longDocument = node.kind === "section-writer" || node.kind === "writer" || node.kind === "editor";
+	const defaultTimeoutMs = run.mode === "deep-research" && node.kind === "reviewer"
+		? 600_000
+		: longDocument ? 30 * 60 * 1000 : undefined;
 	return {
 		...node,
-		dataContract: contract,
+		dataContract: {
+			...contract,
+			...(Object.keys(outputSlots).length
+				? { annotations: { ...contract.annotations, "pi-agents-flow/output-slots": outputSlots } }
+				: contract.annotations ? { annotations: contract.annotations } : {}),
+		},
 		agentSpec: {
 			...node.agentSpec,
 			...(run.mode === "deep-research" && (node.kind === "editor" || node.kind === "reviewer") ? { context: "fresh" as const } : {}),
@@ -274,7 +283,7 @@ function withWorkflowContext(store: WorkflowStore, run: WorkflowRun, node: Workf
 						]
 					: []),
 			].join("\n\n"),
-			...(run.mode === "deep-research" && node.kind === "reviewer" && node.agentSpec.timeoutMs === undefined ? { timeoutMs: 600_000 } : {}),
+			...(node.agentSpec.timeoutMs === undefined && defaultTimeoutMs !== undefined ? { timeoutMs: defaultTimeoutMs } : {}),
 			...(run.mode === "deep-research" && node.kind === "reviewer" && !node.agentSpec.turnBudget ? { turnBudget: { maxTurns: 8, graceTurns: 2 } } : {}),
 			...(run.mode === "deep-research" && node.kind === "reviewer" && !node.agentSpec.toolBudget ? { toolBudget: { soft: 4, hard: 6, block: "*" as const } } : {}),
 		},

@@ -16,6 +16,7 @@ import {
 } from "../api/preflight.ts";
 import { DEFAULT_TURN_BUDGET_GRACE_TURNS, DEFAULT_WORKFLOW_CHILD_TURN_BUDGET } from "../runs/shared/turn-budget.ts";
 import { CODING_PREAPPROVAL_READONLY_ANNOTATION } from "./coding-preset.ts";
+import { assertWorkflowOutputFilesExist, repairWorkflowOutputSubmissions } from "./output-ports.ts";
 import { workflowResultSchema, parseWorkflowResult, WORKFLOW_RESULT_SUBMISSION_GUIDE } from "./result-contract.ts";
 import type { AvailableModelInfo, ParentModel } from "../runs/shared/model-fallback.ts";
 import type { WorkflowAttempt, WorkflowDataContract, WorkflowNode, WorkflowRun } from "./types.ts";
@@ -88,6 +89,7 @@ function buildOutputContractGuide(contract: WorkflowDataContract, formatError?: 
 			`PREVIOUS SUBMISSION FAILED FORMAT VALIDATION: ${formatError}`,
 			"",
 			"Do not repeat the invalid envelope. Keep the task content, but repair the submission shape and re-submit only through structured_output.",
+			"If a kind:file path was missing: either write the document to that preallocated slot first, or submit the document inline as {kind:'value', value:'<markdown>'}. Do not report a path you did not write.",
 			"Use this exact outer shape: {\"value\":{\"version\":1,\"summary\":{...},\"outputs\":{...},\"diagnostics\":{...},\"recommendations\":[],\"evidence\":{...}}}",
 		);
 	}
@@ -107,6 +109,13 @@ function buildOutputContractGuide(contract: WorkflowDataContract, formatError?: 
 	}
 	lines.push("", "Do NOT return prose or raw text outside of structured_output. Every output port must appear in the outputs object.");
 	return lines.join("\n");
+}
+
+function outputSlotsFrom(node: WorkflowNode): Record<string, string> | undefined {
+	const raw = node.dataContract.annotations?.["pi-agents-flow/output-slots"];
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+	const slots = Object.fromEntries(Object.entries(raw).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+	return Object.keys(slots).length > 0 ? slots : undefined;
 }
 
 function taskFor(node: WorkflowNode, formatError?: string): string {
@@ -310,7 +319,18 @@ export function createWorkflowDelegationAdapter(
 					&& response.result?.kind === "structured"
 				) {
 					try {
-						parseWorkflowResult(response.result.value, node.dataContract);
+						const parsed = parseWorkflowResult(response.result.value, node.dataContract);
+						const slots = outputSlotsFrom(node);
+						const repaired = repairWorkflowOutputSubmissions({
+							result: parsed,
+							contract: node.dataContract,
+							...(slots ? { outputSlots: slots } : {}),
+						});
+						assertWorkflowOutputFilesExist({
+							result: repaired.result,
+							contract: node.dataContract,
+							...(slots ? { outputSlots: slots } : {}),
+						});
 						// Format is valid — return the response to the controller.
 						return {
 							ok: true,

@@ -1,6 +1,6 @@
 {
   "name": "pi-agents-flow",
-  "version": "0.1.0-alpha.5",
+  "version": "0.1.0-alpha.6",
   "description": "Supervisor-led multi-Agent orchestration for Pi with durable workflows, quality gates, and observable subagents",
   "author": "GalaxyXieyu, based on pi-subagents by Nico Bailon",
   "license": "MIT",

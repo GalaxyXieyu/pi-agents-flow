@@ -250,6 +250,46 @@ describe("workflow delegation adapter", () => {
 		}
 	});
 
+	it("auto-steers a missing file-port path instead of completing the node", async () => {
+		const events = new FakeEvents();
+		const slot = "/tmp/does-not-exist-workflow-slot.md";
+		const writerNode: WorkflowNode = {
+			...node,
+			id: "writer-a",
+			kind: "writer",
+			dataContract: {
+				version: 1,
+				profile: "writer",
+				inputs: [],
+				outputs: { document: { mediaType: "text/markdown", description: "doc", storage: "artifact", required: true, classification: "internal" } },
+				annotations: { "pi-agents-flow/output-slots": { document: slot } },
+			},
+		};
+		events.on(SUBAGENT_DELEGATION_REQUEST_EVENT, (data) => {
+			const request = data as SubagentDelegationRequest;
+			const first = !request.requestId.includes(":format-");
+			queueMicrotask(() => events.emit(SUBAGENT_DELEGATION_RESPONSE_EVENT, {
+				version: 2, requestId: request.requestId, ownerRunId: request.ownerRunId, nodeId: request.nodeId, status: "completed",
+				result: { kind: "structured", value: {
+					version: 1,
+					summary: { text: "short", covers: [], omissions: [], confidence: "high" },
+					outputs: { document: first ? { kind: "file", path: slot } : { kind: "value", value: "# recovered" } },
+					diagnostics: { gaps: [], conflicts: [], warnings: [] },
+					recommendations: [],
+					evidence: { findings: [] },
+				} },
+			}));
+		});
+		const result = await createWorkflowDelegationAdapter({
+			events,
+			preflight: async () => ({ ok: true, agent: "research-writer", launchContractDigest: "digest-file" }),
+		}).run(run, writerNode, { ...attempt, attemptId: "writer-a:1", requestId: "writer-request" });
+		assert.equal(result.ok, true);
+		const requests = events.emitted.filter((entry) => entry.event === SUBAGENT_DELEGATION_REQUEST_EVENT).map((entry) => entry.data as SubagentDelegationRequest);
+		assert.deepEqual(requests.map((request) => request.requestId), ["writer-request", "writer-request:format-1"]);
+		assert.match(requests[1]?.task ?? "", /file does not exist/);
+	});
+
 	it("auto-steers an invalid reviewer release using a new transport identity and frozen preflight", async () => {
 		const events = new FakeEvents();
 		let preflightCalls = 0;
