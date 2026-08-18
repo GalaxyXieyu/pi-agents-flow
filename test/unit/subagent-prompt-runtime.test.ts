@@ -429,26 +429,16 @@ describe("subagent prompt runtime", () => {
 			assert.ok(execute, "structured_output tool should be registered");
 			assert.deepEqual(parameters, {
 				type: "object",
-				description: "Preferred shape: {value: <complete result>}. Compatibility also accepts a direct object result and JSON text in value; the runtime normalizes both before strict validation.",
-				anyOf: [
-					{
-						type: "object",
-						properties: {
-							value: {
-								description: "Complete inline result. Pass the JSON value directly, not encoded text.",
-								anyOf: [{ type: "object", required: ["ok"], properties: { ok: { type: "boolean" } } }, { type: "string" }],
-							},
-							path: { type: "string", minLength: 1, description: "Path to a JSON file containing the complete result. The file must already exist inside this run's submission directory." },
-							sha256: { type: "string", pattern: "^[A-Fa-f0-9]{64}$", description: "Optional SHA-256 digest of the referenced JSON file. Omit it unless computed from the actual file." },
-						},
-						oneOf: [
-							{ required: ["value"], not: { anyOf: [{ required: ["path"] }, { required: ["sha256"] }] } },
-							{ required: ["path"], not: { required: ["value"] } },
-						],
-						additionalProperties: false,
+				description: "Preferred shape: {value: <complete result>}. Compatibility also accepts a direct object result and JSON text in value; the runtime normalizes both before strict validation. Provide exactly one of value or path; sha256 is only valid with path.",
+				properties: {
+					value: {
+						description: "Complete inline result. Pass the JSON value directly, not encoded text.",
+						anyOf: [{ type: "object", required: ["ok"], properties: { ok: { type: "boolean" } } }, { type: "string" }],
 					},
-					{ type: "object", required: ["ok"], properties: { ok: { type: "boolean" } } },
-				],
+					path: { type: "string", minLength: 1, description: "Path to a JSON file containing the complete result. The file must already exist inside this run's submission directory." },
+					sha256: { type: "string", pattern: "^[A-Fa-f0-9]{64}$", description: "Optional SHA-256 digest of the referenced JSON file. Omit it unless computed from the actual file." },
+				},
+				additionalProperties: false,
 			});
 			const result = await execute("tool-1", { value: { ok: true } });
 			assert.equal(result.terminate, true);
@@ -584,7 +574,7 @@ describe("subagent prompt runtime", () => {
 			}), "utf-8");
 			process.env[STRUCTURED_OUTPUT_SCHEMA_ENV] = schemaPath;
 			process.env[STRUCTURED_OUTPUT_CAPTURE_ENV] = outputPath;
-			let parameters = {} as { anyOf?: Array<{ properties?: { value?: { anyOf?: Array<{ properties?: { name?: { $ref?: string }; nested?: { properties?: { label?: { $ref?: string } } } } }> } } }> };
+			let parameters = {} as { properties?: { value?: { anyOf?: Array<{ properties?: { name?: { $ref?: string }; nested?: { properties?: { label?: { $ref?: string } } } } }> } } };
 
 			registerSubagentPromptRuntime({
 				registerTool(tool: { name: string; parameters: unknown }) {
@@ -593,8 +583,8 @@ describe("subagent prompt runtime", () => {
 				on() {},
 			} as { registerTool(tool: { name: string; parameters: unknown }): void; on(): void });
 
-			assert.equal(parameters.anyOf?.[0]?.properties?.value?.anyOf?.[0]?.properties?.name?.$ref, "#/anyOf/0/properties/value/anyOf/0/$defs/item");
-			assert.equal(parameters.anyOf?.[0]?.properties?.value?.anyOf?.[0]?.properties?.nested?.properties?.label?.$ref, "#/anyOf/0/properties/value/anyOf/0/$defs/item");
+			assert.equal(parameters.properties?.value?.anyOf?.[0]?.properties?.name?.$ref, "#/properties/value/anyOf/0/$defs/item");
+			assert.equal(parameters.properties?.value?.anyOf?.[0]?.properties?.nested?.properties?.label?.$ref, "#/properties/value/anyOf/0/$defs/item");
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}

@@ -110,38 +110,30 @@ function rewriteLocalJsonPointerRefs(schema: unknown, pointerPrefix: string, inh
 }
 
 export function createStructuredOutputToolParameters(schema: JsonSchemaObject): JsonSchemaObject {
-	const inlineSchema = rewriteLocalJsonPointerRefs(schema, "#/anyOf/0/properties/value/anyOf/0") as JsonSchemaObject;
-	const directSchema = rewriteLocalJsonPointerRefs(schema, "#/anyOf/1") as JsonSchemaObject;
+	// Keep the advertised tool schema a plain object. Provider/runtime gates reject
+	// root-level anyOf/oneOf unions ("tool parameter root must be an object type").
+	// Direct object results and XOR(value, path) stay accepted by normalize/capture.
+	const inlineSchema = rewriteLocalJsonPointerRefs(schema, "#/properties/value/anyOf/0") as JsonSchemaObject;
 	return {
 		type: "object",
-		description: "Preferred shape: {value: <complete result>}. Compatibility also accepts a direct object result and JSON text in value; the runtime normalizes both before strict validation.",
-		anyOf: [
-			{
-				type: "object",
-				properties: {
-					value: {
-						description: "Complete inline result. Pass the JSON value directly, not encoded text.",
-						anyOf: [inlineSchema, { type: "string" }],
-					},
-					path: {
-						type: "string",
-						minLength: 1,
-						description: "Path to a JSON file containing the complete result. The file must already exist inside this run's submission directory.",
-					},
-					sha256: {
-						type: "string",
-						pattern: "^[A-Fa-f0-9]{64}$",
-						description: "Optional SHA-256 digest of the referenced JSON file. Omit it unless computed from the actual file.",
-					},
-				},
-				oneOf: [
-					{ required: ["value"], not: { anyOf: [{ required: ["path"] }, { required: ["sha256"] }] } },
-					{ required: ["path"], not: { required: ["value"] } },
-				],
-				additionalProperties: false,
+		description: "Preferred shape: {value: <complete result>}. Compatibility also accepts a direct object result and JSON text in value; the runtime normalizes both before strict validation. Provide exactly one of value or path; sha256 is only valid with path.",
+		properties: {
+			value: {
+				description: "Complete inline result. Pass the JSON value directly, not encoded text.",
+				anyOf: [inlineSchema, { type: "string" }],
 			},
-			directSchema,
-		],
+			path: {
+				type: "string",
+				minLength: 1,
+				description: "Path to a JSON file containing the complete result. The file must already exist inside this run's submission directory.",
+			},
+			sha256: {
+				type: "string",
+				pattern: "^[A-Fa-f0-9]{64}$",
+				description: "Optional SHA-256 digest of the referenced JSON file. Omit it unless computed from the actual file.",
+			},
+		},
+		additionalProperties: false,
 	};
 }
 

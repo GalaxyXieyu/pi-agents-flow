@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Structured output
+- Flattened `structured_output` tool parameters to a plain object root. Provider/runtime gates reject root-level `anyOf`/`oneOf` unions (`tool parameter root must be an object type`); direct object results and XOR(`value`, `path`) remain accepted by runtime normalization/capture.
+
 ### Activity Dock
 - Hid failed, cancelled, and superseded Agents in the Activity Dock Agents roster by default, matching the Activity Board. Press `f` to show or hide them.
 

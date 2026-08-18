@@ -159,7 +159,7 @@ test("validateStructuredOutputValue validates values against a JSON Schema", asy
 	assert.match(unexpected.status === "invalid" ? unexpected.message : "", /unexpected field 'extra'.*allowed fields: a/);
 });
 
-test("structured_output tool parameters admit canonical and repairable weak-model shapes", async () => {
+test("structured_output tool parameters use a provider-safe object root", async () => {
 	const resultSchema: JsonSchemaObject = {
 		type: "object",
 		properties: { version: { const: 1 } },
@@ -167,22 +167,20 @@ test("structured_output tool parameters admit canonical and repairable weak-mode
 		additionalProperties: false,
 	};
 	const toolSchema = createStructuredOutputToolParameters(resultSchema);
+	assert.equal(toolSchema.type, "object");
+	assert.equal(toolSchema.anyOf, undefined);
+	assert.equal(toolSchema.oneOf, undefined);
+	assert.equal(toolSchema.allOf, undefined);
 	for (const value of [
 		{ value: { version: 1 } },
 		{ value: JSON.stringify({ version: 1 }) },
-		{ version: 1 },
 		{ path: "/submission/result.json" },
 	]) {
 		assert.deepEqual(await validateStructuredOutputValue(toolSchema, value), { status: "valid" });
 	}
-	for (const value of [
-		{},
-		{ sha256: "0".repeat(64) },
-		{ value: { version: 1 }, path: "/submission/result.json" },
-		{ value: { version: 1 }, sha256: "0".repeat(64) },
-	]) {
-		assert.equal((await validateStructuredOutputValue(toolSchema, value)).status, "invalid");
-	}
+	// Direct results and XOR(value, path) stay runtime-normalized/enforced, not advertised as root unions.
+	assert.equal((await validateStructuredOutputValue(toolSchema, { version: 1 })).status, "invalid");
+	assert.equal((await validateStructuredOutputValue(toolSchema, { extra: true })).status, "invalid");
 });
 
 test("normalizeStructuredOutputSubmission repairs common weak-model envelope mistakes", () => {
