@@ -435,7 +435,14 @@ export function buildActivitySnapshot(state: SubagentState, run?: WorkflowRun): 
 	}
 	const claimedInspectKeys = new Set(executions.map((execution) => execution.inspectKey).filter((value): value is string => Boolean(value)));
 	const claimedWorkflowRunIds = new Set(run ? Object.values(run.nodes).flatMap((node) => node.attempts.flatMap((attempt) => [attempt.childRunId, attempt.requestId].filter((value): value is string => Boolean(value)))) : []);
-	const independent = fleet.filter((item) => !claimedInspectKeys.has(item.key) && !claimedWorkflowRunIds.has(item.runId)).map(fleetExecution);
+	const independent = fleet
+		.filter((item) => !claimedInspectKeys.has(item.key) && !claimedWorkflowRunIds.has(item.runId))
+		.map(fleetExecution)
+		// A session can retain children from earlier workflows. Once a workflow is
+		// bound, drop leftover terminal independents (especially failed ones) so
+		// they do not keep occupying the current dock. Standalone /run history is
+		// unchanged when no workflow is bound.
+		.filter((execution) => !run || !TERMINAL.has(execution.state));
 	return {
 		version: 1,
 		language: run ? workflowRunLanguage(run) : "en",

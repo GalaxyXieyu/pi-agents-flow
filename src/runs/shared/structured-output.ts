@@ -125,7 +125,7 @@ export function createStructuredOutputToolParameters(schema: JsonSchemaObject): 
 			path: {
 				type: "string",
 				minLength: 1,
-				description: "Path to a JSON file containing the complete result. The file must already exist inside this run's submission directory.",
+				description: "Path to a complete-result JSON file that already exists inside this run's submission directory. Write the file first. Do not point this at a workflow output-slot / staging path.",
 			},
 			sha256: {
 				type: "string",

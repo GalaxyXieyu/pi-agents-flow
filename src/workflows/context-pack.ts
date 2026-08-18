@@ -255,7 +255,8 @@ export function materializeWorkflowContextPack(input: {
 			? [
 					"",
 					"## Output slots",
-					...Object.entries(input.outputSlots ?? {}).map(([port, slotPath]) => `- ${port}: file submissions must write exactly to ${slotPath} and report that path unchanged.`),
+					"These paths are inner WorkflowResult.outputs[port].kind=file destinations, not the outer structured_output.path. Write the file first, then report the exact slot. Small results stay inline.",
+					...Object.entries(input.outputSlots ?? {}).map(([port, slotPath]) => `- ${port}: write large content exactly to ${slotPath} before reporting that path unchanged.`),
 				]
 			: []),
 	];

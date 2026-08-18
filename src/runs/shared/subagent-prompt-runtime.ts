@@ -30,10 +30,11 @@ export const SUBAGENT_INTERCOM_SESSION_NAME_ENV = "PI_SUBAGENT_INTERCOM_SESSION_
 const STRUCTURED_OUTPUT_INSTRUCTIONS = [
 	"This subagent step has a strict structured output contract. Your final action must call `structured_output`.",
 	"The tool has a TRANSPORT ENVELOPE. Choose exactly one transport:",
-	"INLINE (preferred): call with {\"value\": <the complete schema-valid result object>}",
-	"FILE (only for a large result): first write one JSON file containing the complete schema-valid result under the submission directory named below, then call with {\"path\": \"<that existing file>\"}. Add sha256 only if you actually computed it.",
+	"INLINE (preferred for anything that fits in a few KB): call with {\"value\": <the complete schema-valid result object>}. Do not invent a file path for a small result.",
+	"FILE (only after you have already written a large complete-result JSON file): call with {\"path\": \"<that existing file inside the submission directory named below>\"}. Add sha256 only if you actually computed it from that file.",
+	"Write the file first. `path` never creates, allocates, or names a destination — it only points at a file that already exists.",
 	"Do not place result fields beside tool-level `value` or `path`. Do not pass both. Do not use `value: null` with `path`. Do not JSON-stringify `value`.",
-	"Tool-level `path` is not an output-port path and not a guessed capture/staging path. It must be an existing complete-result JSON file inside the submission directory.",
+	"Tool-level `path` is not a workflow output-slot / staging path. Output slots are inner WorkflowResult.outputs[port].kind=file destinations and must be written before they are reported. Guessing a slot or capture path as the tool envelope will fail with ENOENT.",
 	"Match every nested schema shape exactly. Preserve object arrays as objects, use [] for empty collections, and check every required nested field. Do not rely on prose-only completion.",
 ].join("\n");
 
@@ -445,7 +446,7 @@ export default function registerSubagentPromptRuntime(pi: ExtensionAPI): void {
 		registerTool({
 			name: "structured_output",
 			label: "Structured Output",
-			description: "Submit the complete result through one transport envelope. Preferred: {value: <complete JSON result>} with the JSON object passed directly. For a large result only: {path: <existing complete-result JSON file inside the submission directory>} and optional computed sha256. Never place result fields beside value/path, never pass value and path together, and never guess a capture/output-slot path. A valid submission terminates the step.",
+			description: "Submit the complete result through one transport envelope. Preferred for small results: {value: <complete JSON result>} with the JSON object passed directly. For a large result only after writing the file: {path: <existing complete-result JSON file inside the submission directory>} and optional computed sha256. Never place result fields beside value/path, never pass value and path together, and never point path at a workflow output-slot or a file you did not write. A valid submission terminates the step.",
 			parameters: parameters as never,
 			async execute(_id: string, params: StructuredOutputSubmission) {
 				const details = await captureStructuredOutputSubmission({

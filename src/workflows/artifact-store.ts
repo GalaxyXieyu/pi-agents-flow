@@ -95,7 +95,11 @@ export function createLocalWorkflowArtifactStore(rootDir: string): WorkflowArtif
 				if (stat.size > input.maxBytes) throw new Error(`Output port '${input.port}' exceeds its ${input.maxBytes}-byte file budget.`);
 				content = fs.readFileSync(descriptor);
 			} catch (error) {
-				throw new Error(`Failed to capture output port '${input.port}': ${error instanceof Error ? error.message : String(error)}`);
+				const detail = error instanceof Error ? error.message : String(error);
+				const missing = (error as NodeJS.ErrnoException | undefined)?.code === "ENOENT" || /ENOENT|no such file/i.test(detail);
+				throw new Error(missing
+					? `Failed to capture output port '${input.port}': file does not exist at '${actual}'. Write the content to this preallocated slot first, then submit outputs.${input.port} as {kind:'file', path:'${actual}'}. Do not report a slot path you never wrote, and do not use the slot as the outer structured_output.path.`
+					: `Failed to capture output port '${input.port}': ${detail}`);
 			} finally {
 				if (descriptor !== undefined) fs.closeSync(descriptor);
 			}

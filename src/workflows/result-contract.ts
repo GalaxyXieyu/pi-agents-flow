@@ -4,9 +4,11 @@ import type { WorkflowDataContract, WorkflowFinding, WorkflowJsonValue, Workflow
 export const WORKFLOW_RESULT_SUBMISSION_GUIDE = [
 	"Return the complete WorkflowResult through the tool-level structured_output envelope: {value:{version:1,summary:{...},outputs:{...},diagnostics:{...},recommendations:[...],evidence:{...}}}.",
 	"The outer tool `value` contains the COMPLETE WorkflowResult. Do not place version, summary, outputs, diagnostics, recommendations, evidence, review, or extensions beside that outer `value`.",
+	"Prefer that outer INLINE `value` whenever the whole WorkflowResult is only a few KB. Do not invent a tool-level `path` for a small result.",
 	"Inside WorkflowResult.outputs, submit each declared port using {kind:'value', value:...} or {kind:'file', path:'...', sha256:'...'}; these inner port fields are different from the outer tool transport.",
 	"summary.text is a bounded semantic summary, never the complete document or dataset.",
-	"Large text, documents, logs, and datasets must use an inner file-port submission written exactly to that port's preallocated output slot path (listed under Output slots); report that path unchanged.",
+	"Two different paths exist and must not be mixed: (1) tool-level structured_output.path is only for an already-written complete-result JSON file in the child submission directory; (2) inner outputs[port].kind=file path is a preallocated output slot listed under Output slots.",
+	"Large text, documents, logs, and datasets: FIRST write the content exactly to that port's preallocated output slot path, THEN submit a compact WorkflowResult whose outputs[port] is {kind:'file', path:'<that slot>', sha256:'...'}. Never submit kind:file for a path you did not actually write. Never use an output-slot path as the outer tool `path`.",
 	"Use diagnostics for gaps, conflicts, and warnings. Research profiles also return evidence.findings and evidence.search.",
 ].join("\n");
 

@@ -154,6 +154,26 @@ describe("workflow output slots", () => {
 		}
 	});
 
+	it("tells the child to write the slot before reporting a missing file path", async () => {
+		const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-slots-"));
+		tempDirs.push(rootDir);
+		const store = createWorkflowStore({ rootDir });
+		createRun(store, "workflow-missing-slot");
+		const adapter: WorkflowDelegationAdapter = {
+			async run(run, node, attempt) {
+				const slot = path.join(store.paths(run.id).artifacts, "staging", run.id, node.id, attempt.attemptId.replace(/:/g, "_"), "findings");
+				return { ok: true, response: completedResponse(attempt.requestId, run.id, node.id, fileResult(slot)) };
+			},
+		};
+		const scheduler = createWorkflowScheduler({ store, adapter, now: () => 10 });
+		const done = await scheduler.runReady("workflow-missing-slot");
+		assert.equal(done.nodes["research-a"]?.status, "failed");
+		const error = done.nodes["research-a"]?.attempts.at(-1)?.error ?? "";
+		assert.match(error, /file does not exist/);
+		assert.match(error, /Write the content to this preallocated slot first/);
+		assert.match(error, /do not use the slot as the outer structured_output.path/);
+	});
+
 	it("rejects file submissions outside the slot and trusted directories, naming the slot", async () => {
 		const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-workflow-slots-"));
 		tempDirs.push(rootDir);

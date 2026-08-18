@@ -269,7 +269,7 @@ function withWorkflowContext(store: WorkflowStore, run: WorkflowRun, node: Workf
 				"Read the context pack and only the authorized references it names. Do not inspect the workflow directory, global bundles, result envelopes, or parent-session history.",
 				...(Object.keys(outputSlots).length
 					? [
-							"Preallocated output slots (file submissions must write exactly to these paths and report them unchanged):",
+							"Preallocated output slots (inner outputs[port].kind=file destinations only). Small results stay inline in structured_output.value. For a large port: write the file to the slot first, then report that exact path. Never pass a slot path as the outer tool path, and never report a path you did not write:",
 							...Object.entries(outputSlots).map(([port, slotPath]) => `- ${port}: ${slotPath}`),
 						]
 					: []),

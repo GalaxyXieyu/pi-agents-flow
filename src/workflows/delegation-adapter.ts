@@ -93,7 +93,9 @@ function buildOutputContractGuide(contract: WorkflowDataContract, formatError?: 
 	}
 	for (const [name, port] of ports) {
 		const req = port.required ? "REQUIRED" : "optional";
-		const storageNote = port.storage === "artifact" ? ", write large content to the output slot file" : "";
+		const storageNote = port.storage === "artifact"
+			? `, write large content to the output slot file first, then submit outputs.${name} as kind:file with that exact path; keep small results inline`
+			: ", keep this port inline in structured_output.value unless it exceeds the inline budget";
 		const typeHint = port.mediaType.toLowerCase().startsWith("text/") ? " (value must be a string)" : "";
 		lines.push(`- **${name}** [${req}] ${port.mediaType}${typeHint}${storageNote}${port.description ? ` — ${port.description}` : ""}`);
 	}

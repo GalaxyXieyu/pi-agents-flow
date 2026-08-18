@@ -283,9 +283,9 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 				});
 				core.activityDock = activityDock;
 
-				// The dock mounts above the editor (goal-panel style), so ↓ no longer
-				// enters the panel. Ctrl+Alt+A toggles expand/collapse from anywhere,
-				// including while the editor already holds text.
+				// The dock mounts below the editor. ↓ / Tab on an empty editor expands
+				// it; ↑ stays reserved for conversation history. Ctrl+Alt+A toggles
+				// expand/collapse from anywhere, including while the editor holds text.
 				pi.registerShortcut(Key.ctrlAlt("a"), {
 					description: "Toggle the activity dock panel",
 					handler: () => activityDock.toggle(),

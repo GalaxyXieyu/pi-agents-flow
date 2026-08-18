@@ -4,8 +4,11 @@
 
 ### Structured output
 - Flattened `structured_output` tool parameters to a plain object root. Provider/runtime gates reject root-level `anyOf`/`oneOf` unions (`tool parameter root must be an object type`); direct object results and XOR(`value`, `path`) remain accepted by runtime normalization/capture.
+- Clarified the two path systems so small results stay in the outer inline `value`, tool-level `path` only names an already-written submission-directory file, and inner `outputs[port].kind=file` writes to a preallocated slot before reporting it. Long documents should write the file first and keep `structured_output` compact.
 
 ### Activity Dock
+- Moved the Activity Dock back below the editor. `↓` / Tab on an empty editor expands it; `↑` is reserved for conversation history again. `Ctrl+Alt+A` still toggles the panel from anywhere.
+- When a workflow is bound, leftover terminal independent executions from earlier workflows in the same session (especially failed ones) no longer occupy the dock roster.
 - Hid failed, cancelled, and superseded Agents in the Activity Dock Agents roster by default, matching the Activity Board. Press `f` to show or hide them.
 
 ### Headless execution

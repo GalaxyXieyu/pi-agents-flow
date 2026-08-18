@@ -30,9 +30,8 @@ export interface ActivityDockState {
 }
 
 /**
- * Number of rows the expanded dock can occupy above the editor. The dock lives
- * at `aboveEditor` placement (like the goal panel), so every expanded line is
- * prime screen real estate — keep the panel compact.
+ * Number of rows the expanded dock can occupy below the editor. Keep the panel
+ * compact so the conversation and input stay the primary surface.
  */
 export const ACTIVITY_DOCK_MAX_LINES = 12;
 
@@ -169,9 +168,9 @@ function expandedRows(selection: ActivitySelection, theme: Theme, width: number,
 
 /**
  * One-line collapsed summary shown while the dock is inactive.
- * The dock mounts above the editor (same placement as the goal panel), so the
- * collapsed line is the always-visible status strip and the full tree only
- * appears when the user expands the panel (Ctrl+Alt+A / ↑ / Tab).
+ * The dock mounts below the editor, so the collapsed line is the always-visible
+ * status strip and the full tree only appears when the user expands the panel
+ * (Ctrl+Alt+A / ↓ / Tab). ↑ stays available for conversation history.
  *
  * The dock defaults to a single aggregate line so it never eats vertical space; the
  * full task tree only appears once the user expands it. Counts come from the shared
@@ -201,14 +200,14 @@ function dockSummaryLine(snapshot: ActivitySnapshot, theme: Theme, width: number
 		failed > 0 ? `${failed} ${zh ? "失败" : "failed"}` : undefined,
 	].filter((part): part is string => Boolean(part));
 	const left = `${badge(lead, theme, frame)} ${parts.join(" · ")}`;
-	const hint = zh ? "^⌥A/↑ 展开" : "^⌥A/↑ expand";
+	const hint = zh ? "^⌥A/↓ 展开" : "^⌥A/↓ expand";
 	return rightAlign(left, theme.fg("dim", hint), width);
 }
 
 export function renderActivityDock(snapshot: ActivitySnapshot, width: number, theme: Theme, state: ActivityDockState = {}): string[] {
 	// A finished workflow should no longer occupy the dock at all — not even the
 	// collapsed summary line. Once the run reaches a terminal state the run is
-	// over; keeping a stale "↓/Tab expand" row beneath the editor is noise.
+	// over; keeping a stale expand row beneath the editor is noise.
 	if (snapshot.workflow && isWorkflowTerminal(snapshot.workflow.status)) return [];
 	const perspective = state.perspective ?? (snapshot.workflow ? "work" : "agents");
 	const showFailedAgents = Boolean(state.showFailedAgents);
@@ -233,7 +232,7 @@ export function renderActivityDock(snapshot: ActivitySnapshot, width: number, th
 		return lines;
 	}
 	const selectedIndex = Math.max(0, rows.findIndex((row) => row.key === state.selectedKey));
-	// Above the editor every row is expensive — cap rows so header + rows + the
+	// Cap rows so header + rows + the
 	// trailing "… +N" line never exceed ACTIVITY_DOCK_MAX_LINES in total.
 	const rowCount = Math.min(width >= 110 ? 6 : 4, ACTIVITY_DOCK_MAX_LINES - 2);
 	const start = Math.max(0, Math.min(selectedIndex, Math.max(0, rows.length - rowCount)));
@@ -332,10 +331,9 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 	const handleKey = (data: string): { consume?: boolean } | undefined => {
 		if (!ctx || !snapshot || inspectorOpen || isKeyRelease(data) || !editorHasFocus()) return undefined;
 		if (!active) {
-			// The dock lives above the editor now: pressing ↑ at the top of an
-			// empty editor naturally steps "up" into the panel. Tab works too.
-			// ↓ no longer activates — it would move away from the panel.
-			const wantsExpand = matchesKey(data, "up") || matchesKey(data, "tab");
+			// Below the editor: ↓ or Tab on an empty editor enters the panel.
+			// ↑ must not activate — it is reserved for conversation history.
+			const wantsExpand = matchesKey(data, "down") || matchesKey(data, "tab");
 			if (!wantsExpand || ctx.ui.getEditorText() !== "") return undefined;
 			active = true;
 			clampSelection();
@@ -368,21 +366,20 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 			requestRender();
 			return { consume: true };
 		}
-		if (matchesKey(data, "down") || matchesKey(data, "j")) {
-			// The panel sits above the editor: pressing ↓ past the last row steps
-			// back down into the editor and collapses the dock. j stays an in-panel
-			// navigation key and never collapses.
-			if (matchesKey(data, "down") && index >= rows.length - 1) {
+		if (matchesKey(data, "up") || matchesKey(data, "k")) {
+			// The panel sits below the editor: ↑ on the first row returns to the
+			// conversation. k stays an in-panel navigation key and never collapses.
+			if (matchesKey(data, "up") && index <= 0) {
 				active = false;
 				expandedKey = undefined;
 			} else {
-				selectedKey = rows[Math.min(rows.length - 1, index + 1)]?.key;
+				selectedKey = rows[Math.max(0, index - 1)]?.key;
 			}
 			requestRender();
 			return { consume: true };
 		}
-		if (matchesKey(data, "up") || matchesKey(data, "k")) {
-			if (index > 0) selectedKey = rows[index - 1]?.key;
+		if (matchesKey(data, "down") || matchesKey(data, "j")) {
+			selectedKey = rows[Math.min(rows.length - 1, index + 1)]?.key;
 			requestRender();
 			return { consume: true };
 		}
@@ -467,7 +464,7 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 				if (!perspective) perspective = nextPerspective;
 				// Workflow finished: a terminal run (completed/stopped/failed) should not
 				// leave the dock mounted at all — not even the collapsed summary line.
-				// Unmount the widget so the stale "↓/Tab expand" row disappears entirely.
+				// Unmount the widget so the stale expand row disappears entirely.
 				if (nextSnapshot.workflow && isWorkflowTerminal(nextSnapshot.workflow.status)) {
 					active = false;
 					expandedKey = undefined;
@@ -489,7 +486,7 @@ export function createActivityDockController(options: ActivityDockControllerOpti
 					ui.setWidget(ACTIVITY_DOCK_WIDGET_KEY, (nextTui, theme) => {
 						tui = nextTui;
 						return new ActivityDockComponent(() => snapshot, renderState, theme);
-					}, { placement: "aboveEditor" });
+					}, { placement: "belowEditor" });
 					registered = true;
 				} else requestRender();
 			} catch {

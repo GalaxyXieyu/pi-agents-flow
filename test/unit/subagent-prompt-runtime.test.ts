@@ -435,7 +435,7 @@ describe("subagent prompt runtime", () => {
 						description: "Complete inline result. Pass the JSON value directly, not encoded text.",
 						anyOf: [{ type: "object", required: ["ok"], properties: { ok: { type: "boolean" } } }, { type: "string" }],
 					},
-					path: { type: "string", minLength: 1, description: "Path to a JSON file containing the complete result. The file must already exist inside this run's submission directory." },
+					path: { type: "string", minLength: 1, description: "Path to a complete-result JSON file that already exists inside this run's submission directory. Write the file first. Do not point this at a workflow output-slot / staging path." },
 					sha256: { type: "string", pattern: "^[A-Fa-f0-9]{64}$", description: "Optional SHA-256 digest of the referenced JSON file. Omit it unless computed from the actual file." },
 				},
 				additionalProperties: false,
