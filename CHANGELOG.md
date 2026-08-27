@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Slash commands
+- Added `/agent <name> [task]` as a discoverable alias of `/run` for directly launching a user-invocable subagent. Both commands share the same handler, completion list, and flags (`output=[file]`, `--bg`, `--fork`).
+
 ### Structured output
 - Flattened `structured_output` tool parameters to a plain object root. Provider/runtime gates reject root-level `anyOf`/`oneOf` unions (`tool parameter root must be an object type`); direct object results and XOR(`value`, `path`) remain accepted by runtime normalization/capture.
 - Clarified the two path systems so small results stay in the outer inline `value`, tool-level `path` only names an already-written submission-directory file, and inner `outputs[port].kind=file` writes to a preallocated slot before reporting it. Long documents should write the file first and keep `structured_output` compact.
