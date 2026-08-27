@@ -2342,6 +2342,26 @@ describe("subagents-doctor slash command", { skip: !available ? "slash-commands.
 		});
 	});
 
+	it("registers the /agent alias alongside /run for user invocation", async () => {
+		await withIsolatedHome(async () => {
+			const commands = new Map<string, RegisteredSlashCommand>();
+			const pi = {
+				events: createEventBus(),
+				registerCommand(name: string, spec: RegisteredSlashCommand) {
+					commands.set(name, spec);
+				},
+				registerShortcut() {},
+				sendMessage(_message: unknown) {},
+			};
+
+			registerSlashCommands!(pi, createState(process.cwd()));
+			assert.equal(commands.has("agent"), true);
+			assert.equal(commands.has("run"), true);
+			// Both commands must share the same run handler (alias behavior).
+			assert.equal(commands.get("agent")!.handler, commands.get("run")!.handler);
+		});
+	});
+
 	it("does not register the removed subagents-status overlay command", async () => {
 		await withIsolatedHome(async () => {
 			const commands = new Map<string, RegisteredSlashCommand>();

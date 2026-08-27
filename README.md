@@ -785,6 +785,7 @@ Skip this section until you want exact syntax.
 
 | Command | Description |
 |---------|-------------|
+| `/agent <agent> [task]` | Run one agent directly; alias of `/run` with a more discoverable name |
 | `/run <agent> [task]` | Run one agent; omit the task for self-contained agents |
 | `/chain agent1 "task1" -> agent2 "task2"` | Run agents in sequence |
 | `/chain scout "scan" -> (reviewer "A" \| reviewer "B") -> writer "fix"` | Run a chain with a static parallel group inline |
